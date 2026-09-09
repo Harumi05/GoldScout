@@ -172,7 +172,6 @@ bool IsAccountRiskDealType(const long dealType)
       case DEAL_TYPE_COMMISSION_AGENT_DAILY:
       case DEAL_TYPE_COMMISSION_AGENT_MONTHLY:
       case DEAL_TYPE_INTEREST:
-      case DEAL_TYPE_TAX:
          return true;
    }
    return false;
