@@ -95,6 +95,27 @@ input bool   ContinuationUseMomentumQuality   = true;
 input double ContinuationMomentumBodyATR      = 0.50;
 input bool   DebugContinuationPatternLogs     = false;
 
+input group "=== Diagnostic Triangles / Wedges ==="
+input bool   EnableConvergencePatternDiagnostics = true;
+input int    ConvergenceMinPatternBars        = 8;
+input int    ConvergenceMaxPatternBars        = 72;
+input int    ConvergenceMaxConfirmationBars   = 12;
+input double ConvergenceHorizontalSlopeATR    = 0.03;
+input double ConvergenceMinSlopeATR           = 0.05;
+input double ConvergenceMinSlopeSeparationATR = 0.02;
+input double ConvergenceMaxWidthRatio         = 0.80;
+input double ConvergenceMaxLineFitATR         = 0.25;
+input int    ConvergenceMinBarsBeforeApex     = 1;
+input int    MinBreakoutBarsBeforeApex        = 2;
+input double ConvergenceMaxApexDistanceRatio  = 2.00;
+input double ConvergenceBreakoutBufferATR     = 0.05;
+input bool   ConvergenceUseVolumeQuality      = true;
+input int    ConvergenceVolumeLookback        = 20;
+input double ConvergenceVolumeMultiplier      = 1.05;
+input bool   ConvergenceUseMomentumQuality    = true;
+input double ConvergenceMomentumBodyATR       = 0.50;
+input bool   DebugConvergencePatternLogs      = false;
+
 input group "=== News Filter ==="
 input bool   UseNewsFilter           = true;
 input int    NewsBlockBeforeMin      = 30;
@@ -179,6 +200,12 @@ datetime g_continuationPatternEvaluatedClosedBar=0;
 datetime g_lastContinuationPatternLogTime=0;
 string   g_lastContinuationPatternLogSignature="";
 const int CONTINUATION_PATTERN_LOG_INTERVAL_SECONDS=30;
+
+GoldScoutConvergencePatternDiagnostic g_convergencePatternDiagnostic;
+datetime g_convergencePatternEvaluatedClosedBar=0;
+datetime g_lastConvergencePatternLogTime=0;
+string   g_lastConvergencePatternLogSignature="";
+const int CONVERGENCE_PATTERN_LOG_INTERVAL_SECONDS=30;
 
 struct BrokerContractSpec
 {
@@ -373,6 +400,78 @@ void RefreshContinuationPatternDiagnostics(const GoldScoutPivot &confirmedPivots
    g_continuationPatternDiagnostic=detectedPattern;
    g_continuationPatternEvaluatedClosedBar=latestClosedBar;
    LogContinuationPattern(g_continuationPatternDiagnostic);
+}
+
+void ConfigureConvergencePatternDiagnostics(GoldScoutConvergencePatternConfig &config)
+{
+   config.minPatternBars=ConvergenceMinPatternBars;
+   config.maxPatternBars=ConvergenceMaxPatternBars;
+   config.maxConfirmationBars=ConvergenceMaxConfirmationBars;
+   config.horizontalSlopeAtrPerBar=ConvergenceHorizontalSlopeATR;
+   config.minSlopeAtrPerBar=ConvergenceMinSlopeATR;
+   config.minSlopeSeparationAtrPerBar=ConvergenceMinSlopeSeparationATR;
+   config.maxWidthRatio=ConvergenceMaxWidthRatio;
+   config.maxLineFitAtr=ConvergenceMaxLineFitATR;
+   config.minBarsBeforeApex=ConvergenceMinBarsBeforeApex;
+   config.minBreakoutBarsBeforeApex=MinBreakoutBarsBeforeApex;
+   config.maxApexDistanceRatio=ConvergenceMaxApexDistanceRatio;
+   config.breakoutBufferAtr=ConvergenceBreakoutBufferATR;
+   config.useVolumeQuality=ConvergenceUseVolumeQuality;
+   config.volumeLookback=ConvergenceVolumeLookback;
+   config.volumeMultiplier=ConvergenceVolumeMultiplier;
+   config.useMomentumQuality=ConvergenceUseMomentumQuality;
+   config.momentumBodyAtr=ConvergenceMomentumBodyATR;
+}
+
+void LogConvergencePattern(const GoldScoutConvergencePatternDiagnostic &pattern)
+{
+   if(!DebugConvergencePatternLogs || !pattern.detected) return;
+   string breakout=pattern.breakoutDirection>0?"LONG":
+      (pattern.breakoutDirection<0?"SHORT":"NONE");
+   string signature=pattern.identity+"|"+GS_PatternStateName(pattern.state)+"|"+breakout;
+   if(signature==g_lastConvergencePatternLogSignature) return;
+
+   datetime now=TimeTradeServer();
+   if(now<=0) now=TimeLocal();
+   if(now<=0 || (g_lastConvergencePatternLogTime>0 &&
+      (long)(now-g_lastConvergencePatternLogTime)<CONVERGENCE_PATTERN_LOG_INTERVAL_SECONDS))
+      return;
+
+   PrintFormat("[GoldScout][STRUCTURE] pattern=%s | state=%s | breakout=%s | contraction=%.1f%% | bars=%d | quality=%.1f (%s)",
+      GS_ConvergencePatternTypeName(pattern.type),GS_PatternStateName(pattern.state),
+      breakout,(1.0-pattern.widthRatio)*100.0,pattern.durationBars,
+      pattern.quality,GS_PatternQualityName(pattern.quality));
+   g_lastConvergencePatternLogSignature=signature;
+   g_lastConvergencePatternLogTime=now;
+}
+
+void RefreshConvergencePatternDiagnostics(const GoldScoutPivot &confirmedPivots[],
+                                           const bool pivotDataAvailable)
+{
+   if(!EnableConvergencePatternDiagnostics)
+   {
+      GS_ClearConvergencePatternDiagnostic(g_convergencePatternDiagnostic);
+      return;
+   }
+
+   datetime latestClosedBar=iTime(_Symbol,PERIOD_H1,1);
+   if(latestClosedBar<=0 || latestClosedBar==g_convergencePatternEvaluatedClosedBar) return;
+
+   GoldScoutConvergencePatternConfig config;
+   ConfigureConvergencePatternDiagnostics(config);
+   GoldScoutConvergencePatternDiagnostic detectedPattern;
+   GS_ClearConvergencePatternDiagnostic(detectedPattern);
+   if(!pivotDataAvailable ||
+      !GS_LoadLatestConvergencePatternDiagnostic(_Symbol,PERIOD_H1,PivotLookbackBars,
+         confirmedPivots,_Point,config,detectedPattern))
+   {
+      GS_ClearConvergencePatternDiagnostic(g_convergencePatternDiagnostic);
+      return;
+   }
+
+   g_convergencePatternDiagnostic=detectedPattern;
+   g_convergencePatternEvaluatedClosedBar=latestClosedBar;
+   LogConvergencePattern(g_convergencePatternDiagnostic);
 }
 
 bool LoadBrokerContract(BrokerContractSpec &spec,string &msg)
@@ -1265,6 +1364,7 @@ bool BuildSignal(int &direction, int &score, string &setup, string &reason, doub
    string pivotStructureName=GS_StructureStateName(pivotStructure.state);
    RefreshStructurePatternDiagnostics(confirmedPivots,pivotDataAvailable);
    RefreshContinuationPatternDiagnostics(confirmedPivots,pivotDataAvailable);
+   RefreshConvergencePatternDiagnostics(confirmedPivots,pivotDataAvailable);
 
    bool breakLong = close1 > recentHigh;
    bool breakShort = close1 < recentLow;
@@ -2000,6 +2100,7 @@ int OnInit()
 {
    GS_ClearPatternDiagnostic(g_patternDiagnostic);
    GS_ClearContinuationPatternDiagnostic(g_continuationPatternDiagnostic);
+   GS_ClearConvergencePatternDiagnostic(g_convergencePatternDiagnostic);
    if(!IsGoldSymbol())
    {
       Print("[GoldScout] BLOQUEADO: este EA solo funciona en XAUUSD. Simbolo actual: ", _Symbol);

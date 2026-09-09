@@ -167,6 +167,72 @@ struct GoldScoutContinuationPatternDiagnostic
    string                                identity;
 };
 
+enum GoldScoutConvergencePatternType
+{
+   GOLDSCOUT_CONVERGENCE_NONE                = 0,
+   GOLDSCOUT_CONVERGENCE_ASC_TRIANGLE        = 1,
+   GOLDSCOUT_CONVERGENCE_DESC_TRIANGLE       = 2,
+   GOLDSCOUT_CONVERGENCE_SYMM_TRIANGLE       = 3,
+   GOLDSCOUT_CONVERGENCE_RISING_WEDGE        = 4,
+   GOLDSCOUT_CONVERGENCE_FALLING_WEDGE       = 5
+};
+
+struct GoldScoutConvergencePatternConfig
+{
+   int    minPatternBars;
+   int    maxPatternBars;
+   int    maxConfirmationBars;
+   double horizontalSlopeAtrPerBar;
+   double minSlopeAtrPerBar;
+   double minSlopeSeparationAtrPerBar;
+   double maxWidthRatio;
+   double maxLineFitAtr;
+   int    minBarsBeforeApex;
+   int    minBreakoutBarsBeforeApex;
+   double maxApexDistanceRatio;
+   double breakoutBufferAtr;
+   bool   useVolumeQuality;
+   int    volumeLookback;
+   double volumeMultiplier;
+   bool   useMomentumQuality;
+   double momentumBodyAtr;
+};
+
+struct GoldScoutConvergencePatternDiagnostic
+{
+   bool                                  detected;
+   GoldScoutConvergencePatternType       type;
+   GoldScoutPatternState                 state;
+   GoldScoutPivot                        firstUpper;
+   GoldScoutPivot                        secondUpper;
+   GoldScoutPivot                        thirdUpper;
+   GoldScoutPivot                        firstLower;
+   GoldScoutPivot                        secondLower;
+   GoldScoutPivot                        thirdLower;
+   datetime                              eventTime;
+   int                                   durationBars;
+   int                                   barsAfterPattern;
+   int                                   breakoutDirection;
+   double                                referenceAtr;
+   double                                upperSlope;
+   double                                lowerSlope;
+   double                                upperIntercept;
+   double                                lowerIntercept;
+   double                                initialWidth;
+   double                                finalWidth;
+   double                                widthRatio;
+   double                                lineFitQuality;
+   double                                slopeQuality;
+   double                                convergenceQuality;
+   double                                apexIndex;
+   double                                apexPositionQuality;
+   double                                breakoutStrengthAtr;
+   bool                                  volumeConfirmed;
+   bool                                  momentumConfirmed;
+   double                                quality;
+   string                                identity;
+};
+
 const int GOLDSCOUT_MAX_STRUCTURAL_BUCKET_POINTS=25;
 
 void GS_ClearPivots(GoldScoutPivot &pivots[])
@@ -312,6 +378,41 @@ void GS_ClearContinuationPatternDiagnostic(GoldScoutContinuationPatternDiagnosti
    pattern.identity="";
 }
 
+void GS_ClearConvergencePatternDiagnostic(GoldScoutConvergencePatternDiagnostic &pattern)
+{
+   pattern.detected=false;
+   pattern.type=GOLDSCOUT_CONVERGENCE_NONE;
+   pattern.state=GOLDSCOUT_PATTERN_STATE_NONE;
+   GS_ClearPivot(pattern.firstUpper);
+   GS_ClearPivot(pattern.secondUpper);
+   GS_ClearPivot(pattern.thirdUpper);
+   GS_ClearPivot(pattern.firstLower);
+   GS_ClearPivot(pattern.secondLower);
+   GS_ClearPivot(pattern.thirdLower);
+   pattern.eventTime=0;
+   pattern.durationBars=0;
+   pattern.barsAfterPattern=0;
+   pattern.breakoutDirection=0;
+   pattern.referenceAtr=0.0;
+   pattern.upperSlope=0.0;
+   pattern.lowerSlope=0.0;
+   pattern.upperIntercept=0.0;
+   pattern.lowerIntercept=0.0;
+   pattern.initialWidth=0.0;
+   pattern.finalWidth=0.0;
+   pattern.widthRatio=0.0;
+   pattern.lineFitQuality=0.0;
+   pattern.slopeQuality=0.0;
+   pattern.convergenceQuality=0.0;
+   pattern.apexIndex=0.0;
+   pattern.apexPositionQuality=0.0;
+   pattern.breakoutStrengthAtr=0.0;
+   pattern.volumeConfirmed=false;
+   pattern.momentumConfirmed=false;
+   pattern.quality=0.0;
+   pattern.identity="";
+}
+
 string GS_ContinuationPatternTypeName(const GoldScoutContinuationPatternType type)
 {
    if(type==GOLDSCOUT_CONTINUATION_BULL_FLAG) return "BULL_FLAG";
@@ -346,6 +447,38 @@ bool GS_ValidateContinuationPatternConfig(const GoldScoutContinuationPatternConf
           config.breakoutBufferAtr>=0.0 &&
           MathIsValidNumber(config.invalidationAtr) &&
           config.invalidationAtr>=0.0 &&
+          (!config.useVolumeQuality ||
+             (config.volumeLookback>=1 && GS_ValidPositiveNumber(config.volumeMultiplier))) &&
+          (!config.useMomentumQuality || GS_ValidPositiveNumber(config.momentumBodyAtr));
+}
+
+string GS_ConvergencePatternTypeName(const GoldScoutConvergencePatternType type)
+{
+   if(type==GOLDSCOUT_CONVERGENCE_ASC_TRIANGLE) return "ASC_TRIANGLE";
+   if(type==GOLDSCOUT_CONVERGENCE_DESC_TRIANGLE) return "DESC_TRIANGLE";
+   if(type==GOLDSCOUT_CONVERGENCE_SYMM_TRIANGLE) return "SYMM_TRIANGLE";
+   if(type==GOLDSCOUT_CONVERGENCE_RISING_WEDGE) return "RISING_WEDGE";
+   if(type==GOLDSCOUT_CONVERGENCE_FALLING_WEDGE) return "FALLING_WEDGE";
+   return "NONE";
+}
+
+bool GS_ValidateConvergencePatternConfig(const GoldScoutConvergencePatternConfig &config)
+{
+   return config.minPatternBars>=5 &&
+          config.maxPatternBars>=config.minPatternBars &&
+          config.maxConfirmationBars>=1 &&
+          GS_ValidPositiveNumber(config.horizontalSlopeAtrPerBar) &&
+          GS_ValidPositiveNumber(config.minSlopeAtrPerBar) &&
+          config.minSlopeAtrPerBar>config.horizontalSlopeAtrPerBar &&
+          GS_ValidPositiveNumber(config.minSlopeSeparationAtrPerBar) &&
+          GS_ValidPositiveNumber(config.maxWidthRatio) &&
+          config.maxWidthRatio<1.0 &&
+          GS_ValidPositiveNumber(config.maxLineFitAtr) &&
+          config.minBarsBeforeApex>=1 &&
+          config.minBreakoutBarsBeforeApex>=0 &&
+          GS_ValidPositiveNumber(config.maxApexDistanceRatio) &&
+          MathIsValidNumber(config.breakoutBufferAtr) &&
+          config.breakoutBufferAtr>=0.0 &&
           (!config.useVolumeQuality ||
              (config.volumeLookback>=1 && GS_ValidPositiveNumber(config.volumeMultiplier))) &&
           (!config.useMomentumQuality || GS_ValidPositiveNumber(config.momentumBodyAtr));
@@ -1053,6 +1186,358 @@ bool GS_DetectLatestContinuationPattern(
    return true;
 }
 
+bool GS_FitThreePivotLine(const GoldScoutPivot &first,const int firstIndex,
+                          const GoldScoutPivot &second,const int secondIndex,
+                          const GoldScoutPivot &third,const int thirdIndex,
+                          const double referenceAtr,const double maxLineFitAtr,
+                          double &slope,double &intercept,double &fitQuality)
+{
+   slope=0.0;
+   intercept=0.0;
+   fitQuality=0.0;
+   if(firstIndex<0 || secondIndex<=firstIndex || thirdIndex<=secondIndex ||
+      !GS_ValidPositiveNumber(referenceAtr) || !GS_ValidPositiveNumber(maxLineFitAtr))
+      return false;
+
+   double meanX=((double)firstIndex+(double)secondIndex+(double)thirdIndex)/3.0;
+   double meanY=(first.price+second.price+third.price)/3.0;
+   double firstX=(double)firstIndex-meanX;
+   double secondX=(double)secondIndex-meanX;
+   double thirdX=(double)thirdIndex-meanX;
+   double denominator=firstX*firstX+secondX*secondX+thirdX*thirdX;
+   if(!GS_ValidPositiveNumber(denominator)) return false;
+
+   slope=(firstX*(first.price-meanY)+secondX*(second.price-meanY)+
+          thirdX*(third.price-meanY))/denominator;
+   intercept=meanY-slope*meanX;
+   if(!MathIsValidNumber(slope) || !MathIsValidNumber(intercept)) return false;
+
+   double firstResidual=first.price-(intercept+slope*(double)firstIndex);
+   double secondResidual=second.price-(intercept+slope*(double)secondIndex);
+   double thirdResidual=third.price-(intercept+slope*(double)thirdIndex);
+   double rms=MathSqrt((firstResidual*firstResidual+secondResidual*secondResidual+
+                       thirdResidual*thirdResidual)/3.0);
+   double maximumResidual=maxLineFitAtr*referenceAtr;
+   if(!MathIsValidNumber(rms) || rms>maximumResidual) return false;
+   fitQuality=MathMax(0.0,MathMin(1.0,1.0-rms/maximumResidual));
+   return true;
+}
+
+double GS_ConvergenceSlopeQuality(const GoldScoutConvergencePatternType type,
+                                  const double upperSlopeAtr,
+                                  const double lowerSlopeAtr,
+                                  const GoldScoutConvergencePatternConfig &config)
+{
+   double horizontalQuality=0.0;
+   double directionalQuality=0.0;
+   double separationQuality=MathMax(0.0,MathMin(1.0,
+      (lowerSlopeAtr-upperSlopeAtr)/(2.0*config.minSlopeSeparationAtrPerBar)));
+
+   if(type==GOLDSCOUT_CONVERGENCE_ASC_TRIANGLE)
+   {
+      horizontalQuality=MathMax(0.0,MathMin(1.0,
+         1.0-MathAbs(upperSlopeAtr)/config.horizontalSlopeAtrPerBar));
+      directionalQuality=MathMax(0.0,MathMin(1.0,
+         lowerSlopeAtr/(2.0*config.minSlopeAtrPerBar)));
+      return (horizontalQuality+directionalQuality+separationQuality)/3.0;
+   }
+   if(type==GOLDSCOUT_CONVERGENCE_DESC_TRIANGLE)
+   {
+      horizontalQuality=MathMax(0.0,MathMin(1.0,
+         1.0-MathAbs(lowerSlopeAtr)/config.horizontalSlopeAtrPerBar));
+      directionalQuality=MathMax(0.0,MathMin(1.0,
+         -upperSlopeAtr/(2.0*config.minSlopeAtrPerBar)));
+      return (horizontalQuality+directionalQuality+separationQuality)/3.0;
+   }
+
+   directionalQuality=MathMax(0.0,MathMin(1.0,
+      MathMin(MathAbs(upperSlopeAtr),MathAbs(lowerSlopeAtr))/
+      (2.0*config.minSlopeAtrPerBar)));
+   return (directionalQuality+separationQuality)/2.0;
+}
+
+bool GS_ConvergenceVolumeConfirmation(const MqlRates &closedRates[],
+                                      const int breakoutIndex,
+                                      const GoldScoutConvergencePatternConfig &config)
+{
+   if(!config.useVolumeQuality || breakoutIndex<=0) return false;
+   int first=(int)MathMax(0,breakoutIndex-config.volumeLookback);
+   double total=0.0;
+   int samples=0;
+   for(int i=first;i<breakoutIndex;i++)
+   {
+      if(closedRates[i].tick_volume<=0) continue;
+      total+=(double)closedRates[i].tick_volume;
+      samples++;
+   }
+   if(samples<1 || closedRates[breakoutIndex].tick_volume<=0) return false;
+   return (double)closedRates[breakoutIndex].tick_volume >=
+      (total/(double)samples)*config.volumeMultiplier;
+}
+
+bool GS_ConvergenceMomentumConfirmation(const MqlRates &bar,const int direction,
+                                        const double referenceAtr,
+                                        const GoldScoutConvergencePatternConfig &config)
+{
+   if(!config.useMomentumQuality || direction==0 ||
+      !GS_ValidPositiveNumber(referenceAtr)) return false;
+   double directionalBody=direction>0 ? bar.close-bar.open : bar.open-bar.close;
+   return directionalBody>=config.momentumBodyAtr*referenceAtr;
+}
+
+double GS_ConvergencePatternQuality(
+   const GoldScoutConvergencePatternDiagnostic &pattern,
+   const GoldScoutConvergencePatternConfig &config)
+{
+   if(!GS_ValidateConvergencePatternConfig(config) || !pattern.detected ||
+      !GS_ValidPositiveNumber(pattern.referenceAtr))
+      return 0.0;
+
+   double idealDuration=((double)config.minPatternBars+(double)config.maxPatternBars)/2.0;
+   double durationHalfRange=MathMax(0.5,
+      ((double)config.maxPatternBars-(double)config.minPatternBars)/2.0);
+   double durationQuality=MathMax(0.0,MathMin(1.0,
+      1.0-MathAbs((double)pattern.durationBars-idealDuration)/durationHalfRange));
+   double contractionQuality=MathMax(0.0,MathMin(1.0,1.0-pattern.widthRatio));
+   double breakoutQuality=0.0;
+   if(pattern.state==GOLDSCOUT_PATTERN_STATE_CONFIRMED)
+      breakoutQuality=MathMax(0.0,MathMin(1.0,pattern.breakoutStrengthAtr));
+
+   double quality=20.0*MathMax(0.0,MathMin(1.0,pattern.lineFitQuality))+
+      15.0*MathMax(0.0,MathMin(1.0,pattern.slopeQuality))+
+      15.0*MathMax(0.0,MathMin(1.0,pattern.convergenceQuality))+
+      10.0*durationQuality+15.0*contractionQuality+
+      10.0*MathMax(0.0,MathMin(1.0,pattern.apexPositionQuality))+
+      10.0*breakoutQuality;
+   if(pattern.volumeConfirmed) quality+=2.5;
+   if(pattern.momentumConfirmed) quality+=2.5;
+   return MathMax(0.0,MathMin(100.0,quality));
+}
+
+// Detect one newest triangle or wedge identity from six adjacent confirmed,
+// alternating pivots (three resistance and three support touches). Geometry and
+// every state transition use closedRates only. The first terminal close is
+// immutable for the identity, so later candles cannot repaint the result.
+bool GS_DetectLatestConvergencePattern(
+   const GoldScoutPivot &confirmedPivots[],
+   const MqlRates &closedRates[],
+   const int newestClosedShift,
+   const GoldScoutConvergencePatternConfig &config,
+   const double minimumPriceStep,
+   GoldScoutConvergencePatternDiagnostic &pattern)
+{
+   GS_ClearConvergencePatternDiagnostic(pattern);
+   if(newestClosedShift<1 || !GS_ValidateConvergencePatternConfig(config) ||
+      !GS_ValidPositiveNumber(minimumPriceStep) || ArraySize(closedRates)<6 ||
+      !GS_ClosedRatesValid(closedRates))
+      return false;
+
+   GoldScoutPivot alternating[];
+   if(!GS_NormalizeAlternatingPivots(confirmedPivots,alternating)) return false;
+
+   for(int start=ArraySize(alternating)-6;start>=0;start--)
+   {
+      GoldScoutPivot sequence[6];
+      int rateIndex[6];
+      bool sequenceValid=true;
+      for(int position=0;position<6;position++)
+      {
+         sequence[position]=alternating[start+position];
+         rateIndex[position]=GS_FindClosedRateByTime(closedRates,sequence[position].time);
+         if(rateIndex[position]<0 || (position>0 && rateIndex[position]<=rateIndex[position-1]))
+         {
+            sequenceValid=false;
+            break;
+         }
+         int expectedShift=newestClosedShift+
+            (ArraySize(closedRates)-1-rateIndex[position]);
+         if(sequence[position].shift!=expectedShift)
+         {
+            sequenceValid=false;
+            break;
+         }
+      }
+      if(!sequenceValid) continue;
+
+      int durationBars=rateIndex[5]-rateIndex[0];
+      if(durationBars<config.minPatternBars || durationBars>config.maxPatternBars)
+         continue;
+
+      GoldScoutPivot upper[3],lower[3];
+      int upperIndex[3],lowerIndex[3];
+      int upperCount=0,lowerCount=0;
+      double referenceAtr=0.0;
+      for(int position=0;position<6;position++)
+      {
+         referenceAtr=MathMax(referenceAtr,sequence[position].atr);
+         if(sequence[position].type==GOLDSCOUT_PIVOT_HIGH && upperCount<3)
+         {
+            upper[upperCount]=sequence[position];
+            upperIndex[upperCount]=rateIndex[position];
+            upperCount++;
+         }
+         else if(sequence[position].type==GOLDSCOUT_PIVOT_LOW && lowerCount<3)
+         {
+            lower[lowerCount]=sequence[position];
+            lowerIndex[lowerCount]=rateIndex[position];
+            lowerCount++;
+         }
+      }
+      if(upperCount!=3 || lowerCount!=3 || !GS_ValidPositiveNumber(referenceAtr))
+         continue;
+
+      double upperSlope=0.0,upperIntercept=0.0,upperFit=0.0;
+      double lowerSlope=0.0,lowerIntercept=0.0,lowerFit=0.0;
+      if(!GS_FitThreePivotLine(upper[0],upperIndex[0],upper[1],upperIndex[1],
+                              upper[2],upperIndex[2],referenceAtr,
+                              config.maxLineFitAtr,upperSlope,upperIntercept,upperFit) ||
+         !GS_FitThreePivotLine(lower[0],lowerIndex[0],lower[1],lowerIndex[1],
+                              lower[2],lowerIndex[2],referenceAtr,
+                              config.maxLineFitAtr,lowerSlope,lowerIntercept,lowerFit))
+         continue;
+
+      double upperSlopeAtr=upperSlope/referenceAtr;
+      double lowerSlopeAtr=lowerSlope/referenceAtr;
+      double slopeSeparationAtr=lowerSlopeAtr-upperSlopeAtr;
+      if(slopeSeparationAtr<config.minSlopeSeparationAtrPerBar) continue;
+
+      bool upperHorizontal=MathAbs(upperSlopeAtr)<=config.horizontalSlopeAtrPerBar;
+      bool lowerHorizontal=MathAbs(lowerSlopeAtr)<=config.horizontalSlopeAtrPerBar;
+      bool upperRising=upperSlopeAtr>=config.minSlopeAtrPerBar;
+      bool lowerRising=lowerSlopeAtr>=config.minSlopeAtrPerBar;
+      bool upperFalling=upperSlopeAtr<=-config.minSlopeAtrPerBar;
+      bool lowerFalling=lowerSlopeAtr<=-config.minSlopeAtrPerBar;
+      GoldScoutConvergencePatternType type=GOLDSCOUT_CONVERGENCE_NONE;
+      if(upperHorizontal && lowerRising)
+         type=GOLDSCOUT_CONVERGENCE_ASC_TRIANGLE;
+      else if(lowerHorizontal && upperFalling)
+         type=GOLDSCOUT_CONVERGENCE_DESC_TRIANGLE;
+      else if(upperFalling && lowerRising)
+         type=GOLDSCOUT_CONVERGENCE_SYMM_TRIANGLE;
+      else if(upperRising && lowerRising && lowerSlopeAtr>upperSlopeAtr)
+         type=GOLDSCOUT_CONVERGENCE_RISING_WEDGE;
+      else if(upperFalling && lowerFalling && upperSlopeAtr<lowerSlopeAtr)
+         type=GOLDSCOUT_CONVERGENCE_FALLING_WEDGE;
+      if(type==GOLDSCOUT_CONVERGENCE_NONE) continue;
+
+      double initialUpper=upperIntercept+upperSlope*(double)rateIndex[0];
+      double initialLower=lowerIntercept+lowerSlope*(double)rateIndex[0];
+      double finalUpper=upperIntercept+upperSlope*(double)rateIndex[5];
+      double finalLower=lowerIntercept+lowerSlope*(double)rateIndex[5];
+      double initialWidth=initialUpper-initialLower;
+      double finalWidth=finalUpper-finalLower;
+      if(!GS_ValidPositiveNumber(initialWidth) || !GS_ValidPositiveNumber(finalWidth))
+         continue;
+      double widthRatio=finalWidth/initialWidth;
+      if(!GS_ValidPositiveNumber(widthRatio) || widthRatio>config.maxWidthRatio)
+         continue;
+
+      double slopeDifference=lowerSlope-upperSlope;
+      if(!GS_ValidPositiveNumber(slopeDifference)) continue;
+      double apexIndex=(upperIntercept-lowerIntercept)/slopeDifference;
+      double apexDistance=apexIndex-(double)rateIndex[5];
+      if(!MathIsValidNumber(apexIndex) ||
+         apexDistance<(double)config.minBarsBeforeApex ||
+         apexDistance>(double)durationBars*config.maxApexDistanceRatio)
+         continue;
+
+      pattern.detected=true;
+      pattern.type=type;
+      pattern.state=GOLDSCOUT_PATTERN_STATE_CANDIDATE;
+      pattern.firstUpper=upper[0];
+      pattern.secondUpper=upper[1];
+      pattern.thirdUpper=upper[2];
+      pattern.firstLower=lower[0];
+      pattern.secondLower=lower[1];
+      pattern.thirdLower=lower[2];
+      pattern.durationBars=durationBars;
+      pattern.referenceAtr=referenceAtr;
+      pattern.upperSlope=upperSlope;
+      pattern.lowerSlope=lowerSlope;
+      pattern.upperIntercept=upperIntercept;
+      pattern.lowerIntercept=lowerIntercept;
+      pattern.initialWidth=initialWidth;
+      pattern.finalWidth=finalWidth;
+      pattern.widthRatio=widthRatio;
+      pattern.lineFitQuality=(upperFit+lowerFit)/2.0;
+      pattern.slopeQuality=GS_ConvergenceSlopeQuality(
+         type,upperSlopeAtr,lowerSlopeAtr,config);
+      pattern.convergenceQuality=MathMax(0.0,MathMin(1.0,
+         slopeSeparationAtr/(2.0*config.minSlopeSeparationAtrPerBar)));
+      pattern.apexIndex=apexIndex;
+      double apexDistanceRatio=apexDistance/(double)durationBars;
+      pattern.apexPositionQuality=MathMax(0.0,MathMin(1.0,
+         1.0-MathAbs(apexDistanceRatio-0.75)/0.75));
+      pattern.identity=StringFormat(
+         "%d:%I64d:%I64d:%I64d:%I64d:%I64d:%I64d",(int)type,
+         (long)sequence[0].time,(long)sequence[1].time,(long)sequence[2].time,
+         (long)sequence[3].time,(long)sequence[4].time,(long)sequence[5].time);
+
+      double breakoutBuffer=MathMax(minimumPriceStep,
+         config.breakoutBufferAtr*referenceAtr);
+      for(int barIndex=rateIndex[5]+1;barIndex<ArraySize(closedRates);barIndex++)
+      {
+         pattern.barsAfterPattern++;
+         double barsBeforeApex=apexIndex-(double)barIndex;
+         if(pattern.barsAfterPattern>config.maxConfirmationBars ||
+            (double)barIndex>=apexIndex ||
+            barsBeforeApex<(double)config.minBreakoutBarsBeforeApex)
+         {
+            pattern.state=GOLDSCOUT_PATTERN_STATE_EXPIRED;
+            pattern.eventTime=closedRates[barIndex].time;
+            break;
+         }
+
+         double upperBoundary=upperIntercept+upperSlope*(double)barIndex;
+         double lowerBoundary=lowerIntercept+lowerSlope*(double)barIndex;
+         if(!GS_ValidPositiveNumber(upperBoundary) ||
+            !GS_ValidPositiveNumber(lowerBoundary) || upperBoundary<=lowerBoundary)
+         {
+            pattern.state=GOLDSCOUT_PATTERN_STATE_EXPIRED;
+            pattern.eventTime=closedRates[barIndex].time;
+            break;
+         }
+
+         bool longBreak=closedRates[barIndex].close>upperBoundary+breakoutBuffer;
+         bool shortBreak=closedRates[barIndex].close<lowerBoundary-breakoutBuffer;
+         bool primaryLong=type==GOLDSCOUT_CONVERGENCE_ASC_TRIANGLE;
+         bool primaryShort=type==GOLDSCOUT_CONVERGENCE_DESC_TRIANGLE;
+         if((primaryLong && shortBreak) || (primaryShort && longBreak))
+         {
+            pattern.state=GOLDSCOUT_PATTERN_STATE_INVALIDATED;
+            pattern.eventTime=closedRates[barIndex].time;
+            pattern.breakoutDirection=shortBreak ? -1 : 1;
+            break;
+         }
+
+         bool confirmed=(primaryLong && longBreak) || (primaryShort && shortBreak) ||
+            ((!primaryLong && !primaryShort) && (longBreak || shortBreak));
+         if(confirmed)
+         {
+            pattern.state=GOLDSCOUT_PATTERN_STATE_CONFIRMED;
+            pattern.eventTime=closedRates[barIndex].time;
+            pattern.breakoutDirection=longBreak ? 1 : -1;
+            pattern.breakoutStrengthAtr=longBreak
+               ? (closedRates[barIndex].close-upperBoundary)/referenceAtr
+               : (lowerBoundary-closedRates[barIndex].close)/referenceAtr;
+            pattern.volumeConfirmed=GS_ConvergenceVolumeConfirmation(
+               closedRates,barIndex,config);
+            pattern.momentumConfirmed=GS_ConvergenceMomentumConfirmation(
+               closedRates[barIndex],pattern.breakoutDirection,referenceAtr,config);
+            double progress=((double)barIndex-(double)rateIndex[5])/
+               (apexIndex-(double)rateIndex[5]);
+            pattern.apexPositionQuality=MathMax(0.0,MathMin(1.0,
+               1.0-MathAbs(progress-0.65)/0.65));
+            break;
+         }
+      }
+
+      pattern.quality=GS_ConvergencePatternQuality(pattern,config);
+      return true;
+   }
+   return true;
+}
+
 // closedRates and closedAtr must be ordered from oldest to newest and must not
 // contain the currently open candle. newestClosedShift therefore cannot be 0.
 bool GS_DetectConfirmedPivots(const MqlRates &closedRates[],
@@ -1195,6 +1680,30 @@ bool GS_LoadLatestContinuationPatternDiagnostic(
    int copied=CopyRates(symbol,timeframe,1,barsToLoad,closedRates);
    if(copied<5) return false;
    return GS_DetectLatestContinuationPattern(confirmedPivots,closedRates,1,
+      config,minimumPriceStep,pattern);
+}
+
+// Closed-bar terminal adapter for diagnostic triangles and wedges.
+bool GS_LoadLatestConvergencePatternDiagnostic(
+   const string symbol,
+   const ENUM_TIMEFRAMES timeframe,
+   const int barsToLoad,
+   const GoldScoutPivot &confirmedPivots[],
+   const double minimumPriceStep,
+   const GoldScoutConvergencePatternConfig &config,
+   GoldScoutConvergencePatternDiagnostic &pattern)
+{
+   GS_ClearConvergencePatternDiagnostic(pattern);
+   if(symbol=="" || barsToLoad<6 ||
+      !GS_ValidateConvergencePatternConfig(config) ||
+      !GS_ValidPositiveNumber(minimumPriceStep))
+      return false;
+
+   MqlRates closedRates[];
+   ArraySetAsSeries(closedRates,false);
+   int copied=CopyRates(symbol,timeframe,1,barsToLoad,closedRates);
+   if(copied<6) return false;
+   return GS_DetectLatestConvergencePattern(confirmedPivots,closedRates,1,
       config,minimumPriceStep,pattern);
 }
 
