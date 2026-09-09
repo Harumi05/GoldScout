@@ -449,7 +449,7 @@ bool IsOurPosition()
    return FindMatchingOpenPosition(true,found) && found;
 }
 
-bool IsAccountRiskDealType(const long dealType)
+bool IsAccountRiskDealType(const ENUM_DEAL_TYPE dealType)
 {
    switch(dealType)
    {
@@ -492,7 +492,7 @@ bool TodayAccountProfit(double &total)
       if(ticket==0 || GetLastError()!=0) return false;
 
       ResetLastError();
-      long dealType=HistoryDealGetInteger(ticket,DEAL_TYPE);
+      ENUM_DEAL_TYPE dealType=(ENUM_DEAL_TYPE)HistoryDealGetInteger(ticket,DEAL_TYPE);
       if(GetLastError()!=0) return false;
       // Include account-wide trading P&L, fees, financing and taxes while
       // excluding deposits, credit and bonuses from the risk budget.
