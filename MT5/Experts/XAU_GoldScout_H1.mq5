@@ -3,6 +3,7 @@
 #property description "GoldScout H1 - XAUUSD autonomous EA with account-currency risk, trend/pullback scoring, news filter and dashboard JSON."
 
 #include <Trade/Trade.mqh>
+#include <GoldScout/MarketStructure.mqh>
 
 CTrade trade;
 
