@@ -67,6 +67,10 @@ int hATR = INVALID_HANDLE;
 datetime g_lastH1Bar = 0;
 double   g_peakEquity = 0.0;
 datetime g_dayStart = 0;
+const double HARD_MAX_RISK_PERCENT = 5.0;
+const int    MAX_EXECUTION_DEVIATION_POINTS = 30; // existing execution tolerance; included in planned-risk sizing
+const int    MAX_TERMINAL_GLOBAL_NAME_LENGTH = 63;
+double   g_dailyLossUsed = 0.0;
 string   g_lastDecision = "Inicializando...";
 string   g_lastSetup = "-";
 int      g_lastScore = 0;
@@ -108,6 +112,13 @@ int      g_startupAttempts=0;
 int      g_intrabarLongBoost=0;
 int      g_intrabarShortBoost=0;
 
+enum EntryReservationPhase
+{
+   ENTRY_RESERVATION_NONE=0,
+   ENTRY_RESERVATION_PENDING=1,
+   ENTRY_RESERVATION_CONFIRMED=2
+};
+
 string JsonEscape(string s)
 {
    StringReplace(s, "\\", "\\\\");
@@ -147,35 +158,303 @@ bool IsOurPosition()
    return magic == MagicNumber;
 }
 
-double TodayClosedProfit()
+bool IsAccountRiskDealType(const long dealType)
 {
-   datetime now = TimeTradeServer();
-   MqlDateTime dt; TimeToStruct(now, dt);
-   dt.hour = 0; dt.min = 0; dt.sec = 0;
-   datetime start = StructToTime(dt);
-   if(!HistorySelect(start, now)) return 0.0;
-   double total = 0.0;
-   uint deals = HistoryDealsTotal();
+   switch(dealType)
+   {
+      case DEAL_TYPE_BUY:
+      case DEAL_TYPE_SELL:
+      case DEAL_TYPE_CHARGE:
+      case DEAL_TYPE_CORRECTION:
+      case DEAL_TYPE_COMMISSION:
+      case DEAL_TYPE_COMMISSION_DAILY:
+      case DEAL_TYPE_COMMISSION_MONTHLY:
+      case DEAL_TYPE_COMMISSION_AGENT_DAILY:
+      case DEAL_TYPE_COMMISSION_AGENT_MONTHLY:
+      case DEAL_TYPE_INTEREST:
+      case DEAL_TYPE_TAX:
+         return true;
+   }
+   return false;
+}
+
+// Returns false instead of treating an unavailable account history as zero P&L.
+// The daily-loss guard must fail closed when it cannot establish the account state.
+bool TodayAccountProfit(double &total)
+{
+   total=0.0;
+   datetime now=TimeTradeServer();
+   if(now<=0) return false;
+   MqlDateTime dt;
+   if(!TimeToStruct(now,dt)) return false;
+   dt.hour=0; dt.min=0; dt.sec=0;
+   datetime start=StructToTime(dt);
+   if(start<=0) return false;
+
+   ResetLastError();
+   if(!HistorySelect(start,now)) return false;
+   uint deals=HistoryDealsTotal();
+   if(GetLastError()!=0) return false;
    for(uint i=0; i<deals; i++)
    {
-      ulong ticket = HistoryDealGetTicket(i);
-      if(ticket == 0) continue;
-      if(HistoryDealGetString(ticket, DEAL_SYMBOL) != _Symbol) continue;
-      if((long)HistoryDealGetInteger(ticket, DEAL_MAGIC) != MagicNumber) continue;
-      long entry = HistoryDealGetInteger(ticket, DEAL_ENTRY);
-      if(entry == DEAL_ENTRY_OUT || entry == DEAL_ENTRY_OUT_BY)
-         total += HistoryDealGetDouble(ticket, DEAL_PROFIT) + HistoryDealGetDouble(ticket, DEAL_SWAP) + HistoryDealGetDouble(ticket, DEAL_COMMISSION);
+      ResetLastError();
+      ulong ticket=HistoryDealGetTicket(i);
+      if(ticket==0 || GetLastError()!=0) return false;
+
+      ResetLastError();
+      long dealType=HistoryDealGetInteger(ticket,DEAL_TYPE);
+      if(GetLastError()!=0) return false;
+      // Include account-wide trading P&L, fees, financing and taxes while
+      // excluding deposits, credit and bonuses from the risk budget.
+      if(!IsAccountRiskDealType(dealType)) continue;
+      ResetLastError();
+      double dealResult=HistoryDealGetDouble(ticket,DEAL_PROFIT)
+                       + HistoryDealGetDouble(ticket,DEAL_SWAP)
+                       + HistoryDealGetDouble(ticket,DEAL_COMMISSION)
+                       + HistoryDealGetDouble(ticket,DEAL_FEE);
+      if(GetLastError()!=0) return false;
+      total += dealResult;
    }
-   return total;
+   return true;
+}
+
+// Dashboard reporting remains best-effort; execution guards use TodayAccountProfit
+// directly and therefore never treat a history error as a safe zero-loss day.
+double TodayClosedProfit()
+{
+   double total=0.0;
+   return TodayAccountProfit(total) ? total : 0.0;
+}
+
+bool IsSafetyStateKeyValid(const string key)
+{
+   return StringLen(key)>0 && StringLen(key)<=MAX_TERMINAL_GLOBAL_NAME_LENGTH;
+}
+
+// Daily loss and peak equity are account-wide safety invariants. They deliberately
+// do not include symbol or magic so every GoldScout instance sees the same state.
+string AccountStateIdentity()
+{
+   return StringFormat("%I64d.%s",(long)AccountInfoInteger(ACCOUNT_LOGIN),AccountInfoString(ACCOUNT_SERVER));
+}
+
+string AccountSafetyStateKey(const string suffix)
+{
+   return StringFormat("GSH2.A.%s.%s",AccountStateIdentity(),suffix);
+}
+
+// One-entry-per-H1 is shared by every GoldScout instance on the same broker
+// account. It intentionally ignores symbol suffixes and MagicNumber changes.
+string EntrySafetyStateKey()
+{
+   return StringFormat("GSH2.E.%s",AccountStateIdentity());
+}
+
+bool SetSafetyStateValue(const string key,const double value)
+{
+   if(!IsSafetyStateKeyValid(key)) return false;
+   ResetLastError();
+   datetime changed=GlobalVariableSet(key,value);
+   return changed>0 && GetLastError()==0;
+}
+
+bool ReadSafetyStateValue(const string key,double &value)
+{
+   value=0.0;
+   if(!IsSafetyStateKeyValid(key) || !GlobalVariableCheck(key)) return false;
+   ResetLastError();
+   value=GlobalVariableGet(key);
+   return GetLastError()==0;
+}
+
+bool FlushSafetyState()
+{
+   ResetLastError();
+   GlobalVariablesFlush();
+   return GetLastError()==0;
+}
+
+bool SafetyInputsValid(string &msg)
+{
+   msg="";
+   if(RiskPercent<0.0 || RiskPercent>HARD_MAX_RISK_PERCENT)
+   {
+      msg=StringFormat("Configuración inválida: RiskPercent debe estar entre 0 y %.2f",HARD_MAX_RISK_PERCENT);
+      return false;
+   }
+   if(DailyLossLimitUSD<=0.0)
+   {
+      msg="Configuración inválida: DailyLossLimitUSD debe ser mayor que cero";
+      return false;
+   }
+   if(MaxDrawdownPercent<=0.0 || MaxDrawdownPercent>100.0)
+   {
+      msg="Configuración inválida: MaxDrawdownPercent debe estar entre 0 y 100";
+      return false;
+   }
+   return true;
+}
+
+int ServerDayId()
+{
+   datetime now=TimeTradeServer();
+   if(now<=0) return 0;
+   MqlDateTime dt;
+   if(!TimeToStruct(now,dt)) return 0;
+   return dt.year*10000+dt.mon*100+dt.day;
+}
+
+bool RefreshPersistentSafetyState()
+{
+   int day=ServerDayId();
+   double equity=AccountInfoDouble(ACCOUNT_EQUITY);
+   if(day<=0 || equity<=0.0) return false;
+
+   string dayKey=AccountSafetyStateKey("day");
+   string lossKey=AccountSafetyStateKey("loss");
+   string peakKey=AccountSafetyStateKey("peak");
+   double storedDay=0.0;
+   bool hasStoredDay=ReadSafetyStateValue(dayKey,storedDay);
+   bool sameDay=hasStoredDay && (int)MathRound(storedDay)==day;
+   double accountProfit=0.0;
+   if(!TodayAccountProfit(accountProfit)) return false;
+   if(!sameDay)
+   {
+      if(!SetSafetyStateValue(dayKey,(double)day) || !SetSafetyStateValue(lossKey,0.0)) return false;
+   }
+
+   double storedLoss=0.0;
+   if(sameDay && GlobalVariableCheck(lossKey) && !ReadSafetyStateValue(lossKey,storedLoss)) return false;
+   double observedLoss=MathMax(0.0,-accountProfit);
+   g_dailyLossUsed=MathMax(observedLoss,MathMax(0.0,storedLoss));
+   if(!SetSafetyStateValue(lossKey,g_dailyLossUsed)) return false;
+
+   double storedPeak=0.0;
+   if(GlobalVariableCheck(peakKey) && !ReadSafetyStateValue(peakKey,storedPeak)) return false;
+   g_peakEquity=MathMax(equity,MathMax(g_peakEquity,storedPeak));
+   if(!SetSafetyStateValue(peakKey,g_peakEquity)) return false;
+   return FlushSafetyState();
+}
+
+double RemainingDailyLossBudget()
+{
+   return MathMax(0.0,DailyLossLimitUSD-g_dailyLossUsed);
+}
+
+double EncodeEntryReservation(const datetime bar,const EntryReservationPhase phase)
+{
+   if(bar<=0 || phase==ENTRY_RESERVATION_NONE) return 0.0;
+   return (double)bar*10.0+(double)phase;
+}
+
+bool DecodeEntryReservation(const double encoded,datetime &bar,EntryReservationPhase &phase)
+{
+   bar=0;
+   phase=ENTRY_RESERVATION_NONE;
+   long raw=(long)MathRound(encoded);
+   if(raw==0) return true;
+   if(raw<0) return false;
+   int rawPhase=(int)(raw%10);
+   long rawBar=raw/10;
+   if(rawBar<=0 || (rawPhase!=(int)ENTRY_RESERVATION_PENDING && rawPhase!=(int)ENTRY_RESERVATION_CONFIRMED)) return false;
+   bar=(datetime)rawBar;
+   phase=(EntryReservationPhase)rawPhase;
+   return true;
+}
+
+bool ReadEntryReservation(datetime &bar,EntryReservationPhase &phase,double &rawValue)
+{
+   bar=0;
+   phase=ENTRY_RESERVATION_NONE;
+   rawValue=0.0;
+   string key=EntrySafetyStateKey();
+   if(!IsSafetyStateKeyValid(key)) return false;
+   if(!GlobalVariableCheck(key)) return true;
+   if(!ReadSafetyStateValue(key,rawValue)) return false;
+   return DecodeEntryReservation(rawValue,bar,phase);
+}
+
+bool EntryReservationForBar(const datetime bar,EntryReservationPhase &phase)
+{
+   phase=ENTRY_RESERVATION_NONE;
+   datetime reservedBar=0;
+   double rawValue=0.0;
+   if(!ReadEntryReservation(reservedBar,phase,rawValue)) return false;
+   if(reservedBar!=bar) phase=ENTRY_RESERVATION_NONE;
+   return true;
+}
+
+bool InitializeEntryReservationState()
+{
+   string key=EntrySafetyStateKey();
+   if(!IsSafetyStateKeyValid(key)) return false;
+   if(!GlobalVariableCheck(key) && !SetSafetyStateValue(key,0.0)) return false;
+   datetime reservedBar=0;
+   EntryReservationPhase phase=ENTRY_RESERVATION_NONE;
+   double rawValue=0.0;
+   return ReadEntryReservation(reservedBar,phase,rawValue);
+}
+
+bool SetEntryReservationPhase(const datetime bar,const EntryReservationPhase expected,const EntryReservationPhase next)
+{
+   if(bar<=0 || expected==ENTRY_RESERVATION_NONE) return false;
+   string key=EntrySafetyStateKey();
+   if(!IsSafetyStateKeyValid(key)) return false;
+   datetime reservedBar=0;
+   EntryReservationPhase actual=ENTRY_RESERVATION_NONE;
+   double prior=0.0;
+   if(!ReadEntryReservation(reservedBar,actual,prior)) return false;
+   if(reservedBar!=bar || actual!=expected) return false;
+   double replacement=EncodeEntryReservation(bar,next);
+   ResetLastError();
+   if(!GlobalVariableSetOnCondition(key,replacement,prior) || GetLastError()!=0) return false;
+   return FlushSafetyState();
+}
+
+bool ReserveH1EntryPending(const datetime bar)
+{
+   if(bar<=0) return false;
+   string key=EntrySafetyStateKey();
+   // The key is created only during OnInit. Refuse to recreate it mid-run: that
+   // would make a deleted/unknown reservation indistinguishable from no entry.
+   if(!IsSafetyStateKeyValid(key) || !GlobalVariableCheck(key)) return false;
+   datetime reservedBar=0;
+   EntryReservationPhase phase=ENTRY_RESERVATION_NONE;
+   double prior=0.0;
+   if(!ReadEntryReservation(reservedBar,phase,prior)) return false;
+   if(reservedBar==bar && phase!=ENTRY_RESERVATION_NONE) return false;
+   double pending=EncodeEntryReservation(bar,ENTRY_RESERVATION_PENDING);
+   ResetLastError();
+   if(!GlobalVariableSetOnCondition(key,pending,prior) || GetLastError()!=0) return false;
+   g_entryUsedThisBar=true;
+   return FlushSafetyState();
+}
+
+bool ConfirmH1Entry(const datetime bar)
+{
+   return SetEntryReservationPhase(bar,ENTRY_RESERVATION_PENDING,ENTRY_RESERVATION_CONFIRMED);
+}
+
+bool ReleasePendingH1Entry(const datetime bar)
+{
+   return SetEntryReservationPhase(bar,ENTRY_RESERVATION_PENDING,ENTRY_RESERVATION_NONE);
 }
 
 bool RiskGuardsPass()
 {
-   if(!EnableLiveTrading) return true;
+   string configMsg="";
+   if(!SafetyInputsValid(configMsg))
+   {
+      g_lastDecision=configMsg;
+      return false;
+   }
+   if(!RefreshPersistentSafetyState())
+   {
+      g_lastDecision="Bloqueado: no se pudo cargar el estado persistente de seguridad";
+      return false;
+   }
 
    double equity = AccountInfoDouble(ACCOUNT_EQUITY);
-   if(g_peakEquity <= 0.0) g_peakEquity = equity;
-   if(equity > g_peakEquity) g_peakEquity = equity;
    if(g_peakEquity > 0.0)
    {
       double dd = 100.0 * (g_peakEquity - equity) / g_peakEquity;
@@ -186,8 +465,7 @@ bool RiskGuardsPass()
       }
    }
 
-   double daily = TodayClosedProfit();
-   if(daily <= -MathAbs(DailyLossLimitUSD))
+   if(RemainingDailyLossBudget()<=0.0)
    {
       g_lastDecision = "Bloqueado: pérdida diaria máxima";
       return false;
@@ -238,7 +516,57 @@ bool HasHighImpactUSDNews()
 double PlannedRiskUSD()
 {
    double equity=AccountInfoDouble(ACCOUNT_EQUITY);
-   return MathMax(0.0,equity*MathAbs(RiskPercent)/100.0);
+   double effectiveRiskPercent=MathMax(0.0,MathMin(RiskPercent,HARD_MAX_RISK_PERCENT));
+   return MathMax(0.0,equity*effectiveRiskPercent/100.0);
+}
+
+double WorstCaseFillPrice(const ENUM_ORDER_TYPE type,const double requestedPrice)
+{
+   double deviation=MAX_EXECUTION_DEVIATION_POINTS*_Point;
+   if(type==ORDER_TYPE_BUY) return requestedPrice+deviation;
+   if(type==ORDER_TYPE_SELL) return requestedPrice-deviation;
+   return 0.0;
+}
+
+bool ExecutionResultConfirmed(const uint retcode,const ulong deal)
+{
+   return (retcode==TRADE_RETCODE_DONE || retcode==TRADE_RETCODE_DONE_PARTIAL) && deal>0;
+}
+
+// A PENDING reservation is released only when there is no possible fill. Timeout,
+// connection and other ambiguous outcomes intentionally stay PENDING until H1 ends.
+bool ExecutionFailureIsSafelyFinal(const bool requestSent,const uint retcode,const ulong deal)
+{
+   if(deal>0) return false;
+   if(!requestSent) return true;
+   switch(retcode)
+   {
+      case TRADE_RETCODE_REQUOTE:
+      case TRADE_RETCODE_REJECT:
+      case TRADE_RETCODE_CANCEL:
+      case TRADE_RETCODE_INVALID:
+      case TRADE_RETCODE_INVALID_VOLUME:
+      case TRADE_RETCODE_INVALID_PRICE:
+      case TRADE_RETCODE_INVALID_STOPS:
+      case TRADE_RETCODE_TRADE_DISABLED:
+      case TRADE_RETCODE_MARKET_CLOSED:
+      case TRADE_RETCODE_NO_MONEY:
+      case TRADE_RETCODE_PRICE_CHANGED:
+      case TRADE_RETCODE_PRICE_OFF:
+      case TRADE_RETCODE_INVALID_EXPIRATION:
+      case TRADE_RETCODE_NO_CHANGES:
+      case TRADE_RETCODE_SERVER_DISABLES_AT:
+      case TRADE_RETCODE_CLIENT_DISABLES_AT:
+      case TRADE_RETCODE_FROZEN:
+      case TRADE_RETCODE_INVALID_FILL:
+      case TRADE_RETCODE_ONLY_REAL:
+      case TRADE_RETCODE_LIMIT_ORDERS:
+      case TRADE_RETCODE_LIMIT_VOLUME:
+      case TRADE_RETCODE_INVALID_ORDER:
+      case TRADE_RETCODE_POSITION_CLOSED:
+         return true;
+   }
+   return false;
 }
 
 bool PositionSizeForRisk(ENUM_ORDER_TYPE type,double priceOpen,double slPrice,double riskUSD,double &lots)
@@ -656,7 +984,10 @@ bool IntrabarTrigger(const int direction,const string setup)
 void ResetIntrabarPlan(const datetime bar)
 {
    g_armed=false;
-   g_entryUsedThisBar=false;
+   EntryReservationPhase reservation=ENTRY_RESERVATION_NONE;
+   // A corrupt or unreadable reservation is treated as used until CanOpenTrade
+   // reports the persistent-state error and fails closed.
+   g_entryUsedThisBar=!EntryReservationForBar(bar,reservation) || reservation!=ENTRY_RESERVATION_NONE;
    g_armedDirection=0;
    g_armedScore=0;
    g_armedSetup="-";
@@ -757,6 +1088,30 @@ void MonitorIntrabar()
 
 bool CanOpenTrade()
 {
+   datetime bar=iTime(_Symbol,PERIOD_H1,0);
+   if(bar<=0)
+   {
+      g_lastDecision="Bloqueado: no se pudo identificar la vela H1 actual";
+      g_diagBlockReason=g_lastDecision;
+      return false;
+   }
+   EntryReservationPhase reservation=ENTRY_RESERVATION_NONE;
+   if(!EntryReservationForBar(bar,reservation))
+   {
+      g_entryUsedThisBar=true;
+      g_lastDecision="Bloqueado: no se pudo leer la reserva H1 persistente";
+      g_diagBlockReason=g_lastDecision;
+      return false;
+   }
+   if(g_entryUsedThisBar || reservation!=ENTRY_RESERVATION_NONE)
+   {
+      g_entryUsedThisBar=true;
+      g_lastDecision=reservation==ENTRY_RESERVATION_PENDING
+         ? "Bloqueado: reserva H1 PENDING; posible orden previa sin confirmar"
+         : "Bloqueado: entrada H1 ya CONFIRMED";
+      g_diagBlockReason=g_lastDecision;
+      return false;
+   }
    if(OnePositionAtATime && IsOurPosition())
    {
       g_lastDecision="Esperando: ya existe una posición activa";
@@ -881,17 +1236,41 @@ void TryTrade()
    if(direction>0) sl=MathMin(sl,price-minDist); else sl=MathMax(sl,price+minDist);
    sl=NormalizeDouble(sl,_Digits);
 
-   double plannedRisk=PlannedRiskUSD(),lots=0.0;
-   if(!PositionSizeForRisk(type,price,sl,plannedRisk,lots))
+   double remainingDailyBudget=RemainingDailyLossBudget();
+   if(remainingDailyBudget<=0.0)
+   {
+      g_lastDecision="Bloqueado: presupuesto de pérdida diaria agotado";
+      g_diagBlockReason=g_lastDecision; UpdateDashboard(); return;
+   }
+   double plannedRisk=MathMin(PlannedRiskUSD(),remainingDailyBudget),lots=0.0;
+   if(plannedRisk<=0.0)
+   {
+      g_lastDecision="Bloqueado: riesgo planificado no válido";
+      g_diagBlockReason=g_lastDecision; UpdateDashboard(); return;
+   }
+   // Size against the worst entry price permitted by the existing 30-point
+   // deviation policy. This keeps planned price-to-SL loss inside the hard cap.
+   double worstCasePrice=WorstCaseFillPrice(type,price);
+   if(worstCasePrice<=0.0)
+   {
+      g_lastDecision="Bloqueado: precio de peor ejecución no válido";
+      g_diagBlockReason=g_lastDecision; UpdateDashboard(); return;
+   }
+   if(!PositionSizeForRisk(type,worstCasePrice,sl,plannedRisk,lots))
    {
       g_lastDecision=StringFormat("Bloqueado: lote minimo del broker impide arriesgar %.2f USD",plannedRisk);
       g_diagBlockReason=g_lastDecision; UpdateDashboard(); return;
    }
 
    double actualRisk=0.0;
-   if(!RiskAtSL(type,price,sl,lots,actualRisk))
+   if(!RiskAtSL(type,worstCasePrice,sl,lots,actualRisk))
    {
       g_lastDecision="Bloqueado: no se pudo calcular riesgo al SL";
+      g_diagBlockReason=g_lastDecision; UpdateDashboard(); return;
+   }
+   if(actualRisk>plannedRisk+1e-6 || actualRisk>remainingDailyBudget+1e-6)
+   {
+      g_lastDecision="Bloqueado: riesgo real al SL excede el presupuesto de seguridad";
       g_diagBlockReason=g_lastDecision; UpdateDashboard(); return;
    }
 
@@ -915,17 +1294,44 @@ void TryTrade()
    string tag=(targetR>=GodTargetR-1e-9?"TRADE GOD":"CHILL");
    string comment=StringFormat("GOLDscout|%s|S%d|%s|R%.2f|risk%.2f|RR%.2f",direction>0?"BUY":"SELL",score,setup,targetR,actualRisk,rr);
    trade.SetExpertMagicNumber(MagicNumber);
-   trade.SetDeviationInPoints(30);
+   trade.SetDeviationInPoints(MAX_EXECUTION_DEVIATION_POINTS);
 
-   bool sent=false;
-   if(EnableLiveTrading) sent=trade.PositionOpen(_Symbol,type,lots,price,sl,tp,comment);
-   else sent=true;
-
-   if(sent)
+   datetime entryBar=iTime(_Symbol,PERIOD_H1,0);
+   if(!ReserveH1EntryPending(entryBar))
    {
-      g_lastDecision=EnableLiveTrading?"ORDEN ENVIADA":StringFormat("SEÑAL SIMULADA | %s | %.2fR | riesgo $%.2f | SL %.2f | TP %.2f | RR %.2f",tag,targetR,actualRisk,sl,tp,rr);
+      g_lastDecision="Bloqueado: no se pudo crear reserva H1 PENDING persistente";
+      g_diagBlockReason=g_lastDecision; UpdateDashboard(); return;
+   }
+
+   bool requestSent=false;
+   bool executionConfirmed=false;
+   uint retcode=0;
+   ulong deal=0;
+   if(EnableLiveTrading)
+   {
+      requestSent=trade.PositionOpen(_Symbol,type,lots,price,sl,tp,comment);
+      retcode=trade.ResultRetcode();
+      deal=trade.ResultDeal();
+      executionConfirmed=ExecutionResultConfirmed(retcode,deal);
+   }
+   else executionConfirmed=true; // PAPER mode confirms only the simulated decision.
+
+   if(executionConfirmed)
+   {
+      bool reservationConfirmed=ConfirmH1Entry(entryBar);
+      if(!reservationConfirmed)
+      {
+         // The original PENDING remains and blocks the H1 after restart. Never
+         // release it after a valid execution merely because persistence failed.
+         g_lastDecision="ORDEN CONFIRMADA, pero no se pudo persistir H1 CONFIRMED; se mantiene PENDING fail-closed";
+         g_diagBlockReason=g_lastDecision;
+      }
+      else
+      {
+         g_lastDecision=EnableLiveTrading?"ORDEN ENVIADA":StringFormat("SEÑAL SIMULADA | %s | %.2fR | riesgo $%.2f | SL %.2f | TP %.2f | RR %.2f",tag,targetR,actualRisk,sl,tp,rr);
+         g_diagBlockReason="";
+      }
       g_lastScore=score; g_lastSetup=setup; g_lastDirection=direction>0?"LONG":"SHORT";
-      g_diagBlockReason="";
       g_entryUsedThisBar=true;
       g_armed=false;
       g_monitorState="EN OPERACION";
@@ -933,10 +1339,32 @@ void TryTrade()
       AppendDealLog(g_lastDirection,score,setup,targetUSD,lots,sl,tp,reason);
       PrintFormat("[GoldScout] DECISION=%s | %s %s score=%d techL=%d techS=%d risk=%.2f lots=%.4f entry=%.2f SL=%.2f TP=%.2f RR=%.2f mode=%s",
          tag,g_lastDirection,setup,score,g_diagLongFinal,g_diagShortFinal,actualRisk,lots,price,sl,tp,rr,EnableLiveTrading?"LIVE":"PAPER");
+      if(EnableLiveTrading)
+      {
+         double fillPrice=trade.ResultPrice(),filledRisk=0.0;
+         bool fillRiskKnown=fillPrice>0.0 && RiskAtSL(type,fillPrice,sl,lots,filledRisk);
+         bool withinDeviation=fillPrice>0.0 && MathAbs(fillPrice-price)<=MAX_EXECUTION_DEVIATION_POINTS*_Point+_Point*0.5;
+         // This is an alert, not a promise that market gaps, broker-side slippage
+         // or changing costs can never exceed the 5% planned-risk ceiling.
+         if(!fillRiskKnown || !withinDeviation || filledRisk>plannedRisk+1e-6 || filledRisk>remainingDailyBudget+1e-6)
+            PrintFormat("[GoldScout] ADVERTENCIA: fill live fuera del presupuesto planificado/deviación | fill=%.5f risk=%.2f planned=%.2f budget=%.2f",fillPrice,filledRisk,plannedRisk,remainingDailyBudget);
+      }
    }
    else
    {
-      g_lastDecision=StringFormat("Error al enviar orden: retcode=%d",trade.ResultRetcode());
+      bool released=false;
+      if(ExecutionFailureIsSafelyFinal(requestSent,retcode,deal))
+         released=ReleasePendingH1Entry(entryBar);
+      if(released)
+      {
+         g_entryUsedThisBar=false;
+         g_lastDecision=StringFormat("Orden rechazada sin fill; reserva H1 liberada | retcode=%d",retcode);
+      }
+      else
+      {
+         g_entryUsedThisBar=true;
+         g_lastDecision=StringFormat("Resultado de orden ambiguo o persistencia fallida; reserva H1 PENDING retenida | retcode=%d",retcode);
+      }
       g_diagBlockReason=g_lastDecision;
    }
    UpdateDashboard();
@@ -1070,6 +1498,17 @@ int OnInit()
    if(!IsGoldSymbol())
    {
       Print("[GoldScout] BLOQUEADO: este EA solo funciona en XAUUSD. Simbolo actual: ", _Symbol);
+      return(INIT_FAILED);
+   }
+   string configMsg="";
+   if(!SafetyInputsValid(configMsg))
+   {
+      Print("[GoldScout] BLOQUEADO: ",configMsg);
+      return(INIT_PARAMETERS_INCORRECT);
+   }
+   if(!InitializeEntryReservationState())
+   {
+      Print("[GoldScout] BLOQUEADO: no se pudo inicializar la reserva H1 persistente");
       return(INIT_FAILED);
    }
    g_peakEquity=AccountInfoDouble(ACCOUNT_EQUITY);
