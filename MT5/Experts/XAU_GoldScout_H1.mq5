@@ -154,11 +154,115 @@ double NormalizeVolumeDown(double lots)
    return NormalizeDouble(normalized, 8);
 }
 
+bool GetPositionAccountingMode(bool &isHedging)
+{
+   isHedging=false;
+   ResetLastError();
+   long mode=AccountInfoInteger(ACCOUNT_MARGIN_MODE);
+   if(GetLastError()!=0) return false;
+   if(mode!=ACCOUNT_MARGIN_MODE_RETAIL_NETTING &&
+      mode!=ACCOUNT_MARGIN_MODE_EXCHANGE &&
+      mode!=ACCOUNT_MARGIN_MODE_RETAIL_HEDGING) return false;
+   isHedging=(mode==ACCOUNT_MARGIN_MODE_RETAIL_HEDGING);
+   return true;
+}
+
+bool FindMatchingOpenPosition(const bool requireOurMagic,bool &found)
+{
+   found=false;
+   ResetLastError();
+   int total=PositionsTotal();
+   if(GetLastError()!=0) return false;
+   for(int i=0; i<total; i++)
+   {
+      ResetLastError();
+      ulong ticket=PositionGetTicket(i);
+      if(ticket==0 || GetLastError()!=0) return false;
+      if(!PositionSelectByTicket(ticket)) return false;
+
+      ResetLastError();
+      string symbol=PositionGetString(POSITION_SYMBOL);
+      long magic=(long)PositionGetInteger(POSITION_MAGIC);
+      if(GetLastError()!=0) return false;
+      if(symbol!=_Symbol) continue;
+      if(requireOurMagic && magic!=MagicNumber) continue;
+      found=true;
+      return true;
+   }
+   return true;
+}
+
+bool FindMatchingActiveOrder(const bool requireOurMagic,bool &found)
+{
+   found=false;
+   ResetLastError();
+   int total=OrdersTotal();
+   if(GetLastError()!=0) return false;
+   for(int i=0; i<total; i++)
+   {
+      ResetLastError();
+      ulong ticket=OrderGetTicket(i);
+      if(ticket==0 || GetLastError()!=0) return false;
+
+      ResetLastError();
+      string symbol=OrderGetString(ORDER_SYMBOL);
+      long magic=(long)OrderGetInteger(ORDER_MAGIC);
+      if(GetLastError()!=0) return false;
+      if(symbol!=_Symbol) continue;
+      if(requireOurMagic && magic!=MagicNumber) continue;
+      found=true;
+      return true;
+   }
+   return true;
+}
+
+bool PositionStateAllowsEntry(string &blockReason)
+{
+   blockReason="";
+   bool isHedging=false;
+   if(!GetPositionAccountingMode(isHedging))
+   {
+      blockReason="Bloqueado: no se pudo determinar el modo NETTING/HEDGING";
+      return false;
+   }
+
+   // NETTING has one shared position per symbol, so any owner must block to
+   // avoid increasing, reducing or reversing manual/other-EA exposure. In
+   // HEDGING, OnePositionAtATime applies only to this EA's symbol + magic.
+   if(isHedging && !OnePositionAtATime) return true;
+   bool requireOurMagic=isHedging;
+   bool found=false;
+   if(!FindMatchingOpenPosition(requireOurMagic,found))
+   {
+      blockReason="Bloqueado: no se pudo verificar posiciones activas";
+      return false;
+   }
+   if(found)
+   {
+      blockReason=isHedging
+         ? "Esperando: ya existe una posición GoldScout activa"
+         : "Bloqueado: existe una posición del símbolo en cuenta NETTING";
+      return false;
+   }
+   if(!FindMatchingActiveOrder(requireOurMagic,found))
+   {
+      blockReason="Bloqueado: no se pudo verificar órdenes activas";
+      return false;
+   }
+   if(found)
+   {
+      blockReason=isHedging
+         ? "Esperando: ya existe una orden GoldScout activa"
+         : "Bloqueado: existe una orden del símbolo en cuenta NETTING";
+      return false;
+   }
+   return true;
+}
+
 bool IsOurPosition()
 {
-   if(!PositionSelect(_Symbol)) return false;
-   long magic = (long)PositionGetInteger(POSITION_MAGIC);
-   return magic == MagicNumber;
+   bool found=false;
+   return FindMatchingOpenPosition(true,found) && found;
 }
 
 bool IsAccountRiskDealType(const long dealType)
@@ -1131,9 +1235,10 @@ bool CanOpenTrade()
       g_diagBlockReason=g_lastDecision;
       return false;
    }
-   if(OnePositionAtATime && IsOurPosition())
+   string positionBlock="";
+   if(!PositionStateAllowsEntry(positionBlock))
    {
-      g_lastDecision="Esperando: ya existe una posición activa";
+      g_lastDecision=positionBlock;
       g_diagBlockReason=g_lastDecision;
       return false;
    }
@@ -1314,6 +1419,15 @@ void TryTrade()
    string comment=StringFormat("GOLDscout|%s|S%d|%s|R%.2f|risk%.2f|RR%.2f",direction>0?"BUY":"SELL",score,setup,targetR,actualRisk,rr);
    trade.SetExpertMagicNumber(MagicNumber);
    trade.SetDeviationInPoints(MAX_EXECUTION_DEVIATION_POINTS);
+
+   // Recheck immediately before reserving/sending to narrow the window in
+   // which another EA, a manual action or an earlier pending order can appear.
+   string positionBlock="";
+   if(!PositionStateAllowsEntry(positionBlock))
+   {
+      g_lastDecision=positionBlock;
+      g_diagBlockReason=g_lastDecision; UpdateDashboard(); return;
+   }
 
    datetime entryBar=iTime(_Symbol,PERIOD_H1,0);
    if(!ReserveH1EntryPending(entryBar))
