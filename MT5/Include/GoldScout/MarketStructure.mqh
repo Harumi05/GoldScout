@@ -47,6 +47,22 @@ struct GoldScoutStructureClassification
    int                      alternatingPivotCount;
 };
 
+struct GoldScoutM15TimingEvidence
+{
+   bool                     available;
+   datetime                 closedBarTime;
+   GoldScoutStructureState  structure;
+   bool                     haveLastSwingHigh;
+   bool                     haveLastSwingLow;
+   double                   lastSwingHigh;
+   double                   lastSwingLow;
+   int                      breakoutDirection;
+   int                      recoveryDirection;
+   int                      momentumDirection;
+   int                      longAdjustment;
+   int                      shortAdjustment;
+};
+
 enum GoldScoutPatternType
 {
    GOLDSCOUT_PATTERN_M    = -1,
@@ -305,6 +321,7 @@ struct GoldScoutBestPatternEvidence
 
 const int GOLDSCOUT_MAX_STRUCTURAL_BUCKET_POINTS=25;
 const int GOLDSCOUT_MAX_PATTERN_BONUS_POINTS=4;
+const int GOLDSCOUT_MAX_M15_TIMING_POINTS=4;
 
 void GS_ClearPivots(GoldScoutPivot &pivots[])
 {
@@ -321,6 +338,22 @@ void GS_ClearPivot(GoldScoutPivot &pivot)
    pivot.confirmed=false;
 }
 
+void GS_ClearM15TimingEvidence(GoldScoutM15TimingEvidence &evidence)
+{
+   evidence.available=false;
+   evidence.closedBarTime=0;
+   evidence.structure=GOLDSCOUT_STRUCTURE_INSUFFICIENT;
+   evidence.haveLastSwingHigh=false;
+   evidence.haveLastSwingLow=false;
+   evidence.lastSwingHigh=0.0;
+   evidence.lastSwingLow=0.0;
+   evidence.breakoutDirection=0;
+   evidence.recoveryDirection=0;
+   evidence.momentumDirection=0;
+   evidence.longAdjustment=0;
+   evidence.shortAdjustment=0;
+}
+
 bool GS_ValidPositiveNumber(const double value)
 {
    return MathIsValidNumber(value) && value>0.0;
@@ -334,6 +367,81 @@ bool GS_ValidatePivotConfig(const GoldScoutPivotConfig &config)
           MathIsValidNumber(config.minProminenceAtr) &&
           config.minProminenceAtr>=0.0 &&
           GS_ValidPositiveNumber(config.toleranceAtr);
+}
+
+// M15 is a soft timing layer. Opposing confirmed structure has precedence;
+// breakout/recovery is one shared event so the same move cannot score twice.
+int GS_M15TimingAdjustment(const bool available,
+                           const GoldScoutStructureState structure,
+                           const int direction,
+                           const int breakoutDirection,
+                           const int recoveryDirection,
+                           const int momentumDirection)
+{
+   if(!available || (direction!=1 && direction!=-1)) return 0;
+   if(structure!=GOLDSCOUT_STRUCTURE_BULLISH &&
+      structure!=GOLDSCOUT_STRUCTURE_BEARISH)
+      return 0;
+
+   bool alignedStructure=(direction>0 && structure==GOLDSCOUT_STRUCTURE_BULLISH) ||
+      (direction<0 && structure==GOLDSCOUT_STRUCTURE_BEARISH);
+   bool opposingStructure=(direction>0 && structure==GOLDSCOUT_STRUCTURE_BEARISH) ||
+      (direction<0 && structure==GOLDSCOUT_STRUCTURE_BULLISH);
+   bool alignedEvent=(breakoutDirection==direction || recoveryDirection==direction);
+   bool opposingEvent=(breakoutDirection==-direction || recoveryDirection==-direction);
+   bool alignedMomentum=momentumDirection==direction;
+   bool opposingMomentum=momentumDirection==-direction;
+
+   if(opposingStructure)
+      return (opposingEvent || opposingMomentum) ? -GOLDSCOUT_MAX_M15_TIMING_POINTS : -3;
+   if(opposingEvent)
+      return opposingMomentum ? -3 : -2;
+
+   int points=0;
+   if(alignedStructure) points+=1;
+   if(alignedEvent) points+=2;
+   if(alignedMomentum) points+=1;
+   return (int)MathMax(-GOLDSCOUT_MAX_M15_TIMING_POINTS,
+      MathMin(GOLDSCOUT_MAX_M15_TIMING_POINTS,points));
+}
+
+// A positive M15 adjustment is permitted only after H1 has independently
+// reached the arming threshold. Missing M15 data or a weak H1 setup stays at 0.
+int GS_GatedM15TimingAdjustment(const int h1TechnicalScore,
+                                const int armThreshold,
+                                const int requestedAdjustment)
+{
+   int bounded=(int)MathMax(-GOLDSCOUT_MAX_M15_TIMING_POINTS,
+      MathMin(GOLDSCOUT_MAX_M15_TIMING_POINTS,requestedAdjustment));
+   if(bounded>0 && h1TechnicalScore<armThreshold) return 0;
+   return bounded;
+}
+
+void GS_LatestConfirmedSwingLevels(const GoldScoutPivot &confirmedPivots[],
+                                   bool &haveHigh,double &lastHigh,
+                                   bool &haveLow,double &lastLow)
+{
+   haveHigh=false;
+   haveLow=false;
+   lastHigh=0.0;
+   lastLow=0.0;
+   for(int i=ArraySize(confirmedPivots)-1;i>=0;i--)
+   {
+      if(!confirmedPivots[i].confirmed ||
+         !GS_ValidPositiveNumber(confirmedPivots[i].price))
+         continue;
+      if(!haveHigh && confirmedPivots[i].type==GOLDSCOUT_PIVOT_HIGH)
+      {
+         haveHigh=true;
+         lastHigh=confirmedPivots[i].price;
+      }
+      else if(!haveLow && confirmedPivots[i].type==GOLDSCOUT_PIVOT_LOW)
+      {
+         haveLow=true;
+         lastLow=confirmedPivots[i].price;
+      }
+      if(haveHigh && haveLow) return;
+   }
 }
 
 void GS_ClearStructureClassification(GoldScoutStructureClassification &classification)

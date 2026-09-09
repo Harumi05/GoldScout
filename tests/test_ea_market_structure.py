@@ -429,8 +429,11 @@ class ConfirmedPivotEngineTests(unittest.TestCase):
 
     def test_ea_uses_engine_only_as_the_source_of_structure_flags(self):
         self.assertIn("#include <GoldScout/MarketStructure.mqh>", self.ea)
-        self.assertEqual(self.ea.count("GS_LoadConfirmedPivots"), 1)
-        self.assertEqual(self.ea.count("GS_ClassifyConfirmedStructure"), 1)
+        self.assertEqual(self.ea.count("GS_LoadConfirmedPivots"), 2)
+        self.assertEqual(self.ea.count("GS_ClassifyConfirmedStructure"), 2)
+        self.assertIn(
+            "GS_LoadConfirmedPivots(_Symbol,PERIOD_M15,hM15ATR,", self.ea
+        )
         self.assertIn("bool hh=pivotStructure.hh;", self.ea)
         self.assertIn("bool hl=pivotStructure.hl;", self.ea)
         self.assertIn("bool lh=pivotStructure.lh;", self.ea)

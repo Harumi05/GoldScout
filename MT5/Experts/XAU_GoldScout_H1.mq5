@@ -135,6 +135,13 @@ input bool   HeadShouldersUseMomentumQuality  = true;
 input double HeadShouldersMomentumBodyATR     = 0.50;
 input bool   DebugHeadShouldersPatternLogs    = false;
 
+input group "=== M15 Timing Confirmation ==="
+input bool   UseM15TimingConfirmation         = true;
+input double M15BreakoutBufferATR             = 0.05;
+input double M15RecoveryProximityATR          = 0.50;
+input double M15MomentumBodyATR               = 0.50;
+input bool   DebugM15TimingLogs                = false;
+
 input group "=== News Filter ==="
 input bool   UseNewsFilter           = true;
 input int    NewsBlockBeforeMin      = 30;
@@ -156,6 +163,7 @@ int hEmaHTFSlow = INVALID_HANDLE;
 int hRSI = INVALID_HANDLE;
 int hADX = INVALID_HANDLE;
 int hATR = INVALID_HANDLE;
+int hM15ATR = INVALID_HANDLE;
 
 datetime g_lastH1Bar = 0;
 double   g_peakEquity = 0.0;
@@ -232,6 +240,12 @@ datetime g_lastHeadShouldersPatternLogTime=0;
 string   g_lastHeadShouldersPatternLogSignature="";
 const int HEAD_SHOULDERS_PATTERN_LOG_INTERVAL_SECONDS=30;
 
+GoldScoutM15TimingEvidence g_m15TimingEvidence;
+datetime g_m15TimingEvaluatedClosedBar=0;
+datetime g_lastM15TimingLogTime=0;
+string   g_lastM15TimingLogSignature="";
+const int M15_TIMING_LOG_INTERVAL_SECONDS=30;
+
 struct BrokerContractSpec
 {
    string accountCurrency;
@@ -283,6 +297,131 @@ void ConfigurePivotEngine(GoldScoutPivotConfig &config)
    config.minBarsBetween=PivotMinBarsBetween;
    config.minProminenceAtr=PivotMinProminenceATR;
    config.toleranceAtr=PivotEqualityToleranceATR;
+}
+
+string M15DirectionName(const int direction)
+{
+   if(direction>0) return "LONG";
+   if(direction<0) return "SHORT";
+   return "NONE";
+}
+
+void LogM15Timing(const GoldScoutM15TimingEvidence &evidence)
+{
+   if(!DebugM15TimingLogs || !evidence.available) return;
+   string signature=StringFormat("%I64d|%d|%d|%d|%d|%d|%d",
+      (long)evidence.closedBarTime,(int)evidence.structure,
+      evidence.breakoutDirection,evidence.recoveryDirection,
+      evidence.momentumDirection,evidence.longAdjustment,
+      evidence.shortAdjustment);
+   if(signature==g_lastM15TimingLogSignature) return;
+
+   datetime now=TimeTradeServer();
+   if(now<=0) now=TimeLocal();
+   if(now<=0 || (g_lastM15TimingLogTime>0 &&
+      (long)(now-g_lastM15TimingLogTime)<M15_TIMING_LOG_INTERVAL_SECONDS))
+      return;
+
+   PrintFormat("[GoldScout][M15] structure=%s | breakout=%s | recovery=%s | momentum=%s | L=%+d | S=%+d",
+      GS_StructureStateName(evidence.structure),
+      M15DirectionName(evidence.breakoutDirection),
+      M15DirectionName(evidence.recoveryDirection),
+      M15DirectionName(evidence.momentumDirection),
+      evidence.longAdjustment,evidence.shortAdjustment);
+   g_lastM15TimingLogSignature=signature;
+   g_lastM15TimingLogTime=now;
+}
+
+void RefreshM15TimingConfirmation()
+{
+   if(!UseM15TimingConfirmation)
+   {
+      GS_ClearM15TimingEvidence(g_m15TimingEvidence);
+      return;
+   }
+
+   datetime latestClosedBar=iTime(_Symbol,PERIOD_M15,1);
+   if(latestClosedBar<=0)
+   {
+      GS_ClearM15TimingEvidence(g_m15TimingEvidence);
+      return;
+   }
+   if(latestClosedBar==g_m15TimingEvaluatedClosedBar &&
+      g_m15TimingEvidence.available)
+      return;
+
+   GoldScoutM15TimingEvidence evidence;
+   GS_ClearM15TimingEvidence(evidence);
+   GoldScoutPivotConfig pivotConfig;
+   ConfigurePivotEngine(pivotConfig);
+   GoldScoutPivot confirmedPivots[];
+   GoldScoutStructureClassification structure;
+   GS_ClearStructureClassification(structure);
+   if(!GS_LoadConfirmedPivots(_Symbol,PERIOD_M15,hM15ATR,
+         PivotLookbackBars,pivotConfig,confirmedPivots) ||
+      !GS_ClassifyConfirmedStructure(confirmedPivots,
+         pivotConfig.toleranceAtr,_Point,structure))
+   {
+      GS_ClearM15TimingEvidence(g_m15TimingEvidence);
+      return;
+   }
+
+   double atr=0.0;
+   double open1=iOpen(_Symbol,PERIOD_M15,1);
+   double close1=iClose(_Symbol,PERIOD_M15,1);
+   double close2=iClose(_Symbol,PERIOD_M15,2);
+   double high2=iHigh(_Symbol,PERIOD_M15,2);
+   double low2=iLow(_Symbol,PERIOD_M15,2);
+   if(!GetValue(hM15ATR,0,1,atr) || atr<=0.0 ||
+      open1<=0.0 || close1<=0.0 || close2<=0.0 ||
+      high2<=0.0 || low2<=0.0 || high2<low2)
+   {
+      GS_ClearM15TimingEvidence(g_m15TimingEvidence);
+      return;
+   }
+
+   evidence.available=true;
+   evidence.closedBarTime=latestClosedBar;
+   evidence.structure=structure.state;
+   GS_LatestConfirmedSwingLevels(confirmedPivots,
+      evidence.haveLastSwingHigh,evidence.lastSwingHigh,
+      evidence.haveLastSwingLow,evidence.lastSwingLow);
+
+   double breakoutBuffer=MathMax(_Point,M15BreakoutBufferATR*atr);
+   if(evidence.haveLastSwingHigh &&
+      close2<=evidence.lastSwingHigh+breakoutBuffer &&
+      close1>evidence.lastSwingHigh+breakoutBuffer)
+      evidence.breakoutDirection=1;
+   else if(evidence.haveLastSwingLow &&
+      close2>=evidence.lastSwingLow-breakoutBuffer &&
+      close1<evidence.lastSwingLow-breakoutBuffer)
+      evidence.breakoutDirection=-1;
+
+   double recoveryDistance=M15RecoveryProximityATR*atr;
+   if(structure.state==GOLDSCOUT_STRUCTURE_BULLISH &&
+      evidence.haveLastSwingLow &&
+      MathAbs(low2-evidence.lastSwingLow)<=recoveryDistance && close1>high2)
+      evidence.recoveryDirection=1;
+   else if(structure.state==GOLDSCOUT_STRUCTURE_BEARISH &&
+      evidence.haveLastSwingHigh &&
+      MathAbs(high2-evidence.lastSwingHigh)<=recoveryDistance && close1<low2)
+      evidence.recoveryDirection=-1;
+
+   double body=close1-open1;
+   if(body>=M15MomentumBodyATR*atr)
+      evidence.momentumDirection=1;
+   else if(body<=-M15MomentumBodyATR*atr)
+      evidence.momentumDirection=-1;
+
+   evidence.longAdjustment=GS_M15TimingAdjustment(true,evidence.structure,1,
+      evidence.breakoutDirection,evidence.recoveryDirection,
+      evidence.momentumDirection);
+   evidence.shortAdjustment=GS_M15TimingAdjustment(true,evidence.structure,-1,
+      evidence.breakoutDirection,evidence.recoveryDirection,
+      evidence.momentumDirection);
+   g_m15TimingEvidence=evidence;
+   g_m15TimingEvaluatedClosedBar=latestClosedBar;
+   LogM15Timing(g_m15TimingEvidence);
 }
 
 void ConfigurePatternDiagnostics(GoldScoutPatternConfig &config)
@@ -933,6 +1072,14 @@ bool SafetyInputsValid(string &msg)
       msg="Configuración inválida: parámetros del motor de pivots";
       return false;
    }
+   if(UseM15TimingConfirmation &&
+      ((!MathIsValidNumber(M15BreakoutBufferATR) || M15BreakoutBufferATR<0.0) ||
+       (!MathIsValidNumber(M15RecoveryProximityATR) || M15RecoveryProximityATR<=0.0) ||
+       (!MathIsValidNumber(M15MomentumBodyATR) || M15MomentumBodyATR<=0.0)))
+   {
+      msg="Configuración inválida: parámetros de confirmación M15";
+      return false;
+   }
    return true;
 }
 
@@ -1491,6 +1638,7 @@ bool BuildSignal(int &direction, int &score, string &setup, string &reason, doub
    bool pivotStructureValid=pivotDataAvailable &&
       GS_ClassifyConfirmedStructure(confirmedPivots,pivotConfig.toleranceAtr,_Point,pivotStructure);
    if(!pivotStructureValid) GS_ClearStructureClassification(pivotStructure);
+   RefreshM15TimingConfirmation();
    bool hh=pivotStructure.hh;
    bool hl=pivotStructure.hl;
    bool lh=pivotStructure.lh;
@@ -1551,6 +1699,10 @@ bool BuildSignal(int &direction, int &score, string &setup, string &reason, doub
 
    longScore=(int)MathMin(100,longScore);
    shortScore=(int)MathMin(100,shortScore);
+   int longM15Adjustment=GS_GatedM15TimingAdjustment(
+      longScore,ArmScoreThreshold,g_m15TimingEvidence.longAdjustment);
+   int shortM15Adjustment=GS_GatedM15TimingAdjustment(
+      shortScore,ArmScoreThreshold,g_m15TimingEvidence.shortAdjustment);
 
    g_diagEmaFast=emaF; g_diagEmaSlow=emaS; g_diagH4Fast=h4F; g_diagH4Slow=h4S;
    g_diagRSI=rsi; g_diagADX=adx; g_diagATR=atr; g_diagCurVol=curVol; g_diagAvgVol=avgVol;
@@ -1571,8 +1723,10 @@ bool BuildSignal(int &direction, int &score, string &setup, string &reason, doub
    int newsPtsShort=NewsAlignmentPoints(-1);
    g_diagLongNewsPts=newsPtsLong; g_diagShortNewsPts=newsPtsShort;
    // Intrabar confirmation is additive and is recalculated while the current H1 candle evolves.
-   int finalLong=(int)MathMax(0,MathMin(100,longScore+newsPtsLong+g_intrabarLongBoost));
-   int finalShort=(int)MathMax(0,MathMin(100,shortScore+newsPtsShort+g_intrabarShortBoost));
+   int finalLong=(int)MathMax(0,MathMin(100,longScore+newsPtsLong+
+      g_intrabarLongBoost+longM15Adjustment));
+   int finalShort=(int)MathMax(0,MathMin(100,shortScore+newsPtsShort+
+      g_intrabarShortBoost+shortM15Adjustment));
    g_diagLongFinal=finalLong; g_diagShortFinal=finalShort;
 
    g_diagTechnicalReason=StringFormat("Tecnico L=%d/S=%d | H4=%s | H1=%s | RSI=%.1f | ADX=%.1f | ATR=%.2f | volumen=%s | estructura=%s | pivots=%d estado=%s bucketL=%d bucketS=%d | HH=%s HL=%s LH=%s LL=%s",
@@ -1583,6 +1737,14 @@ bool BuildSignal(int &direction, int &score, string &setup, string &reason, doub
       " | PATTERN BEST LONG=%s quality=%.1f bonus=%d | PATTERN BEST SHORT=%s quality=%.1f bonus=%d",
       bestPatternLong.name,bestPatternLong.quality,longPatternBonus,
       bestPatternShort.name,bestPatternShort.quality,shortPatternBonus);
+   g_diagTechnicalReason += StringFormat(
+      " | M15 structure=%s breakout=%s recovery=%s momentum=%s L=%+d/S=%+d",
+      g_m15TimingEvidence.available
+         ? GS_StructureStateName(g_m15TimingEvidence.structure) : "NO DISPONIBLE",
+      M15DirectionName(g_m15TimingEvidence.breakoutDirection),
+      M15DirectionName(g_m15TimingEvidence.recoveryDirection),
+      M15DirectionName(g_m15TimingEvidence.momentumDirection),
+      longM15Adjustment,shortM15Adjustment);
    g_diagNewsReason=StringFormat("Noticias: bias=%d conf=%d riesgo=%s | puntos L=%+d/S=%+d | dir=%s | %s",
       g_newsBias,g_newsConfidence,g_newsRisk,newsPtsLong,newsPtsShort,g_newsDirection,g_newsSummary);
 
@@ -1607,8 +1769,9 @@ bool BuildSignal(int &direction, int &score, string &setup, string &reason, doub
    targetR=clear ? MathMax(GodTargetR,MinRewardRisk) : MathMax(ChillTargetR,MinRewardRisk);
    g_diagTechnicalReason += StringFormat(" | candidato=%s score=%d setup=%s | claro=%s",direction>0?"LONG":"SHORT",score,setup,clear?"SI":"NO");
 
-   reason=StringFormat("%s | score %d/100 | tech L=%d/S=%d | final L=%d/S=%d | H4 %s | H1 %s | RSI %.1f | ADX %.1f | ATR %.2f | volumen %s | estructura %s | noticias %s bias=%d conf=%d risk=%s | objetivo %.2fR",
-      direction>0?"LONG":"SHORT",score,longScore,shortScore,finalLong,finalShort,
+   reason=StringFormat("%s | score %d/100 | tech L=%d/S=%d | M15 L=%+d/S=%+d | final L=%d/S=%d | H4 %s | H1 %s | RSI %.1f | ADX %.1f | ATR %.2f | volumen %s | estructura %s | noticias %s bias=%d conf=%d risk=%s | objetivo %.2fR",
+      direction>0?"LONG":"SHORT",score,longScore,shortScore,
+      longM15Adjustment,shortM15Adjustment,finalLong,finalShort,
       g_diagH4Trend,g_diagH1Trend,rsi,adx,atr,g_diagVolume,setup,
       g_newsDirection,g_newsBias,g_newsConfidence,g_newsRisk,targetR);
    return true;
@@ -2235,6 +2398,7 @@ void InitIndicators()
    hRSI=iRSI(_Symbol,PERIOD_H1,RSIPeriod,PRICE_CLOSE);
    hADX=iADX(_Symbol,PERIOD_H1,ADXPeriod);
    hATR=iATR(_Symbol,PERIOD_H1,ATRPeriod);
+   hM15ATR=iATR(_Symbol,PERIOD_M15,ATRPeriod);
 }
 
 bool IsGoldSymbol()
@@ -2249,6 +2413,7 @@ int OnInit()
    GS_ClearContinuationPatternDiagnostic(g_continuationPatternDiagnostic);
    GS_ClearConvergencePatternDiagnostic(g_convergencePatternDiagnostic);
    GS_ClearHeadShouldersPatternDiagnostic(g_headShouldersPatternDiagnostic);
+   GS_ClearM15TimingEvidence(g_m15TimingEvidence);
    if(!IsGoldSymbol())
    {
       Print("[GoldScout] BLOQUEADO: este EA solo funciona en XAUUSD. Simbolo actual: ", _Symbol);
@@ -2306,6 +2471,7 @@ void OnDeinit(const int reason)
    if(hRSI!=INVALID_HANDLE) IndicatorRelease(hRSI);
    if(hADX!=INVALID_HANDLE) IndicatorRelease(hADX);
    if(hATR!=INVALID_HANDLE) IndicatorRelease(hATR);
+   if(hM15ATR!=INVALID_HANDLE) IndicatorRelease(hM15ATR);
 }
 
 void OnTimer()
