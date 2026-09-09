@@ -211,8 +211,8 @@ class SafetyInvariantTests(unittest.TestCase):
 
     def test_worst_permitted_fill_is_used_before_submission(self):
         self.assertIn("MAX_EXECUTION_DEVIATION_POINTS = 30", self.source)
-        self.assertIn("double worstCasePrice=WorstCaseFillPrice(type,price);", self.source)
-        self.assertIn("PositionSizeForRisk(type,worstCasePrice,sl,plannedRisk,lots)", self.source)
+        self.assertIn("double worstCasePrice=WorstCaseFillPrice(type,price,contract);", self.source)
+        self.assertIn("PositionSizeForRisk(type,worstCasePrice,sl,plannedRisk,contract,lots)", self.source)
         self.assertIn("RiskAtSL(type,worstCasePrice,sl,lots,actualRisk)", self.source)
         self.assertIn("trade.SetDeviationInPoints(MAX_EXECUTION_DEVIATION_POINTS);", self.source)
 

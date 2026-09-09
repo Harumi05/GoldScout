@@ -1,6 +1,6 @@
 #property strict
 #property version   "1.00"
-#property description "GoldScout H1 - XAUUSD autonomous EA with fixed USD risk, trend/pullback scoring, news filter and dashboard JSON."
+#property description "GoldScout H1 - XAUUSD autonomous EA with account-currency risk, trend/pullback scoring, news filter and dashboard JSON."
 
 #include <Trade/Trade.mqh>
 
@@ -22,9 +22,10 @@ input group "=== Risk / Targets ==="
 input double RiskPercent             = 5.0;  // risk as % of current equity per trade
 input double ChillTargetR            = 1.25; // weaker structure: target >= 1.25R
 input double GodTargetR              = 2.0;  // clear trend: target >= 2R
-input double DailyLossLimitUSD       = 20.0; // hard daily stop in USD
+input double DailyLossLimitUSD       = 20.0; // legacy name: value is in account deposit currency
 input double MaxDrawdownPercent      = 15.0; // equity drawdown from peak
 input double MaxSpreadUSD            = 0.60; // max bid/ask spread on gold
+input double RoundTurnCommissionPerLot = 0.0; // optional account-currency cost buffer per lot
 input double ATRStopMultiplier       = 1.20; // base stop distance from ATR
 input double MinStopATR              = 0.80; // minimum stop distance in ATR
 input double MaxStopATR              = 2.00; // maximum stop distance in ATR
@@ -115,6 +116,24 @@ int      g_intrabarShortBoost=0;
 datetime g_lastIntrabarHeartbeat=0;
 const int INTRABAR_DIAGNOSTIC_INTERVAL_SECONDS=30;
 
+struct BrokerContractSpec
+{
+   string accountCurrency;
+   string profitCurrency;
+   int    priceDigits;
+   double point;
+   double tickSize;
+   double tickValue;
+   double tickValueProfit;
+   double tickValueLoss;
+   double contractSize;
+   double volumeMin;
+   double volumeMax;
+   double volumeStep;
+   int    stopsLevel;
+   int    freezeLevel;
+};
+
 enum EntryReservationPhase
 {
    ENTRY_RESERVATION_NONE=0,
@@ -141,17 +160,72 @@ bool GetValue(int handle, int buffer, int shift, double &out)
    return true;
 }
 
-double NormalizeVolumeDown(double lots)
+bool LoadBrokerContract(BrokerContractSpec &spec,string &msg)
 {
-   double minLot = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
-   double maxLot = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MAX);
-   double step   = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
-   if(step <= 0.0) step = minLot;
-   if(step <= 0.0) return 0.0;
-   lots = MathMin(lots, maxLot);
-   double normalized = MathFloor(lots / step + 1e-9) * step;
-   if(normalized < minLot) return 0.0;
+   msg="";
+   ResetLastError();
+   spec.accountCurrency=AccountInfoString(ACCOUNT_CURRENCY);
+   if(GetLastError()!=0 || spec.accountCurrency=="")
+   {
+      msg="moneda de depósito no disponible";
+      return false;
+   }
+   if(!SymbolInfoString(_Symbol,SYMBOL_CURRENCY_PROFIT,spec.profitCurrency) || spec.profitCurrency=="")
+   {
+      msg="moneda de beneficio del símbolo no disponible";
+      return false;
+   }
+
+   long priceDigits=0,stopsLevel=0,freezeLevel=0;
+   if(!SymbolInfoInteger(_Symbol,SYMBOL_DIGITS,priceDigits) ||
+      !SymbolInfoInteger(_Symbol,SYMBOL_TRADE_STOPS_LEVEL,stopsLevel) ||
+      !SymbolInfoInteger(_Symbol,SYMBOL_TRADE_FREEZE_LEVEL,freezeLevel) ||
+      !SymbolInfoDouble(_Symbol,SYMBOL_POINT,spec.point) ||
+      !SymbolInfoDouble(_Symbol,SYMBOL_TRADE_TICK_SIZE,spec.tickSize) ||
+      !SymbolInfoDouble(_Symbol,SYMBOL_TRADE_TICK_VALUE,spec.tickValue) ||
+      !SymbolInfoDouble(_Symbol,SYMBOL_TRADE_TICK_VALUE_PROFIT,spec.tickValueProfit) ||
+      !SymbolInfoDouble(_Symbol,SYMBOL_TRADE_TICK_VALUE_LOSS,spec.tickValueLoss) ||
+      !SymbolInfoDouble(_Symbol,SYMBOL_TRADE_CONTRACT_SIZE,spec.contractSize) ||
+      !SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_MIN,spec.volumeMin) ||
+      !SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_MAX,spec.volumeMax) ||
+      !SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_STEP,spec.volumeStep))
+   {
+      msg="especificaciones incompletas del símbolo";
+      return false;
+   }
+
+   spec.priceDigits=(int)priceDigits;
+   spec.stopsLevel=(int)stopsLevel;
+   spec.freezeLevel=(int)freezeLevel;
+   if(spec.priceDigits<0 || spec.point<=0.0 || spec.tickSize<=0.0 ||
+      spec.tickValue<=0.0 || spec.tickValueProfit<=0.0 || spec.tickValueLoss<=0.0 ||
+      spec.contractSize<=0.0 || spec.volumeMin<=0.0 ||
+      spec.volumeMax<spec.volumeMin || spec.volumeStep<=0.0 ||
+      spec.stopsLevel<0 || spec.freezeLevel<0)
+   {
+      msg="especificaciones inválidas del contrato XAUUSD";
+      return false;
+   }
+   return true;
+}
+
+double NormalizeVolumeDown(double lots,const BrokerContractSpec &spec)
+{
+   if(lots<spec.volumeMin-1e-9 || spec.volumeStep<=0.0) return 0.0;
+   lots=MathMax(lots,spec.volumeMin);
+   lots=MathMin(lots,spec.volumeMax);
+   double steps=MathFloor((lots-spec.volumeMin)/spec.volumeStep+1e-9);
+   double normalized=spec.volumeMin+steps*spec.volumeStep;
+   if(normalized<spec.volumeMin-1e-9 || normalized>spec.volumeMax+1e-9 || normalized>lots+1e-9) return 0.0;
    return NormalizeDouble(normalized, 8);
+}
+
+double AlignPriceToTick(const double price,const BrokerContractSpec &spec,const bool roundUp)
+{
+   if(price<=0.0 || spec.tickSize<=0.0) return 0.0;
+   double ticks=price/spec.tickSize;
+   double aligned=(roundUp?MathCeil(ticks-1e-9):MathFloor(ticks+1e-9))*spec.tickSize;
+   return NormalizeDouble(aligned,spec.priceDigits);
 }
 
 bool GetPositionAccountingMode(bool &isHedging)
@@ -390,7 +464,12 @@ bool SafetyInputsValid(string &msg)
    }
    if(DailyLossLimitUSD<=0.0)
    {
-      msg="Configuración inválida: DailyLossLimitUSD debe ser mayor que cero";
+      msg="Configuración inválida: DailyLossLimitUSD debe ser mayor que cero (moneda de cuenta)";
+      return false;
+   }
+   if(RoundTurnCommissionPerLot<0.0)
+   {
+      msg="Configuración inválida: RoundTurnCommissionPerLot no puede ser negativa";
       return false;
    }
    if(MaxDrawdownPercent<=0.0 || MaxDrawdownPercent>100.0)
@@ -619,18 +698,18 @@ bool HasHighImpactUSDNews()
    return false;
 }
 
-double PlannedRiskUSD()
+double PlannedRiskAmount()
 {
    double equity=AccountInfoDouble(ACCOUNT_EQUITY);
    double effectiveRiskPercent=MathMax(0.0,MathMin(RiskPercent,HARD_MAX_RISK_PERCENT));
    return MathMax(0.0,equity*effectiveRiskPercent/100.0);
 }
 
-double WorstCaseFillPrice(const ENUM_ORDER_TYPE type,const double requestedPrice)
+double WorstCaseFillPrice(const ENUM_ORDER_TYPE type,const double requestedPrice,const BrokerContractSpec &spec)
 {
    double deviation=MAX_EXECUTION_DEVIATION_POINTS*_Point;
-   if(type==ORDER_TYPE_BUY) return requestedPrice+deviation;
-   if(type==ORDER_TYPE_SELL) return requestedPrice-deviation;
+   if(type==ORDER_TYPE_BUY) return AlignPriceToTick(requestedPrice+deviation,spec,true);
+   if(type==ORDER_TYPE_SELL) return AlignPriceToTick(requestedPrice-deviation,spec,false);
    return 0.0;
 }
 
@@ -675,22 +754,55 @@ bool ExecutionFailureIsSafelyFinal(const bool requestSent,const uint retcode,con
    return false;
 }
 
-bool PositionSizeForRisk(ENUM_ORDER_TYPE type,double priceOpen,double slPrice,double riskUSD,double &lots)
+bool PositionSizeForRisk(ENUM_ORDER_TYPE type,double priceOpen,double slPrice,double riskAmount,
+                         const BrokerContractSpec &spec,double &lots)
 {
-   double lossOneLot=0.0;
-   if(!OrderCalcProfit(type,_Symbol,1.0,priceOpen,slPrice,lossOneLot)) return false;
-   lossOneLot=MathAbs(lossOneLot);
-   if(lossOneLot<=0.0 || riskUSD<=0.0) return false;
-   lots=NormalizeVolumeDown(riskUSD/lossOneLot);
+   if(riskAmount<=0.0) return false;
+   double referenceVolume=MathMax(spec.volumeMin,MathMin(1.0,spec.volumeMax));
+   referenceVolume=NormalizeVolumeDown(referenceVolume,spec);
+   if(referenceVolume<=0.0) return false;
+
+   double referenceLoss=0.0;
+   if(!OrderCalcProfit(type,_Symbol,referenceVolume,priceOpen,slPrice,referenceLoss)) return false;
+   referenceLoss=MathAbs(referenceLoss)+RoundTurnCommissionPerLot*referenceVolume;
+   if(referenceLoss<=0.0) return false;
+   lots=NormalizeVolumeDown(riskAmount*referenceVolume/referenceLoss,spec);
    return lots>0.0;
 }
 
-bool RiskAtSL(ENUM_ORDER_TYPE type,double priceOpen,double slPrice,double lots,double &riskUSD)
+bool RiskAtSL(ENUM_ORDER_TYPE type,double priceOpen,double slPrice,double lots,double &riskAmount)
 {
    double p=0.0;
    if(!OrderCalcProfit(type,_Symbol,lots,priceOpen,slPrice,p)) return false;
-   riskUSD=MathAbs(p);
-   return riskUSD>0.0;
+   riskAmount=MathAbs(p)+RoundTurnCommissionPerLot*lots;
+   return riskAmount>0.0;
+}
+
+bool MarginAllowsOrder(ENUM_ORDER_TYPE type,double price,double lots,
+                       const BrokerContractSpec &spec,string &msg)
+{
+   msg="";
+   double requiredMargin=0.0;
+   ResetLastError();
+   if(!OrderCalcMargin(type,_Symbol,lots,price,requiredMargin) || GetLastError()!=0 || requiredMargin<0.0)
+   {
+      msg="Bloqueado: no se pudo calcular el margen requerido";
+      return false;
+   }
+   ResetLastError();
+   double freeMargin=AccountInfoDouble(ACCOUNT_MARGIN_FREE);
+   if(GetLastError()!=0 || freeMargin<0.0)
+   {
+      msg="Bloqueado: margen libre no disponible";
+      return false;
+   }
+   if(requiredMargin>freeMargin+1e-6)
+   {
+      msg=StringFormat("Bloqueado: margen requerido %.2f %s > libre %.2f %s",
+         requiredMargin,spec.accountCurrency,freeMargin,spec.accountCurrency);
+      return false;
+   }
+   return true;
 }
 
 bool BuildDynamicStop(int direction,double price,double atr,double &slPrice)
@@ -728,10 +840,11 @@ bool BuildDynamicStop(int direction,double price,double atr,double &slPrice)
    return true;
 }
 
-bool TPPriceForMoney(ENUM_ORDER_TYPE type,double priceOpen,double lots,double targetUSD,double &tpPrice)
+bool TPPriceForMoney(ENUM_ORDER_TYPE type,double priceOpen,double lots,double targetAmount,
+                     const BrokerContractSpec &spec,double &tpPrice)
 {
-   double tickSize=SymbolInfoDouble(_Symbol,SYMBOL_TRADE_TICK_SIZE);
-   if(tickSize<=0.0 || targetUSD<=0.0) return false;
+   if(spec.tickSize<=0.0 || targetAmount<=0.0 || lots<=0.0) return false;
+   double estimatedCost=RoundTurnCommissionPerLot*lots;
    double lo,hi,mid,profit;
    if(type==ORDER_TYPE_BUY)
    {
@@ -740,23 +853,23 @@ bool TPPriceForMoney(ENUM_ORDER_TYPE type,double priceOpen,double lots,double ta
       {
          mid=(lo+hi)/2.0; profit=0.0;
          if(!OrderCalcProfit(type,_Symbol,lots,priceOpen,mid,profit)) return false;
-         if(profit>=targetUSD) hi=mid; else lo=mid;
+         if(profit-estimatedCost>=targetAmount) hi=mid; else lo=mid;
       }
-      tpPrice=hi;
+      tpPrice=AlignPriceToTick(hi,spec,true);
    }
    else
    {
-      lo=priceOpen-500.0; hi=priceOpen;
+      lo=MathMax(spec.tickSize,priceOpen-500.0); hi=priceOpen;
       for(int k=0;k<50;k++)
       {
          mid=(lo+hi)/2.0; profit=0.0;
          if(!OrderCalcProfit(type,_Symbol,lots,priceOpen,mid,profit)) return false;
-         if(profit>=targetUSD) lo=mid; else hi=mid;
+         if(profit-estimatedCost>=targetAmount) lo=mid; else hi=mid;
       }
-      tpPrice=lo;
+      tpPrice=AlignPriceToTick(lo,spec,false);
    }
-   tpPrice=NormalizeDouble(tpPrice,(int)SymbolInfoInteger(_Symbol,SYMBOL_DIGITS));
-   return true;
+   if(tpPrice<=0.0 || !OrderCalcProfit(type,_Symbol,lots,priceOpen,tpPrice,profit)) return false;
+   return profit-estimatedCost+1e-6>=targetAmount;
 }
 
 double RecentVolumeAverage(int startShift=2)
@@ -1250,13 +1363,13 @@ bool CanOpenTrade()
    return true;
 }
 
-void AppendDealLog(string direction, int score, string setup, double targetUSD, double lots, double sl, double tp, string reason)
+void AppendDealLog(string direction, int score, string setup, double targetAmount, double lots, double sl, double tp, string reason)
 {
    int h=FileOpen("xau_goldscout_trade_log.csv", FILE_COMMON|FILE_READ|FILE_WRITE|FILE_CSV|FILE_ANSI, ';');
    if(h==INVALID_HANDLE) return;
    FileSeek(h,0,SEEK_END);
-   if(FileTell(h)==0) FileWrite(h,"time","symbol","direction","score","setup","targetR","targetUSD","lots","sl","tp","reason");
-   FileWrite(h,TimeToString(TimeTradeServer(),TIME_DATE|TIME_SECONDS),_Symbol,direction,score,setup,"",DoubleToString(targetUSD,2),DoubleToString(lots,2),DoubleToString(sl,_Digits),DoubleToString(tp,_Digits),reason);
+   if(FileTell(h)==0) FileWrite(h,"time","symbol","direction","score","setup","targetR","target_amount","lots","sl","tp","reason");
+   FileWrite(h,TimeToString(TimeTradeServer(),TIME_DATE|TIME_SECONDS),_Symbol,direction,score,setup,"",DoubleToString(targetAmount,2),DoubleToString(lots,2),DoubleToString(sl,_Digits),DoubleToString(tp,_Digits),reason);
    FileClose(h);
 }
 
@@ -1347,6 +1460,14 @@ void TryTrade()
    }
    ENUM_ORDER_TYPE type=(direction>0?ORDER_TYPE_BUY:ORDER_TYPE_SELL);
    double price=(direction>0?tick.ask:tick.bid);
+   BrokerContractSpec contract;
+   string contractMsg="";
+   if(!LoadBrokerContract(contract,contractMsg))
+   {
+      g_lastDecision="Bloqueado: "+contractMsg;
+      g_diagBlockReason=g_lastDecision;
+      UpdateDashboard(); return;
+   }
    double atr=0.0;
    if(!GetValue(hATR,0,1,atr) || !BuildDynamicStop(direction,price,atr,g_tempSL))
    {
@@ -1355,10 +1476,19 @@ void TryTrade()
       UpdateDashboard(); return;
    }
    double sl=g_tempSL;
-   int stopsLevel=(int)SymbolInfoInteger(_Symbol,SYMBOL_TRADE_STOPS_LEVEL);
-   double minDist=stopsLevel*_Point;
-   if(direction>0) sl=MathMin(sl,price-minDist); else sl=MathMax(sl,price+minDist);
-   sl=NormalizeDouble(sl,_Digits);
+   // stops_level governs initial protection. freeze_level is validated and
+   // reported, but applies to later trade modifications rather than widening
+   // the strategy stop before a market entry.
+   double minDist=contract.stopsLevel*contract.point;
+   double stopReference=(direction>0?tick.bid:tick.ask);
+   if(direction>0) sl=MathMin(sl,stopReference-minDist); else sl=MathMax(sl,stopReference+minDist);
+   sl=AlignPriceToTick(sl,contract,direction<0);
+   if(sl<=0.0 || (direction>0 && stopReference-sl+1e-9<minDist) ||
+      (direction<0 && sl-stopReference+1e-9<minDist))
+   {
+      g_lastDecision="Bloqueado: no se pudo alinear el SL al tick/stops_level del broker";
+      g_diagBlockReason=g_lastDecision; UpdateDashboard(); return;
+   }
 
    double remainingDailyBudget=RemainingDailyLossBudget();
    if(remainingDailyBudget<=0.0)
@@ -1366,7 +1496,7 @@ void TryTrade()
       g_lastDecision="Bloqueado: presupuesto de pérdida diaria agotado";
       g_diagBlockReason=g_lastDecision; UpdateDashboard(); return;
    }
-   double plannedRisk=MathMin(PlannedRiskUSD(),remainingDailyBudget),lots=0.0;
+   double plannedRisk=MathMin(PlannedRiskAmount(),remainingDailyBudget),lots=0.0;
    if(plannedRisk<=0.0)
    {
       g_lastDecision="Bloqueado: riesgo planificado no válido";
@@ -1374,15 +1504,15 @@ void TryTrade()
    }
    // Size against the worst entry price permitted by the existing 30-point
    // deviation policy. This keeps planned price-to-SL loss inside the hard cap.
-   double worstCasePrice=WorstCaseFillPrice(type,price);
+   double worstCasePrice=WorstCaseFillPrice(type,price,contract);
    if(worstCasePrice<=0.0)
    {
       g_lastDecision="Bloqueado: precio de peor ejecución no válido";
       g_diagBlockReason=g_lastDecision; UpdateDashboard(); return;
    }
-   if(!PositionSizeForRisk(type,worstCasePrice,sl,plannedRisk,lots))
+   if(!PositionSizeForRisk(type,worstCasePrice,sl,plannedRisk,contract,lots))
    {
-      g_lastDecision=StringFormat("Bloqueado: lote minimo del broker impide arriesgar %.2f USD",plannedRisk);
+      g_lastDecision=StringFormat("Bloqueado: lote mínimo/step del broker impide arriesgar %.2f %s",plannedRisk,contract.accountCurrency);
       g_diagBlockReason=g_lastDecision; UpdateDashboard(); return;
    }
 
@@ -1398,11 +1528,26 @@ void TryTrade()
       g_diagBlockReason=g_lastDecision; UpdateDashboard(); return;
    }
 
-   double targetUSD=actualRisk*targetR;
+   string marginMsg="";
+   if(!MarginAllowsOrder(type,price,lots,contract,marginMsg))
+   {
+      g_lastDecision=marginMsg;
+      g_diagBlockReason=g_lastDecision; UpdateDashboard(); return;
+   }
+
+   double targetAmount=actualRisk*targetR;
    double tp=0.0;
-   if(!TPPriceForMoney(type,price,lots,targetUSD,tp))
+   if(!TPPriceForMoney(type,price,lots,targetAmount,contract,tp))
    {
       g_lastDecision="Bloqueado: no se pudo calcular TP";
+      g_diagBlockReason=g_lastDecision; UpdateDashboard(); return;
+   }
+   if(direction>0) tp=MathMax(tp,tick.bid+minDist); else tp=MathMin(tp,tick.ask-minDist);
+   tp=AlignPriceToTick(tp,contract,direction>0);
+   if(tp<=0.0 || (direction>0 && tp-tick.bid+1e-9<minDist) ||
+      (direction<0 && tick.ask-tp+1e-9<minDist))
+   {
+      g_lastDecision="Bloqueado: no se pudo alinear el TP al tick/stops_level del broker";
       g_diagBlockReason=g_lastDecision; UpdateDashboard(); return;
    }
 
@@ -1413,8 +1558,6 @@ void TryTrade()
       g_lastDecision=StringFormat("Bloqueado: R:R %.2f < minimo %.2f",rr,MinRewardRisk);
       g_diagBlockReason=g_lastDecision; UpdateDashboard(); return;
    }
-   tp=NormalizeDouble(tp,_Digits);
-
    string tag=(targetR>=GodTargetR-1e-9?"TRADE GOD":"CHILL");
    string comment=StringFormat("GOLDscout|%s|S%d|%s|R%.2f|risk%.2f|RR%.2f",direction>0?"BUY":"SELL",score,setup,targetR,actualRisk,rr);
    trade.SetExpertMagicNumber(MagicNumber);
@@ -1461,7 +1604,7 @@ void TryTrade()
       }
       else
       {
-         g_lastDecision=EnableLiveTrading?"ORDEN ENVIADA":StringFormat("SEÑAL SIMULADA | %s | %.2fR | riesgo $%.2f | SL %.2f | TP %.2f | RR %.2f",tag,targetR,actualRisk,sl,tp,rr);
+         g_lastDecision=EnableLiveTrading?"ORDEN ENVIADA":StringFormat("SEÑAL SIMULADA | %s | %.2fR | riesgo %.2f %s | SL %.2f | TP %.2f | RR %.2f",tag,targetR,actualRisk,contract.accountCurrency,sl,tp,rr);
          g_diagBlockReason="";
       }
       g_lastScore=score; g_lastSetup=setup; g_lastDirection=direction>0?"LONG":"SHORT";
@@ -1469,9 +1612,9 @@ void TryTrade()
       g_armed=false;
       g_monitorState="EN OPERACION";
       g_monitorReason="Entrada aceptada; no se permiten nuevas entradas en esta H1.";
-      AppendDealLog(g_lastDirection,score,setup,targetUSD,lots,sl,tp,reason);
-      PrintFormat("[GoldScout] DECISION=%s | %s %s score=%d techL=%d techS=%d risk=%.2f lots=%.4f entry=%.2f SL=%.2f TP=%.2f RR=%.2f mode=%s",
-         tag,g_lastDirection,setup,score,g_diagLongFinal,g_diagShortFinal,actualRisk,lots,price,sl,tp,rr,EnableLiveTrading?"LIVE":"PAPER");
+      AppendDealLog(g_lastDirection,score,setup,targetAmount,lots,sl,tp,reason);
+      PrintFormat("[GoldScout] DECISION=%s | %s %s score=%d techL=%d techS=%d risk=%.2f %s lots=%.4f entry=%.2f SL=%.2f TP=%.2f RR=%.2f mode=%s",
+         tag,g_lastDirection,setup,score,g_diagLongFinal,g_diagShortFinal,actualRisk,contract.accountCurrency,lots,price,sl,tp,rr,EnableLiveTrading?"LIVE":"PAPER");
       if(EnableLiveTrading)
       {
          double fillPrice=trade.ResultPrice(),filledRisk=0.0;
@@ -1480,7 +1623,7 @@ void TryTrade()
          // This is an alert, not a promise that market gaps, broker-side slippage
          // or changing costs can never exceed the 5% planned-risk ceiling.
          if(!fillRiskKnown || !withinDeviation || filledRisk>plannedRisk+1e-6 || filledRisk>remainingDailyBudget+1e-6)
-            PrintFormat("[GoldScout] ADVERTENCIA: fill live fuera del presupuesto planificado/deviación | fill=%.5f risk=%.2f planned=%.2f budget=%.2f",fillPrice,filledRisk,plannedRisk,remainingDailyBudget);
+            PrintFormat("[GoldScout] ADVERTENCIA: fill live fuera del presupuesto planificado/deviación | fill=%.5f risk=%.2f %s planned=%.2f budget=%.2f",fillPrice,filledRisk,contract.accountCurrency,plannedRisk,remainingDailyBudget);
       }
    }
    else
@@ -1584,6 +1727,8 @@ void UpdateDashboard()
 {
    if(!WriteDashboard) return;
    double balance=AccountInfoDouble(ACCOUNT_BALANCE), equity=AccountInfoDouble(ACCOUNT_EQUITY);
+   string accountCurrency=AccountInfoString(ACCOUNT_CURRENCY);
+   if(accountCurrency=="") accountCurrency="UNKNOWN";
    string active=ActiveTradeJson();
 
    int h=FileOpen(DashboardFile,FILE_COMMON|FILE_WRITE|FILE_TXT|FILE_ANSI);
@@ -1593,7 +1738,7 @@ void UpdateDashboard()
    json += StringFormat("\"updated_at\":\"%s\",",JsonEscape(TimeToString(TimeTradeServer(),TIME_DATE|TIME_SECONDS)));
    json += StringFormat("\"symbol\":\"%s\",\"timeframe\":\"H1\",",JsonEscape(_Symbol));
    json += StringFormat("\"live_trading\":%s,",EnableLiveTrading?"true":"false");
-   json += StringFormat("\"balance\":%.2f,\"equity\":%.2f,\"daily_pnl\":%.2f,\"risk_usd\":%.2f,\"risk_percent\":%.2f,",balance,equity,TodayClosedProfit(),PlannedRiskUSD(),RiskPercent);
+   json += StringFormat("\"account_currency\":\"%s\",\"balance\":%.2f,\"equity\":%.2f,\"daily_pnl\":%.2f,\"risk_amount\":%.2f,\"risk_percent\":%.2f,",JsonEscape(accountCurrency),balance,equity,TodayClosedProfit(),PlannedRiskAmount(),RiskPercent);
    json += StringFormat("\"stop_mode\":\"ATR+STRUCTURE\",\"chill_r\":%.2f,\"god_r\":%.2f,\"min_rr\":%.2f,\"last_score\":%d,\"last_setup\":\"%s\",\"last_direction\":\"%s\",",ChillTargetR,GodTargetR,MinRewardRisk,g_lastScore,JsonEscape(g_lastSetup),JsonEscape(g_lastDirection));
    json += StringFormat("\"last_decision\":\"%s\",",JsonEscape(g_lastDecision));
    json += StringFormat("\"analysis\":{\"bar\":\"%s\",\"h4_trend\":\"%s\",\"h1_trend\":\"%s\",\"ema_fast\":%.2f,\"ema_slow\":%.2f,\"h4_ema_fast\":%.2f,\"h4_ema_slow\":%.2f,\"rsi\":%.2f,\"adx\":%.2f,\"atr\":%.2f,\"volume_current\":%.0f,\"volume_avg\":%.0f,\"volume_state\":\"%s\",\"structure\":\"%s\",\"long_tech\":%d,\"short_tech\":%d,\"long_news_points\":%d,\"short_news_points\":%d,\"long_final\":%d,\"short_final\":%d,\"candidate\":\"%s\",\"block_reason\":\"%s\",\"technical_reason\":\"%s\",\"news_reason\":\"%s\"},",
@@ -1639,6 +1784,16 @@ int OnInit()
       Print("[GoldScout] BLOQUEADO: ",configMsg);
       return(INIT_PARAMETERS_INCORRECT);
    }
+   BrokerContractSpec startupContract;
+   string startupContractMsg="";
+   if(LoadBrokerContract(startupContract,startupContractMsg))
+   {
+      PrintFormat("[GoldScout] CONTRATO %s | account=%s profit=%s | tickSize=%.8f tickValue=%.8f profitTick=%.8f lossTick=%.8f | contract=%.4f | volume=%.8f..%.8f step=%.8f | stops=%d freeze=%d",
+         _Symbol,startupContract.accountCurrency,startupContract.profitCurrency,startupContract.tickSize,startupContract.tickValue,
+         startupContract.tickValueProfit,startupContract.tickValueLoss,startupContract.contractSize,startupContract.volumeMin,
+         startupContract.volumeMax,startupContract.volumeStep,startupContract.stopsLevel,startupContract.freezeLevel);
+   }
+   else Print("[GoldScout] AVISO: contrato aún no disponible; entradas bloqueadas hasta poder validarlo: ",startupContractMsg);
    if(!InitializeEntryReservationState())
    {
       Print("[GoldScout] BLOQUEADO: no se pudo inicializar la reserva H1 persistente");
@@ -1653,7 +1808,8 @@ int OnInit()
    EventSetTimer(MathMax(1,TimerSeconds));
    LoadWorldNews();
    g_lastDecision=EnableLiveTrading?"LIVE habilitado — iniciando análisis inmediato":"PAPER MODE — iniciando análisis inmediato";
-   PrintFormat("[GoldScout] Iniciado en %s H1 | risk=%.2f%% | riskUSD=%.2f | stop=ATR+estructura | minRR=%.2f | mode=%s | intrabar=%s | timer=%ds | arm=%d | startup=IMMEDIATE",_Symbol,RiskPercent,PlannedRiskUSD(),MinRewardRisk,EnableLiveTrading?"LIVE":"PAPER",UseIntrabarMonitoring?"ON":"OFF",TimerSeconds,ArmScoreThreshold);
+   string accountCurrency=AccountInfoString(ACCOUNT_CURRENCY);
+   PrintFormat("[GoldScout] Iniciado en %s H1 | risk=%.2f%% | riskAmount=%.2f %s | stop=ATR+estructura | minRR=%.2f | mode=%s | intrabar=%s | timer=%ds | arm=%d | startup=IMMEDIATE",_Symbol,RiskPercent,PlannedRiskAmount(),accountCurrency,MinRewardRisk,EnableLiveTrading?"LIVE":"PAPER",UseIntrabarMonitoring?"ON":"OFF",TimerSeconds,ArmScoreThreshold);
 
    // Start the current H1 cycle immediately. Do not wait for the next H1 candle.
    // If indicator history is still loading, OnTimer() retries the same bar until it succeeds.
