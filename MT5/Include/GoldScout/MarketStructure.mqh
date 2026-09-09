@@ -233,6 +233,67 @@ struct GoldScoutConvergencePatternDiagnostic
    string                                identity;
 };
 
+enum GoldScoutHeadShouldersPatternType
+{
+   GOLDSCOUT_HEAD_SHOULDERS_NONE     = 0,
+   GOLDSCOUT_HEAD_SHOULDERS_HCH      = 1,
+   GOLDSCOUT_HEAD_SHOULDERS_INVERTED = 2
+};
+
+struct GoldScoutHeadShouldersPatternConfig
+{
+   double shoulderToleranceAtr;
+   double minHeadProminenceAtr;
+   double minDepthAtr;
+   int    minPivotBars;
+   int    maxPivotBars;
+   double minTemporalBalance;
+   double maxNecklineSlopeAtrPerBar;
+   int    maxConfirmationBars;
+   double breakoutBufferAtr;
+   double invalidationAtr;
+   bool   useVolumeQuality;
+   int    volumeLookback;
+   double volumeMultiplier;
+   bool   useMomentumQuality;
+   double momentumBodyAtr;
+};
+
+struct GoldScoutHeadShouldersPatternDiagnostic
+{
+   bool                                  detected;
+   GoldScoutHeadShouldersPatternType     type;
+   GoldScoutPatternState                 state;
+   GoldScoutPivot                        leftShoulder;
+   GoldScoutPivot                        firstNeckline;
+   GoldScoutPivot                        head;
+   GoldScoutPivot                        secondNeckline;
+   GoldScoutPivot                        rightShoulder;
+   datetime                              eventTime;
+   int                                   firstLegBars;
+   int                                   secondLegBars;
+   int                                   thirdLegBars;
+   int                                   fourthLegBars;
+   int                                   leftSpanBars;
+   int                                   rightSpanBars;
+   int                                   barsAfterPattern;
+   int                                   breakoutDirection;
+   double                                referenceAtr;
+   double                                shoulderTolerance;
+   double                                shoulderDifference;
+   double                                headProminence;
+   double                                depth;
+   double                                temporalBalance;
+   double                                necklineSlope;
+   double                                necklineSlopeAtrPerBar;
+   double                                necklineAtHead;
+   double                                breakoutStrengthAtr;
+   bool                                  volumeConfirmed;
+   bool                                  momentumConfirmed;
+   double                                quality;
+   string                                identity;
+};
+
 const int GOLDSCOUT_MAX_STRUCTURAL_BUCKET_POINTS=25;
 
 void GS_ClearPivots(GoldScoutPivot &pivots[])
@@ -413,6 +474,41 @@ void GS_ClearConvergencePatternDiagnostic(GoldScoutConvergencePatternDiagnostic 
    pattern.identity="";
 }
 
+void GS_ClearHeadShouldersPatternDiagnostic(GoldScoutHeadShouldersPatternDiagnostic &pattern)
+{
+   pattern.detected=false;
+   pattern.type=GOLDSCOUT_HEAD_SHOULDERS_NONE;
+   pattern.state=GOLDSCOUT_PATTERN_STATE_NONE;
+   GS_ClearPivot(pattern.leftShoulder);
+   GS_ClearPivot(pattern.firstNeckline);
+   GS_ClearPivot(pattern.head);
+   GS_ClearPivot(pattern.secondNeckline);
+   GS_ClearPivot(pattern.rightShoulder);
+   pattern.eventTime=0;
+   pattern.firstLegBars=0;
+   pattern.secondLegBars=0;
+   pattern.thirdLegBars=0;
+   pattern.fourthLegBars=0;
+   pattern.leftSpanBars=0;
+   pattern.rightSpanBars=0;
+   pattern.barsAfterPattern=0;
+   pattern.breakoutDirection=0;
+   pattern.referenceAtr=0.0;
+   pattern.shoulderTolerance=0.0;
+   pattern.shoulderDifference=0.0;
+   pattern.headProminence=0.0;
+   pattern.depth=0.0;
+   pattern.temporalBalance=0.0;
+   pattern.necklineSlope=0.0;
+   pattern.necklineSlopeAtrPerBar=0.0;
+   pattern.necklineAtHead=0.0;
+   pattern.breakoutStrengthAtr=0.0;
+   pattern.volumeConfirmed=false;
+   pattern.momentumConfirmed=false;
+   pattern.quality=0.0;
+   pattern.identity="";
+}
+
 string GS_ContinuationPatternTypeName(const GoldScoutContinuationPatternType type)
 {
    if(type==GOLDSCOUT_CONTINUATION_BULL_FLAG) return "BULL_FLAG";
@@ -479,6 +575,34 @@ bool GS_ValidateConvergencePatternConfig(const GoldScoutConvergencePatternConfig
           GS_ValidPositiveNumber(config.maxApexDistanceRatio) &&
           MathIsValidNumber(config.breakoutBufferAtr) &&
           config.breakoutBufferAtr>=0.0 &&
+          (!config.useVolumeQuality ||
+             (config.volumeLookback>=1 && GS_ValidPositiveNumber(config.volumeMultiplier))) &&
+          (!config.useMomentumQuality || GS_ValidPositiveNumber(config.momentumBodyAtr));
+}
+
+string GS_HeadShouldersPatternTypeName(const GoldScoutHeadShouldersPatternType type)
+{
+   if(type==GOLDSCOUT_HEAD_SHOULDERS_HCH) return "HCH";
+   if(type==GOLDSCOUT_HEAD_SHOULDERS_INVERTED) return "HCH_INVERTED";
+   return "NONE";
+}
+
+bool GS_ValidateHeadShouldersPatternConfig(
+   const GoldScoutHeadShouldersPatternConfig &config)
+{
+   return GS_ValidPositiveNumber(config.shoulderToleranceAtr) &&
+          GS_ValidPositiveNumber(config.minHeadProminenceAtr) &&
+          GS_ValidPositiveNumber(config.minDepthAtr) &&
+          config.minPivotBars>=1 &&
+          config.maxPivotBars>=config.minPivotBars &&
+          GS_ValidPositiveNumber(config.minTemporalBalance) &&
+          config.minTemporalBalance<=1.0 &&
+          GS_ValidPositiveNumber(config.maxNecklineSlopeAtrPerBar) &&
+          config.maxConfirmationBars>=1 &&
+          MathIsValidNumber(config.breakoutBufferAtr) &&
+          config.breakoutBufferAtr>=0.0 &&
+          MathIsValidNumber(config.invalidationAtr) &&
+          config.invalidationAtr>=0.0 &&
           (!config.useVolumeQuality ||
              (config.volumeLookback>=1 && GS_ValidPositiveNumber(config.volumeMultiplier))) &&
           (!config.useMomentumQuality || GS_ValidPositiveNumber(config.momentumBodyAtr));
@@ -1538,6 +1662,264 @@ bool GS_DetectLatestConvergencePattern(
    return true;
 }
 
+bool GS_HeadShouldersVolumeConfirmation(
+   const MqlRates &closedRates[],const int breakoutIndex,
+   const GoldScoutHeadShouldersPatternConfig &config)
+{
+   if(!config.useVolumeQuality || breakoutIndex<=0) return false;
+   int first=(int)MathMax(0,breakoutIndex-config.volumeLookback);
+   double total=0.0;
+   int samples=0;
+   for(int i=first;i<breakoutIndex;i++)
+   {
+      if(closedRates[i].tick_volume<=0) continue;
+      total+=(double)closedRates[i].tick_volume;
+      samples++;
+   }
+   if(samples<1 || closedRates[breakoutIndex].tick_volume<=0) return false;
+   return (double)closedRates[breakoutIndex].tick_volume >=
+      (total/(double)samples)*config.volumeMultiplier;
+}
+
+bool GS_HeadShouldersMomentumConfirmation(
+   const MqlRates &bar,const int direction,const double referenceAtr,
+   const GoldScoutHeadShouldersPatternConfig &config)
+{
+   if(!config.useMomentumQuality || direction==0 ||
+      !GS_ValidPositiveNumber(referenceAtr)) return false;
+   double directionalBody=direction>0 ? bar.close-bar.open : bar.open-bar.close;
+   return directionalBody>=config.momentumBodyAtr*referenceAtr;
+}
+
+double GS_HeadShouldersPatternQuality(
+   const GoldScoutHeadShouldersPatternDiagnostic &pattern,
+   const GoldScoutHeadShouldersPatternConfig &config)
+{
+   if(!GS_ValidateHeadShouldersPatternConfig(config) || !pattern.detected ||
+      !GS_ValidPositiveNumber(pattern.referenceAtr) ||
+      !GS_ValidPositiveNumber(pattern.shoulderTolerance))
+      return 0.0;
+
+   double shoulderSymmetry=MathMax(0.0,MathMin(1.0,
+      1.0-pattern.shoulderDifference/pattern.shoulderTolerance));
+   double minimumProminence=config.minHeadProminenceAtr*pattern.referenceAtr;
+   double prominenceQuality=MathMax(0.0,MathMin(1.0,
+      pattern.headProminence/(2.0*minimumProminence)));
+   double necklineQuality=MathMax(0.0,MathMin(1.0,
+      1.0-MathAbs(pattern.necklineSlopeAtrPerBar)/
+      config.maxNecklineSlopeAtrPerBar));
+   double minimumDepth=config.minDepthAtr*pattern.referenceAtr;
+   double depthQuality=MathMax(0.0,MathMin(1.0,
+      pattern.depth/(2.0*minimumDepth)));
+   double breakoutQuality=0.0;
+   if(pattern.state==GOLDSCOUT_PATTERN_STATE_CONFIRMED)
+      breakoutQuality=MathMax(0.0,MathMin(1.0,pattern.breakoutStrengthAtr));
+
+   double quality=20.0*shoulderSymmetry+20.0*prominenceQuality+
+      15.0*MathMax(0.0,MathMin(1.0,pattern.temporalBalance))+
+      15.0*necklineQuality+15.0*depthQuality+10.0*breakoutQuality;
+   if(pattern.volumeConfirmed) quality+=2.5;
+   if(pattern.momentumConfirmed) quality+=2.5;
+   return MathMax(0.0,MathMin(100.0,quality));
+}
+
+// Detect one newest HCH identity from five adjacent confirmed alternating
+// pivots. closedRates is chronological and excludes the open H1 candle. The
+// first confirmation, invalidation or expiry is terminal for the identity.
+bool GS_DetectLatestHeadShouldersPattern(
+   const GoldScoutPivot &confirmedPivots[],
+   const MqlRates &closedRates[],
+   const int newestClosedShift,
+   const GoldScoutHeadShouldersPatternConfig &config,
+   const double minimumPriceStep,
+   GoldScoutHeadShouldersPatternDiagnostic &pattern)
+{
+   GS_ClearHeadShouldersPatternDiagnostic(pattern);
+   if(newestClosedShift<1 || !GS_ValidateHeadShouldersPatternConfig(config) ||
+      !GS_ValidPositiveNumber(minimumPriceStep) || ArraySize(closedRates)<5 ||
+      !GS_ClosedRatesValid(closedRates))
+      return false;
+
+   GoldScoutPivot alternating[];
+   if(!GS_NormalizeAlternatingPivots(confirmedPivots,alternating)) return false;
+
+   for(int start=ArraySize(alternating)-5;start>=0;start--)
+   {
+      GoldScoutPivot sequence[5];
+      int rateIndex[5];
+      bool sequenceValid=true;
+      for(int position=0;position<5;position++)
+      {
+         sequence[position]=alternating[start+position];
+         rateIndex[position]=GS_FindClosedRateByTime(closedRates,sequence[position].time);
+         if(rateIndex[position]<0 || (position>0 && rateIndex[position]<=rateIndex[position-1]))
+         {
+            sequenceValid=false;
+            break;
+         }
+         int expectedShift=newestClosedShift+
+            (ArraySize(closedRates)-1-rateIndex[position]);
+         if(sequence[position].shift!=expectedShift)
+         {
+            sequenceValid=false;
+            break;
+         }
+      }
+      if(!sequenceValid) continue;
+
+      bool bearish=sequence[0].type==GOLDSCOUT_PIVOT_HIGH &&
+         sequence[1].type==GOLDSCOUT_PIVOT_LOW &&
+         sequence[2].type==GOLDSCOUT_PIVOT_HIGH &&
+         sequence[3].type==GOLDSCOUT_PIVOT_LOW &&
+         sequence[4].type==GOLDSCOUT_PIVOT_HIGH;
+      bool bullish=sequence[0].type==GOLDSCOUT_PIVOT_LOW &&
+         sequence[1].type==GOLDSCOUT_PIVOT_HIGH &&
+         sequence[2].type==GOLDSCOUT_PIVOT_LOW &&
+         sequence[3].type==GOLDSCOUT_PIVOT_HIGH &&
+         sequence[4].type==GOLDSCOUT_PIVOT_LOW;
+      if(!bearish && !bullish) continue;
+
+      int firstLeg=rateIndex[1]-rateIndex[0];
+      int secondLeg=rateIndex[2]-rateIndex[1];
+      int thirdLeg=rateIndex[3]-rateIndex[2];
+      int fourthLeg=rateIndex[4]-rateIndex[3];
+      if(firstLeg<config.minPivotBars || secondLeg<config.minPivotBars ||
+         thirdLeg<config.minPivotBars || fourthLeg<config.minPivotBars ||
+         firstLeg>config.maxPivotBars || secondLeg>config.maxPivotBars ||
+         thirdLeg>config.maxPivotBars || fourthLeg>config.maxPivotBars)
+         continue;
+
+      int leftSpan=rateIndex[2]-rateIndex[0];
+      int rightSpan=rateIndex[4]-rateIndex[2];
+      double temporalBalance=(double)MathMin(leftSpan,rightSpan)/
+         (double)MathMax(leftSpan,rightSpan);
+      if(temporalBalance<config.minTemporalBalance) continue;
+
+      double referenceAtr=0.0;
+      for(int position=0;position<5;position++)
+         referenceAtr=MathMax(referenceAtr,sequence[position].atr);
+      if(!GS_ValidPositiveNumber(referenceAtr)) continue;
+
+      double shoulderTolerance=0.0;
+      if(!GS_ATRTolerance(sequence[0].atr,sequence[4].atr,
+                          config.shoulderToleranceAtr,minimumPriceStep,
+                          shoulderTolerance))
+         return false;
+      double shoulderDifference=MathAbs(sequence[0].price-sequence[4].price);
+      if(shoulderDifference>shoulderTolerance) continue;
+
+      double headProminence=bearish
+         ? MathMin(sequence[2].price-sequence[0].price,
+                   sequence[2].price-sequence[4].price)
+         : MathMin(sequence[0].price-sequence[2].price,
+                   sequence[4].price-sequence[2].price);
+      if(headProminence<config.minHeadProminenceAtr*referenceAtr) continue;
+
+      double necklineSlope=(sequence[3].price-sequence[1].price)/
+         (double)(rateIndex[3]-rateIndex[1]);
+      double necklineSlopeAtrPerBar=necklineSlope/referenceAtr;
+      if(!MathIsValidNumber(necklineSlope) ||
+         MathAbs(necklineSlopeAtrPerBar)>config.maxNecklineSlopeAtrPerBar)
+         continue;
+      double necklineIntercept=sequence[1].price-
+         necklineSlope*(double)rateIndex[1];
+      double necklineAtHead=necklineIntercept+
+         necklineSlope*(double)rateIndex[2];
+      double depth=bearish ? sequence[2].price-necklineAtHead
+                           : necklineAtHead-sequence[2].price;
+      if(depth<config.minDepthAtr*referenceAtr) continue;
+
+      double necklineAtLeft=necklineIntercept+
+         necklineSlope*(double)rateIndex[0];
+      double necklineAtRight=necklineIntercept+
+         necklineSlope*(double)rateIndex[4];
+      bool shouldersValid=bearish
+         ? (sequence[0].price>necklineAtLeft+minimumPriceStep &&
+            sequence[4].price>necklineAtRight+minimumPriceStep)
+         : (sequence[0].price<necklineAtLeft-minimumPriceStep &&
+            sequence[4].price<necklineAtRight-minimumPriceStep);
+      if(!shouldersValid) continue;
+
+      GoldScoutHeadShouldersPatternType type=bearish
+         ? GOLDSCOUT_HEAD_SHOULDERS_HCH
+         : GOLDSCOUT_HEAD_SHOULDERS_INVERTED;
+      pattern.detected=true;
+      pattern.type=type;
+      pattern.state=GOLDSCOUT_PATTERN_STATE_CANDIDATE;
+      pattern.leftShoulder=sequence[0];
+      pattern.firstNeckline=sequence[1];
+      pattern.head=sequence[2];
+      pattern.secondNeckline=sequence[3];
+      pattern.rightShoulder=sequence[4];
+      pattern.firstLegBars=firstLeg;
+      pattern.secondLegBars=secondLeg;
+      pattern.thirdLegBars=thirdLeg;
+      pattern.fourthLegBars=fourthLeg;
+      pattern.leftSpanBars=leftSpan;
+      pattern.rightSpanBars=rightSpan;
+      pattern.referenceAtr=referenceAtr;
+      pattern.shoulderTolerance=shoulderTolerance;
+      pattern.shoulderDifference=shoulderDifference;
+      pattern.headProminence=headProminence;
+      pattern.depth=depth;
+      pattern.temporalBalance=temporalBalance;
+      pattern.necklineSlope=necklineSlope;
+      pattern.necklineSlopeAtrPerBar=necklineSlopeAtrPerBar;
+      pattern.necklineAtHead=necklineAtHead;
+      pattern.identity=StringFormat("%d:%I64d:%I64d:%I64d:%I64d:%I64d",
+         (int)type,(long)sequence[0].time,(long)sequence[1].time,
+         (long)sequence[2].time,(long)sequence[3].time,(long)sequence[4].time);
+
+      double breakoutBuffer=MathMax(minimumPriceStep,
+         config.breakoutBufferAtr*referenceAtr);
+      double invalidationBuffer=MathMax(minimumPriceStep,
+         config.invalidationAtr*referenceAtr);
+      for(int barIndex=rateIndex[4]+1;barIndex<ArraySize(closedRates);barIndex++)
+      {
+         pattern.barsAfterPattern++;
+         if(pattern.barsAfterPattern>config.maxConfirmationBars)
+         {
+            pattern.state=GOLDSCOUT_PATTERN_STATE_EXPIRED;
+            pattern.eventTime=closedRates[barIndex].time;
+            break;
+         }
+
+         double neckline=necklineIntercept+necklineSlope*(double)barIndex;
+         bool invalidated=bearish
+            ? closedRates[barIndex].close>sequence[2].price+invalidationBuffer
+            : closedRates[barIndex].close<sequence[2].price-invalidationBuffer;
+         if(invalidated)
+         {
+            pattern.state=GOLDSCOUT_PATTERN_STATE_INVALIDATED;
+            pattern.eventTime=closedRates[barIndex].time;
+            break;
+         }
+
+         bool confirmed=bearish
+            ? closedRates[barIndex].close<neckline-breakoutBuffer
+            : closedRates[barIndex].close>neckline+breakoutBuffer;
+         if(confirmed)
+         {
+            pattern.state=GOLDSCOUT_PATTERN_STATE_CONFIRMED;
+            pattern.eventTime=closedRates[barIndex].time;
+            pattern.breakoutDirection=bearish ? -1 : 1;
+            pattern.breakoutStrengthAtr=bearish
+               ? (neckline-closedRates[barIndex].close)/referenceAtr
+               : (closedRates[barIndex].close-neckline)/referenceAtr;
+            pattern.volumeConfirmed=GS_HeadShouldersVolumeConfirmation(
+               closedRates,barIndex,config);
+            pattern.momentumConfirmed=GS_HeadShouldersMomentumConfirmation(
+               closedRates[barIndex],pattern.breakoutDirection,referenceAtr,config);
+            break;
+         }
+      }
+
+      pattern.quality=GS_HeadShouldersPatternQuality(pattern,config);
+      return true;
+   }
+   return true;
+}
+
 // closedRates and closedAtr must be ordered from oldest to newest and must not
 // contain the currently open candle. newestClosedShift therefore cannot be 0.
 bool GS_DetectConfirmedPivots(const MqlRates &closedRates[],
@@ -1704,6 +2086,30 @@ bool GS_LoadLatestConvergencePatternDiagnostic(
    int copied=CopyRates(symbol,timeframe,1,barsToLoad,closedRates);
    if(copied<6) return false;
    return GS_DetectLatestConvergencePattern(confirmedPivots,closedRates,1,
+      config,minimumPriceStep,pattern);
+}
+
+// Closed-bar terminal adapter for diagnostic HCH and inverted HCH patterns.
+bool GS_LoadLatestHeadShouldersPatternDiagnostic(
+   const string symbol,
+   const ENUM_TIMEFRAMES timeframe,
+   const int barsToLoad,
+   const GoldScoutPivot &confirmedPivots[],
+   const double minimumPriceStep,
+   const GoldScoutHeadShouldersPatternConfig &config,
+   GoldScoutHeadShouldersPatternDiagnostic &pattern)
+{
+   GS_ClearHeadShouldersPatternDiagnostic(pattern);
+   if(symbol=="" || barsToLoad<5 ||
+      !GS_ValidateHeadShouldersPatternConfig(config) ||
+      !GS_ValidPositiveNumber(minimumPriceStep))
+      return false;
+
+   MqlRates closedRates[];
+   ArraySetAsSeries(closedRates,false);
+   int copied=CopyRates(symbol,timeframe,1,barsToLoad,closedRates);
+   if(copied<5) return false;
+   return GS_DetectLatestHeadShouldersPattern(confirmedPivots,closedRates,1,
       config,minimumPriceStep,pattern);
 }
 

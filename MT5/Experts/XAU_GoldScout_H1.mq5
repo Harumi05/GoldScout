@@ -116,6 +116,25 @@ input bool   ConvergenceUseMomentumQuality    = true;
 input double ConvergenceMomentumBodyATR       = 0.50;
 input bool   DebugConvergencePatternLogs      = false;
 
+input group "=== Diagnostic HCH / Inverted HCH ==="
+input bool   EnableHeadShouldersDiagnostics   = true;
+input double HeadShouldersToleranceATR        = 0.75;
+input double HeadMinProminenceATR             = 0.75;
+input double HeadShouldersMinDepthATR          = 2.00;
+input int    HeadShouldersMinPivotBars        = 3;
+input int    HeadShouldersMaxPivotBars        = 24;
+input double HeadShouldersMinTemporalBalance  = 0.50;
+input double HeadShouldersMaxNecklineSlopeATR = 0.15;
+input int    HeadShouldersMaxConfirmationBars = 12;
+input double HeadShouldersBreakoutBufferATR   = 0.05;
+input double HeadShouldersInvalidationATR     = 0.20;
+input bool   HeadShouldersUseVolumeQuality    = true;
+input int    HeadShouldersVolumeLookback      = 20;
+input double HeadShouldersVolumeMultiplier    = 1.05;
+input bool   HeadShouldersUseMomentumQuality  = true;
+input double HeadShouldersMomentumBodyATR     = 0.50;
+input bool   DebugHeadShouldersPatternLogs    = false;
+
 input group "=== News Filter ==="
 input bool   UseNewsFilter           = true;
 input int    NewsBlockBeforeMin      = 30;
@@ -206,6 +225,12 @@ datetime g_convergencePatternEvaluatedClosedBar=0;
 datetime g_lastConvergencePatternLogTime=0;
 string   g_lastConvergencePatternLogSignature="";
 const int CONVERGENCE_PATTERN_LOG_INTERVAL_SECONDS=30;
+
+GoldScoutHeadShouldersPatternDiagnostic g_headShouldersPatternDiagnostic;
+datetime g_headShouldersPatternEvaluatedClosedBar=0;
+datetime g_lastHeadShouldersPatternLogTime=0;
+string   g_lastHeadShouldersPatternLogSignature="";
+const int HEAD_SHOULDERS_PATTERN_LOG_INTERVAL_SECONDS=30;
 
 struct BrokerContractSpec
 {
@@ -472,6 +497,77 @@ void RefreshConvergencePatternDiagnostics(const GoldScoutPivot &confirmedPivots[
    g_convergencePatternDiagnostic=detectedPattern;
    g_convergencePatternEvaluatedClosedBar=latestClosedBar;
    LogConvergencePattern(g_convergencePatternDiagnostic);
+}
+
+void ConfigureHeadShouldersPatternDiagnostics(GoldScoutHeadShouldersPatternConfig &config)
+{
+   config.shoulderToleranceAtr=HeadShouldersToleranceATR;
+   config.minHeadProminenceAtr=HeadMinProminenceATR;
+   config.minDepthAtr=HeadShouldersMinDepthATR;
+   config.minPivotBars=HeadShouldersMinPivotBars;
+   config.maxPivotBars=HeadShouldersMaxPivotBars;
+   config.minTemporalBalance=HeadShouldersMinTemporalBalance;
+   config.maxNecklineSlopeAtrPerBar=HeadShouldersMaxNecklineSlopeATR;
+   config.maxConfirmationBars=HeadShouldersMaxConfirmationBars;
+   config.breakoutBufferAtr=HeadShouldersBreakoutBufferATR;
+   config.invalidationAtr=HeadShouldersInvalidationATR;
+   config.useVolumeQuality=HeadShouldersUseVolumeQuality;
+   config.volumeLookback=HeadShouldersVolumeLookback;
+   config.volumeMultiplier=HeadShouldersVolumeMultiplier;
+   config.useMomentumQuality=HeadShouldersUseMomentumQuality;
+   config.momentumBodyAtr=HeadShouldersMomentumBodyATR;
+}
+
+void LogHeadShouldersPattern(const GoldScoutHeadShouldersPatternDiagnostic &pattern)
+{
+   if(!DebugHeadShouldersPatternLogs || !pattern.detected) return;
+   string breakout=pattern.breakoutDirection>0?"LONG":
+      (pattern.breakoutDirection<0?"SHORT":"NONE");
+   string signature=pattern.identity+"|"+GS_PatternStateName(pattern.state)+"|"+breakout;
+   if(signature==g_lastHeadShouldersPatternLogSignature) return;
+
+   datetime now=TimeTradeServer();
+   if(now<=0) now=TimeLocal();
+   if(now<=0 || (g_lastHeadShouldersPatternLogTime>0 &&
+      (long)(now-g_lastHeadShouldersPatternLogTime)<HEAD_SHOULDERS_PATTERN_LOG_INTERVAL_SECONDS))
+      return;
+
+   PrintFormat("[GoldScout][STRUCTURE] pattern=%s | state=%s | breakout=%s | head=%.2f | shoulderDiff=%.2fATR | necklineSlope=%.3fATR/bar | quality=%.1f (%s)",
+      GS_HeadShouldersPatternTypeName(pattern.type),GS_PatternStateName(pattern.state),
+      breakout,pattern.head.price,pattern.shoulderDifference/pattern.referenceAtr,
+      pattern.necklineSlopeAtrPerBar,pattern.quality,
+      GS_PatternQualityName(pattern.quality));
+   g_lastHeadShouldersPatternLogSignature=signature;
+   g_lastHeadShouldersPatternLogTime=now;
+}
+
+void RefreshHeadShouldersPatternDiagnostics(const GoldScoutPivot &confirmedPivots[],
+                                             const bool pivotDataAvailable)
+{
+   if(!EnableHeadShouldersDiagnostics)
+   {
+      GS_ClearHeadShouldersPatternDiagnostic(g_headShouldersPatternDiagnostic);
+      return;
+   }
+
+   datetime latestClosedBar=iTime(_Symbol,PERIOD_H1,1);
+   if(latestClosedBar<=0 || latestClosedBar==g_headShouldersPatternEvaluatedClosedBar) return;
+
+   GoldScoutHeadShouldersPatternConfig config;
+   ConfigureHeadShouldersPatternDiagnostics(config);
+   GoldScoutHeadShouldersPatternDiagnostic detectedPattern;
+   GS_ClearHeadShouldersPatternDiagnostic(detectedPattern);
+   if(!pivotDataAvailable ||
+      !GS_LoadLatestHeadShouldersPatternDiagnostic(_Symbol,PERIOD_H1,PivotLookbackBars,
+         confirmedPivots,_Point,config,detectedPattern))
+   {
+      GS_ClearHeadShouldersPatternDiagnostic(g_headShouldersPatternDiagnostic);
+      return;
+   }
+
+   g_headShouldersPatternDiagnostic=detectedPattern;
+   g_headShouldersPatternEvaluatedClosedBar=latestClosedBar;
+   LogHeadShouldersPattern(g_headShouldersPatternDiagnostic);
 }
 
 bool LoadBrokerContract(BrokerContractSpec &spec,string &msg)
@@ -1365,6 +1461,7 @@ bool BuildSignal(int &direction, int &score, string &setup, string &reason, doub
    RefreshStructurePatternDiagnostics(confirmedPivots,pivotDataAvailable);
    RefreshContinuationPatternDiagnostics(confirmedPivots,pivotDataAvailable);
    RefreshConvergencePatternDiagnostics(confirmedPivots,pivotDataAvailable);
+   RefreshHeadShouldersPatternDiagnostics(confirmedPivots,pivotDataAvailable);
 
    bool breakLong = close1 > recentHigh;
    bool breakShort = close1 < recentLow;
@@ -2101,6 +2198,7 @@ int OnInit()
    GS_ClearPatternDiagnostic(g_patternDiagnostic);
    GS_ClearContinuationPatternDiagnostic(g_continuationPatternDiagnostic);
    GS_ClearConvergencePatternDiagnostic(g_convergencePatternDiagnostic);
+   GS_ClearHeadShouldersPatternDiagnostic(g_headShouldersPatternDiagnostic);
    if(!IsGoldSymbol())
    {
       Print("[GoldScout] BLOQUEADO: este EA solo funciona en XAUUSD. Simbolo actual: ", _Symbol);
