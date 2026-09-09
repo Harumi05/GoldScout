@@ -33,3 +33,13 @@ Mantener y mejorar el sistema GoldScout para XAUUSD H1, incluyendo EA de MetaTra
 
 ## Seguridad
 El agente puede analizar, probar y modificar código. No puede convertir el sistema a trading real ni aumentar parámetros de riesgo sin autorización explícita.
+
+## Eficiencia de contexto
+- No releer archivos no relacionados con la tarea actual.
+- No repetir arquitectura, reglas o contexto ya conocido.
+- Preferir cambios pequeños y diffs mínimos.
+- Limitar la investigación al alcance solicitado.
+- No refactorizar código fuera del problema actual.
+- Leer primero AGENTS.md y luego solo los archivos estrictamente necesarios.
+- Después de cada cambio, reportar solo: causa raíz, archivos modificados, pruebas y resultado.
+- Si aparece un problema no relacionado, mencionarlo brevemente pero no corregirlo sin autorización.
