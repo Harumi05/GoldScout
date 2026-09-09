@@ -70,6 +70,31 @@ input bool   PatternUseMomentumQuality       = true;
 input double PatternMomentumBodyATR          = 0.50;
 input bool   DebugStructurePatternLogs       = false;
 
+input group "=== Diagnostic Flags / Pennants ==="
+input bool   EnableContinuationPatternDiagnostics = true;
+input double ContinuationMinPoleATR          = 3.00;
+input int    ContinuationMinPoleBars          = 2;
+input int    ContinuationMaxPoleBars          = 24;
+input double ContinuationMinPoleEfficiency   = 0.60;
+input double ContinuationMinRetracement      = 0.10;
+input double ContinuationMaxRetracement      = 0.60;
+input int    ContinuationMinBars              = 4;
+input int    ContinuationMaxBars              = 24;
+input int    ContinuationMaxConfirmationBars  = 12;
+input double ContinuationMinGeometryMoveATR  = 0.20;
+input double FlagMinParallelRatio             = 0.50;
+input double FlagWidthTolerance               = 0.50;
+input double PennantMaxWidthRatio             = 0.75;
+input double PennantMinConvergenceBalance     = 0.25;
+input double ContinuationBreakoutBufferATR    = 0.05;
+input double ContinuationInvalidationATR      = 0.20;
+input bool   ContinuationUseVolumeQuality     = true;
+input int    ContinuationVolumeLookback       = 20;
+input double ContinuationVolumeMultiplier     = 1.05;
+input bool   ContinuationUseMomentumQuality   = true;
+input double ContinuationMomentumBodyATR      = 0.50;
+input bool   DebugContinuationPatternLogs     = false;
+
 input group "=== News Filter ==="
 input bool   UseNewsFilter           = true;
 input int    NewsBlockBeforeMin      = 30;
@@ -148,6 +173,12 @@ datetime g_patternEvaluatedClosedBar=0;
 datetime g_lastPatternLogTime=0;
 string   g_lastPatternLogSignature="";
 const int STRUCTURE_PATTERN_LOG_INTERVAL_SECONDS=30;
+
+GoldScoutContinuationPatternDiagnostic g_continuationPatternDiagnostic;
+datetime g_continuationPatternEvaluatedClosedBar=0;
+datetime g_lastContinuationPatternLogTime=0;
+string   g_lastContinuationPatternLogSignature="";
+const int CONTINUATION_PATTERN_LOG_INTERVAL_SECONDS=30;
 
 struct BrokerContractSpec
 {
@@ -268,6 +299,80 @@ void RefreshStructurePatternDiagnostics(const GoldScoutPivot &confirmedPivots[],
    g_patternDiagnostic=detectedPattern;
    g_patternEvaluatedClosedBar=latestClosedBar;
    LogStructurePattern(g_patternDiagnostic);
+}
+
+void ConfigureContinuationPatternDiagnostics(GoldScoutContinuationPatternConfig &config)
+{
+   config.minPoleAtr=ContinuationMinPoleATR;
+   config.minPoleBars=ContinuationMinPoleBars;
+   config.maxPoleBars=ContinuationMaxPoleBars;
+   config.minPoleEfficiency=ContinuationMinPoleEfficiency;
+   config.minRetracementRatio=ContinuationMinRetracement;
+   config.maxRetracementRatio=ContinuationMaxRetracement;
+   config.minConsolidationBars=ContinuationMinBars;
+   config.maxConsolidationBars=ContinuationMaxBars;
+   config.maxConfirmationBars=ContinuationMaxConfirmationBars;
+   config.minGeometryMoveAtr=ContinuationMinGeometryMoveATR;
+   config.minFlagParallelRatio=FlagMinParallelRatio;
+   config.flagWidthTolerance=FlagWidthTolerance;
+   config.maxPennantWidthRatio=PennantMaxWidthRatio;
+   config.minPennantConvergenceBalance=PennantMinConvergenceBalance;
+   config.breakoutBufferAtr=ContinuationBreakoutBufferATR;
+   config.invalidationAtr=ContinuationInvalidationATR;
+   config.useVolumeQuality=ContinuationUseVolumeQuality;
+   config.volumeLookback=ContinuationVolumeLookback;
+   config.volumeMultiplier=ContinuationVolumeMultiplier;
+   config.useMomentumQuality=ContinuationUseMomentumQuality;
+   config.momentumBodyAtr=ContinuationMomentumBodyATR;
+}
+
+void LogContinuationPattern(const GoldScoutContinuationPatternDiagnostic &pattern)
+{
+   if(!DebugContinuationPatternLogs || !pattern.detected) return;
+   string signature=pattern.identity+"|"+GS_PatternStateName(pattern.state);
+   if(signature==g_lastContinuationPatternLogSignature) return;
+
+   datetime now=TimeTradeServer();
+   if(now<=0) now=TimeLocal();
+   if(now<=0 || (g_lastContinuationPatternLogTime>0 &&
+      (long)(now-g_lastContinuationPatternLogTime)<CONTINUATION_PATTERN_LOG_INTERVAL_SECONDS))
+      return;
+
+   PrintFormat("[GoldScout][STRUCTURE] pattern=%s | state=%s | pole=%.2fATR | retracement=%.1f%% | bars=%d | quality=%.1f (%s)",
+      GS_ContinuationPatternTypeName(pattern.type),GS_PatternStateName(pattern.state),
+      pattern.poleStrengthAtr,pattern.retracementRatio*100.0,
+      pattern.consolidationBars,pattern.quality,GS_PatternQualityName(pattern.quality));
+   g_lastContinuationPatternLogSignature=signature;
+   g_lastContinuationPatternLogTime=now;
+}
+
+void RefreshContinuationPatternDiagnostics(const GoldScoutPivot &confirmedPivots[],
+                                           const bool pivotDataAvailable)
+{
+   if(!EnableContinuationPatternDiagnostics)
+   {
+      GS_ClearContinuationPatternDiagnostic(g_continuationPatternDiagnostic);
+      return;
+   }
+
+   datetime latestClosedBar=iTime(_Symbol,PERIOD_H1,1);
+   if(latestClosedBar<=0 || latestClosedBar==g_continuationPatternEvaluatedClosedBar) return;
+
+   GoldScoutContinuationPatternConfig config;
+   ConfigureContinuationPatternDiagnostics(config);
+   GoldScoutContinuationPatternDiagnostic detectedPattern;
+   GS_ClearContinuationPatternDiagnostic(detectedPattern);
+   if(!pivotDataAvailable ||
+      !GS_LoadLatestContinuationPatternDiagnostic(_Symbol,PERIOD_H1,PivotLookbackBars,
+         confirmedPivots,_Point,config,detectedPattern))
+   {
+      GS_ClearContinuationPatternDiagnostic(g_continuationPatternDiagnostic);
+      return;
+   }
+
+   g_continuationPatternDiagnostic=detectedPattern;
+   g_continuationPatternEvaluatedClosedBar=latestClosedBar;
+   LogContinuationPattern(g_continuationPatternDiagnostic);
 }
 
 bool LoadBrokerContract(BrokerContractSpec &spec,string &msg)
@@ -1159,6 +1264,7 @@ bool BuildSignal(int &direction, int &score, string &setup, string &reason, doub
    bool ll=pivotStructure.ll;
    string pivotStructureName=GS_StructureStateName(pivotStructure.state);
    RefreshStructurePatternDiagnostics(confirmedPivots,pivotDataAvailable);
+   RefreshContinuationPatternDiagnostics(confirmedPivots,pivotDataAvailable);
 
    bool breakLong = close1 > recentHigh;
    bool breakShort = close1 < recentLow;
@@ -1893,6 +1999,7 @@ bool IsGoldSymbol()
 int OnInit()
 {
    GS_ClearPatternDiagnostic(g_patternDiagnostic);
+   GS_ClearContinuationPatternDiagnostic(g_continuationPatternDiagnostic);
    if(!IsGoldSymbol())
    {
       Print("[GoldScout] BLOQUEADO: este EA solo funciona en XAUUSD. Simbolo actual: ", _Symbol);
