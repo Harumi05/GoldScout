@@ -1,6 +1,7 @@
-"""Characterization tests for legacy scoring and the unused pivot foundation."""
+"""Characterization tests for scoring, confirmed pivots and market structure."""
 
 from dataclasses import dataclass
+from itertools import product
 from pathlib import Path
 import unittest
 
@@ -8,6 +9,20 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 EA_PATH = ROOT / "MT5" / "Experts" / "XAU_GoldScout_H1.mq5"
 PIVOT_PATH = ROOT / "MT5" / "Include" / "GoldScout" / "MarketStructure.mqh"
+MAX_STRUCTURAL_BUCKET_POINTS = 25
+
+
+def structural_bucket_points(state, direction, pullback=False, breakout=False, momentum=False):
+    if (
+        (direction > 0 and state != "ALCISTA")
+        or (direction < 0 and state != "BAJISTA")
+        or direction == 0
+    ):
+        return 0
+    points = 15
+    points += 5 if pullback else 0
+    points += 10 if breakout else 5 if momentum else 0
+    return min(MAX_STRUCTURAL_BUCKET_POINTS, points)
 
 
 def legacy_scores(
@@ -34,7 +49,7 @@ def legacy_scores(
     volume_long=False,
     volume_short=False,
 ):
-    """Exact pre-pivot technical-scoring behavior of BuildSignal()."""
+    """Current BuildSignal scoring, with non-structural weights unchanged."""
     long_score = 20 if bull_htf else 0
     short_score = 20 if bear_htf else 0
     long_score += 15 if bull_ltf else 0
@@ -46,19 +61,15 @@ def legacy_scores(
         short_score += 10 if bear_htf or bear_ltf else 0
     long_score += 10 if rsi_long else 0
     short_score += 10 if rsi_short else 0
-    long_score += 5 if htf_pull_long else 0
-    short_score += 5 if htf_pull_short else 0
-
-    structure_long = break_long or hh or hl or pull_long
-    structure_short = break_short or ll or lh or pull_short
-    long_score += 15 if structure_long else 0
-    short_score += 15 if structure_short else 0
-    long_score += 10 if pull_long else 0
-    short_score += 10 if pull_short else 0
-    long_score += 10 if break_long else 0
-    short_score += 10 if break_short else 0
-    long_score += 5 if momentum_long else 0
-    short_score += 5 if momentum_short else 0
+    structure_state = (
+        "ALCISTA" if hh and hl else "BAJISTA" if lh and ll else "NEUTRA"
+    )
+    long_score += structural_bucket_points(
+        structure_state, 1, pull_long, break_long, momentum_long
+    )
+    short_score += structural_bucket_points(
+        structure_state, -1, pull_short, break_short, momentum_short
+    )
     long_score += 5 if volume_long else 0
     short_score += 5 if volume_short else 0
     return min(100, long_score), min(100, short_score)
@@ -79,20 +90,23 @@ class LegacyStructureCharacterizationTests(unittest.TestCase):
     def setUpClass(cls):
         cls.ea = EA_PATH.read_text(encoding="utf-8")
 
-    def test_source_keeps_closed_bar_and_fixed_window_baseline(self):
+    def test_source_keeps_closed_bar_and_breakout_window_baseline(self):
         required = (
             "GetValue(hEmaFast,0,1,emaF)",
             "GetValue(hEmaHTFFast,0,1,h4F)",
             "double close1=iClose(_Symbol,PERIOD_H1,1)",
             "iHighest(_Symbol,PERIOD_H1,MODE_HIGH,StructureLookback,2)",
-            "iHighest(_Symbol,PERIOD_H1,MODE_HIGH,StructureLookback,StructureLookback+2)",
-            "bool hh = recentHigh > priorHigh + atr*0.20;",
-            "bool hl = recentLow  > priorLow  + atr*0.20;",
-            "bool lh = recentHigh < priorHigh - atr*0.20;",
-            "bool ll = recentLow  < priorLow  - atr*0.20;",
+            "GS_LoadConfirmedPivots(_Symbol,PERIOD_H1,hATR,PivotLookbackBars,pivotConfig,confirmedPivots)",
+            "GS_ClassifyConfirmedStructure(confirmedPivots,pivotConfig.toleranceAtr,_Point,pivotStructure)",
+            "bool hh=pivotStructure.hh;",
+            "bool hl=pivotStructure.hl;",
+            "bool lh=pivotStructure.lh;",
+            "bool ll=pivotStructure.ll;",
         )
         for fragment in required:
             self.assertIn(fragment, self.ea)
+        self.assertNotIn("priorHiIdx", self.ea)
+        self.assertNotIn("priorLoIdx", self.ea)
 
     def test_h4_bullish_and_bearish_bias(self):
         self.assertEqual(legacy_scores(bull_htf=True), (20, 0))
@@ -103,27 +117,29 @@ class LegacyStructureCharacterizationTests(unittest.TestCase):
         self.assertEqual(legacy_scores(bear_ltf=True), (0, 15))
 
     def test_hh_and_hl_reward_long_structure_once(self):
-        self.assertEqual(legacy_scores(hh=True), (15, 0))
-        self.assertEqual(legacy_scores(hl=True), (15, 0))
         self.assertEqual(legacy_scores(hh=True, hl=True), (15, 0))
+        self.assertEqual(legacy_scores(hh=True), (0, 0))
+        self.assertEqual(legacy_scores(hl=True), (0, 0))
 
     def test_lh_and_ll_reward_short_structure_once(self):
-        self.assertEqual(legacy_scores(lh=True), (0, 15))
-        self.assertEqual(legacy_scores(ll=True), (0, 15))
         self.assertEqual(legacy_scores(lh=True, ll=True), (0, 15))
+        self.assertEqual(legacy_scores(lh=True), (0, 0))
+        self.assertEqual(legacy_scores(ll=True), (0, 0))
 
-    def test_breakout_also_receives_structure_and_momentum_points(self):
+    def test_breakout_and_momentum_share_the_structural_bucket(self):
         self.assertEqual(
-            legacy_scores(break_long=True, momentum_long=True), (30, 0)
+            legacy_scores(hh=True, hl=True, break_long=True, momentum_long=True),
+            (25, 0),
         )
         self.assertEqual(
-            legacy_scores(break_short=True, momentum_short=True), (0, 30)
+            legacy_scores(lh=True, ll=True, break_short=True, momentum_short=True),
+            (0, 25),
         )
         self.assertEqual(legacy_setup(1, breakout=True, momentum=True), "BREAKOUT")
 
-    def test_pullback_receives_structure_and_pullback_points(self):
-        self.assertEqual(legacy_scores(pull_long=True), (25, 0))
-        self.assertEqual(legacy_scores(pull_short=True), (0, 25))
+    def test_pullback_complements_confirmed_structure(self):
+        self.assertEqual(legacy_scores(hh=True, hl=True, pull_long=True), (20, 0))
+        self.assertEqual(legacy_scores(lh=True, ll=True, pull_short=True), (0, 20))
         self.assertEqual(legacy_setup(1, pullback=True), "PULLBACK")
 
     def test_continuation_is_the_setup_fallback(self):
@@ -140,8 +156,8 @@ class LegacyStructureCharacterizationTests(unittest.TestCase):
         )
 
     def test_momentum_contributes_five_points(self):
-        self.assertEqual(legacy_scores(momentum_long=True), (5, 0))
-        self.assertEqual(legacy_scores(momentum_short=True), (0, 5))
+        self.assertEqual(legacy_scores(hh=True, hl=True, momentum_long=True), (20, 0))
+        self.assertEqual(legacy_scores(lh=True, ll=True, momentum_short=True), (0, 20))
         self.assertEqual(legacy_setup(1, momentum=True), "MOMENTUM")
 
     def test_h4_h1_conflict_rewards_both_directions_when_adx_builds(self):
@@ -170,14 +186,9 @@ class LegacyStructureCharacterizationTests(unittest.TestCase):
             "if(bearHTF) shortScore+=20;",
             "if(bullLTF) longScore+=15;",
             "if(bearLTF) shortScore+=15;",
-            "if(structureLong) longScore+=15;",
-            "if(structureShort) shortScore+=15;",
-            "if(pullLong) longScore+=10;",
-            "if(pullShort) shortScore+=10;",
-            "if(breakLong) longScore+=10;",
-            "if(breakShort) shortScore+=10;",
-            "if(momLong) longScore+=5;",
-            "if(momShort) shortScore+=5;",
+            "longScore+=longStructuralPoints;",
+            "shortScore+=shortStructuralPoints;",
+            "if(volOK) { if(close1>=open1) longScore+=5; else shortScore+=5; }",
             'if(breakout) return "BREAKOUT";',
             'if(pullback) return "PULLBACK";',
             'if(momentum) return "MOMENTUM";',
@@ -186,6 +197,8 @@ class LegacyStructureCharacterizationTests(unittest.TestCase):
         )
         for fragment in required:
             self.assertIn(fragment, self.ea)
+        self.assertNotIn("if(htfPullLong) longScore+=5;", self.ea)
+        self.assertNotIn("if(htfPullShort) shortScore+=5;", self.ea)
 
 
 @dataclass(frozen=True)
@@ -215,6 +228,17 @@ class SyntheticPivot:
     confirmed: bool
 
 
+@dataclass(frozen=True)
+class StructureClassification:
+    state: str
+    sufficient: bool
+    hh: bool = False
+    hl: bool = False
+    lh: bool = False
+    ll: bool = False
+    alternating_count: int = 0
+
+
 def valid_config(config):
     return (
         config.left >= 1
@@ -230,6 +254,102 @@ def atr_tolerance(first_atr, second_atr, multiplier, minimum_price_step):
     if not all(value > 0.0 for value in values):
         return None
     return max(minimum_price_step, max(first_atr, second_atr) * multiplier)
+
+
+def normalize_alternating_pivots(confirmed_pivots):
+    alternating = []
+    previous_time = None
+    previous_shift = None
+    for pivot in confirmed_pivots:
+        if not pivot.confirmed:
+            continue
+        if (
+            pivot.kind not in {"HIGH", "LOW"}
+            or pivot.price <= 0.0
+            or pivot.atr <= 0.0
+            or pivot.timestamp <= 0
+            or pivot.shift < 1
+        ):
+            return None
+        if previous_time is not None and (
+            pivot.timestamp <= previous_time or pivot.shift >= previous_shift
+        ):
+            return None
+        previous_time = pivot.timestamp
+        previous_shift = pivot.shift
+
+        if alternating and alternating[-1].kind == pivot.kind:
+            more_extreme = (
+                pivot.price > alternating[-1].price
+                if pivot.kind == "HIGH"
+                else pivot.price < alternating[-1].price
+            )
+            if more_extreme:
+                alternating[-1] = pivot
+            continue
+        alternating.append(pivot)
+    return alternating
+
+
+def classify_confirmed_structure(
+    confirmed_pivots, tolerance_atr=0.20, minimum_price_step=0.01
+):
+    alternating = normalize_alternating_pivots(confirmed_pivots)
+    if alternating is None:
+        return None
+    highs = [pivot for pivot in alternating if pivot.kind == "HIGH"]
+    lows = [pivot for pivot in alternating if pivot.kind == "LOW"]
+    if len(highs) < 2 or len(lows) < 2:
+        return StructureClassification(
+            "INSUFICIENTE", False, alternating_count=len(alternating)
+        )
+
+    previous_high, current_high = highs[-2:]
+    previous_low, current_low = lows[-2:]
+    high_tolerance = atr_tolerance(
+        previous_high.atr,
+        current_high.atr,
+        tolerance_atr,
+        minimum_price_step,
+    )
+    low_tolerance = atr_tolerance(
+        previous_low.atr,
+        current_low.atr,
+        tolerance_atr,
+        minimum_price_step,
+    )
+    if high_tolerance is None or low_tolerance is None:
+        return None
+
+    hh = current_high.price > previous_high.price + high_tolerance
+    lh = current_high.price < previous_high.price - high_tolerance
+    hl = current_low.price > previous_low.price + low_tolerance
+    ll = current_low.price < previous_low.price - low_tolerance
+    state = "ALCISTA" if hh and hl else "BAJISTA" if lh and ll else "NEUTRA"
+    return StructureClassification(
+        state,
+        True,
+        hh=hh,
+        hl=hl,
+        lh=lh,
+        ll=ll,
+        alternating_count=len(alternating),
+    )
+
+
+def pivot_sequence(points, atr=1.0):
+    count = len(points)
+    return [
+        SyntheticPivot(
+            kind=kind,
+            price=price,
+            shift=count - index,
+            timestamp=1_000 + index * 3_600,
+            atr=atr,
+            confirmed=True,
+        )
+        for index, (kind, price) in enumerate(points)
+    ]
 
 
 def detect_confirmed_pivots(closed_bars, config=PivotConfig(), newest_shift=1):
@@ -299,10 +419,14 @@ class ConfirmedPivotEngineTests(unittest.TestCase):
         cls.ea = EA_PATH.read_text(encoding="utf-8")
         cls.pivot_source = PIVOT_PATH.read_text(encoding="utf-8")
 
-    def test_ea_includes_engine_but_does_not_call_it(self):
+    def test_ea_uses_engine_only_as_the_source_of_structure_flags(self):
         self.assertIn("#include <GoldScout/MarketStructure.mqh>", self.ea)
-        self.assertEqual(self.ea.count("GS_DetectConfirmedPivots"), 0)
-        self.assertEqual(self.ea.count("GS_LoadConfirmedPivots"), 0)
+        self.assertEqual(self.ea.count("GS_LoadConfirmedPivots"), 1)
+        self.assertEqual(self.ea.count("GS_ClassifyConfirmedStructure"), 1)
+        self.assertIn("bool hh=pivotStructure.hh;", self.ea)
+        self.assertIn("bool hl=pivotStructure.hl;", self.ea)
+        self.assertIn("bool lh=pivotStructure.lh;", self.ea)
+        self.assertIn("bool ll=pivotStructure.ll;", self.ea)
 
     def test_pivot_contract_has_required_fields_and_chronological_guard(self):
         required = (
@@ -415,6 +539,252 @@ class ConfirmedPivotEngineTests(unittest.TestCase):
         self.assertIsNone(atr_tolerance(1.0, 1.0, 0.0, 0.01))
         self.assertIsNone(atr_tolerance(0.0, 1.0, 0.3, 0.01))
         self.assertEqual(atr_tolerance(1.0, 2.0, 0.3, 0.01), 0.6)
+
+
+class ConfirmedStructureClassificationTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.pivot_source = PIVOT_PATH.read_text(encoding="utf-8")
+
+    def test_hh_hl_is_bullish(self):
+        result = classify_confirmed_structure(
+            pivot_sequence(
+                [("LOW", 100), ("HIGH", 110), ("LOW", 104), ("HIGH", 116)]
+            )
+        )
+        self.assertEqual(result.state, "ALCISTA")
+        self.assertTrue(result.hh)
+        self.assertTrue(result.hl)
+        self.assertFalse(result.lh)
+        self.assertFalse(result.ll)
+
+    def test_lh_ll_is_bearish(self):
+        result = classify_confirmed_structure(
+            pivot_sequence(
+                [("HIGH", 116), ("LOW", 104), ("HIGH", 108), ("LOW", 98)]
+            )
+        )
+        self.assertEqual(result.state, "BAJISTA")
+        self.assertTrue(result.lh)
+        self.assertTrue(result.ll)
+
+    def test_mixed_sequence_is_neutral(self):
+        result = classify_confirmed_structure(
+            pivot_sequence(
+                [("LOW", 100), ("HIGH", 110), ("LOW", 94), ("HIGH", 116)]
+            )
+        )
+        self.assertEqual(result.state, "NEUTRA")
+        self.assertTrue(result.hh)
+        self.assertTrue(result.ll)
+
+    def test_difference_inside_atr_tolerance_is_neutral(self):
+        result = classify_confirmed_structure(
+            pivot_sequence(
+                [("LOW", 100.0), ("HIGH", 110.0), ("LOW", 100.1), ("HIGH", 110.1)]
+            ),
+            tolerance_atr=0.20,
+        )
+        self.assertEqual(result.state, "NEUTRA")
+        self.assertFalse(any((result.hh, result.hl, result.lh, result.ll)))
+
+    def test_too_few_pivots_is_insufficient(self):
+        result = classify_confirmed_structure(
+            pivot_sequence([("LOW", 100), ("HIGH", 110), ("LOW", 104)])
+        )
+        self.assertEqual(result.state, "INSUFICIENTE")
+        self.assertFalse(result.sufficient)
+
+    def test_repeated_same_type_collapses_to_the_more_extreme_pivot(self):
+        result = classify_confirmed_structure(
+            pivot_sequence(
+                [
+                    ("LOW", 100),
+                    ("HIGH", 110),
+                    ("HIGH", 112),
+                    ("LOW", 104),
+                    ("HIGH", 116),
+                ]
+            )
+        )
+        self.assertEqual(result.state, "ALCISTA")
+        self.assertEqual(result.alternating_count, 4)
+        self.assertTrue(result.hh)
+        self.assertTrue(result.hl)
+
+    def test_unconfirmed_open_pivot_does_not_change_structure(self):
+        confirmed = pivot_sequence(
+            [("LOW", 100), ("HIGH", 110), ("LOW", 104), ("HIGH", 116)]
+        )
+        open_pivot = SyntheticPivot(
+            kind="LOW",
+            price=80,
+            shift=0,
+            timestamp=confirmed[-1].timestamp + 3_600,
+            atr=1.0,
+            confirmed=False,
+        )
+        self.assertEqual(
+            classify_confirmed_structure(confirmed),
+            classify_confirmed_structure(confirmed + [open_pivot]),
+        )
+
+    def test_transition_from_bullish_to_bearish(self):
+        bullish = pivot_sequence(
+            [("LOW", 100), ("HIGH", 110), ("LOW", 104), ("HIGH", 116)]
+        )
+        bearish = pivot_sequence(
+            [
+                ("LOW", 100),
+                ("HIGH", 110),
+                ("LOW", 104),
+                ("HIGH", 116),
+                ("LOW", 98),
+                ("HIGH", 108),
+            ]
+        )
+        self.assertEqual(classify_confirmed_structure(bullish).state, "ALCISTA")
+        self.assertEqual(classify_confirmed_structure(bearish).state, "BAJISTA")
+
+    def test_transition_from_bearish_to_bullish(self):
+        bearish = pivot_sequence(
+            [("HIGH", 116), ("LOW", 104), ("HIGH", 108), ("LOW", 98)]
+        )
+        bullish = pivot_sequence(
+            [
+                ("HIGH", 116),
+                ("LOW", 104),
+                ("HIGH", 108),
+                ("LOW", 98),
+                ("HIGH", 120),
+                ("LOW", 106),
+            ]
+        )
+        self.assertEqual(classify_confirmed_structure(bearish).state, "BAJISTA")
+        self.assertEqual(classify_confirmed_structure(bullish).state, "ALCISTA")
+
+    def test_source_defines_explicit_states_and_uses_only_confirmed_pivots(self):
+        required = (
+            "GOLDSCOUT_STRUCTURE_BULLISH",
+            "GOLDSCOUT_STRUCTURE_BEARISH",
+            "GOLDSCOUT_STRUCTURE_NEUTRAL",
+            "GOLDSCOUT_STRUCTURE_INSUFFICIENT",
+            "if(!confirmedPivots[i].confirmed) continue;",
+            "if(classification.hh && classification.hl)",
+            "else if(classification.lh && classification.ll)",
+        )
+        for fragment in required:
+            self.assertIn(fragment, self.pivot_source)
+
+
+class StructuralBucketScoringTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.ea = EA_PATH.read_text(encoding="utf-8")
+        cls.pivot_source = PIVOT_PATH.read_text(encoding="utf-8")
+
+    def test_hh_hl_bullish_structure_scores_once(self):
+        self.assertEqual(structural_bucket_points("ALCISTA", 1), 15)
+        self.assertEqual(structural_bucket_points("ALCISTA", -1), 0)
+
+    def test_lh_ll_bearish_structure_scores_once(self):
+        self.assertEqual(structural_bucket_points("BAJISTA", -1), 15)
+        self.assertEqual(structural_bucket_points("BAJISTA", 1), 0)
+
+    def test_mixed_neutral_structure_scores_zero(self):
+        self.assertEqual(structural_bucket_points("NEUTRA", 1, True, True, True), 0)
+        self.assertEqual(structural_bucket_points("NEUTRA", -1, True, True, True), 0)
+
+    def test_bullish_pullback_adds_only_complementary_points(self):
+        self.assertEqual(structural_bucket_points("ALCISTA", 1, pullback=True), 20)
+
+    def test_bearish_pullback_adds_only_complementary_points(self):
+        self.assertEqual(structural_bucket_points("BAJISTA", -1, pullback=True), 20)
+
+    def test_breakout_and_momentum_share_one_impulse_contribution(self):
+        self.assertEqual(
+            structural_bucket_points("ALCISTA", 1, breakout=True, momentum=True),
+            25,
+        )
+        self.assertEqual(
+            structural_bucket_points("BAJISTA", -1, breakout=True, momentum=True),
+            25,
+        )
+
+    def test_breakout_without_momentum_has_the_same_bounded_contribution(self):
+        self.assertEqual(
+            structural_bucket_points("ALCISTA", 1, breakout=True, momentum=False),
+            25,
+        )
+
+    def test_bucket_reaches_but_never_exceeds_exact_limit(self):
+        self.assertEqual(
+            structural_bucket_points(
+                "ALCISTA", 1, pullback=True, breakout=True, momentum=True
+            ),
+            MAX_STRUCTURAL_BUCKET_POINTS,
+        )
+
+    def test_no_boolean_route_can_exceed_structural_limit(self):
+        for state, direction, pullback, breakout, momentum in product(
+            ("ALCISTA", "BAJISTA", "NEUTRA", "INSUFICIENTE"),
+            (-1, 0, 1),
+            (False, True),
+            (False, True),
+            (False, True),
+        ):
+            points = structural_bucket_points(
+                state, direction, pullback, breakout, momentum
+            )
+            self.assertGreaterEqual(points, 0)
+            self.assertLessEqual(points, MAX_STRUCTURAL_BUCKET_POINTS)
+
+    def test_non_structural_weights_and_volume_remain_separate(self):
+        self.assertEqual(
+            legacy_scores(
+                bull_htf=True,
+                bull_ltf=True,
+                adx_build=True,
+                rsi_long=True,
+                volume_long=True,
+            ),
+            (65, 0),
+        )
+        self.assertEqual(
+            legacy_scores(
+                bear_htf=True,
+                bear_ltf=True,
+                adx_build=True,
+                rsi_short=True,
+                volume_short=True,
+            ),
+            (0, 65),
+        )
+        self.assertEqual(
+            legacy_scores(
+                hh=True,
+                hl=True,
+                pull_long=True,
+                break_long=True,
+                momentum_long=True,
+                volume_long=True,
+            ),
+            (30, 0),
+        )
+
+    def test_source_enforces_directional_bucket_and_cap(self):
+        required = (
+            "const int GOLDSCOUT_MAX_STRUCTURAL_BUCKET_POINTS=25;",
+            "state!=GOLDSCOUT_STRUCTURE_BULLISH",
+            "state!=GOLDSCOUT_STRUCTURE_BEARISH",
+            "if(pullback) points+=5;",
+            "if(breakout) points+=10;",
+            "else if(momentum) points+=5;",
+            "MathMin(GOLDSCOUT_MAX_STRUCTURAL_BUCKET_POINTS,points)",
+        )
+        for fragment in required:
+            self.assertIn(fragment, self.pivot_source)
+        self.assertEqual(self.ea.count("GS_StructuralBucketPoints"), 2)
 
 
 if __name__ == "__main__":

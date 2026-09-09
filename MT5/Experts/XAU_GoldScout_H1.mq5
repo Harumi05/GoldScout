@@ -45,6 +45,14 @@ input int    ATRPeriod               = 14;
 input int    VolumeLookback          = 20;
 input double MinADX                  = 20.0;
 
+input group "=== Confirmed Market Structure ==="
+input int    PivotLookbackBars       = 120;
+input int    PivotLeftBars           = 2;
+input int    PivotRightBars          = 2;
+input int    PivotMinBarsBetween     = 2;
+input double PivotMinProminenceATR   = 0.20;
+input double PivotEqualityToleranceATR = 0.20;
+
 input group "=== News Filter ==="
 input bool   UseNewsFilter           = true;
 input int    NewsBlockBeforeMin      = 30;
@@ -159,6 +167,15 @@ bool GetValue(int handle, int buffer, int shift, double &out)
    if(CopyBuffer(handle, buffer, shift, 1, v) != 1) return false;
    out = v[0];
    return true;
+}
+
+void ConfigurePivotEngine(GoldScoutPivotConfig &config)
+{
+   config.leftBars=PivotLeftBars;
+   config.rightBars=PivotRightBars;
+   config.minBarsBetween=PivotMinBarsBetween;
+   config.minProminenceAtr=PivotMinProminenceATR;
+   config.toleranceAtr=PivotEqualityToleranceATR;
 }
 
 bool LoadBrokerContract(BrokerContractSpec &spec,string &msg)
@@ -476,6 +493,14 @@ bool SafetyInputsValid(string &msg)
    if(MaxDrawdownPercent<=0.0 || MaxDrawdownPercent>100.0)
    {
       msg="Configuración inválida: MaxDrawdownPercent debe estar entre 0 y 100";
+      return false;
+   }
+   GoldScoutPivotConfig pivotConfig;
+   ConfigurePivotEngine(pivotConfig);
+   if(!GS_ValidatePivotConfig(pivotConfig) ||
+      PivotLookbackBars<pivotConfig.leftBars+pivotConfig.rightBars+1)
+   {
+      msg="Configuración inválida: parámetros del motor de pivots";
       return false;
    }
    return true;
@@ -1016,10 +1041,6 @@ bool BuildSignal(int &direction, int &score, string &setup, string &reason, doub
    int loIdx=iLowest(_Symbol,PERIOD_H1,MODE_LOW,StructureLookback,2);
    double recentHigh=hiIdx>=0?iHigh(_Symbol,PERIOD_H1,hiIdx):high2;
    double recentLow=loIdx>=0?iLow(_Symbol,PERIOD_H1,loIdx):low2;
-   int priorHiIdx=iHighest(_Symbol,PERIOD_H1,MODE_HIGH,StructureLookback,StructureLookback+2);
-   int priorLoIdx=iLowest(_Symbol,PERIOD_H1,MODE_LOW,StructureLookback,StructureLookback+2);
-   double priorHigh=priorHiIdx>=0?iHigh(_Symbol,PERIOD_H1,priorHiIdx):recentHigh;
-   double priorLow=priorLoIdx>=0?iLow(_Symbol,PERIOD_H1,priorLoIdx):recentLow;
    double avgVol=RecentVolumeAverage(2);
    double curVol=(double)iVolume(_Symbol,PERIOD_H1,1);
 
@@ -1030,10 +1051,21 @@ bool BuildSignal(int &direction, int &score, string &setup, string &reason, doub
    bool strongTrend = adx >= MinADX;
    bool adxBuild = adx >= 16.0;
    bool volOK = (avgVol>0.0 && curVol >= avgVol*1.05);
-   bool hh = recentHigh > priorHigh + atr*0.20;
-   bool hl = recentLow  > priorLow  + atr*0.20;
-   bool lh = recentHigh < priorHigh - atr*0.20;
-   bool ll = recentLow  < priorLow  - atr*0.20;
+
+   GoldScoutPivotConfig pivotConfig;
+   ConfigurePivotEngine(pivotConfig);
+   GoldScoutPivot confirmedPivots[];
+   GoldScoutStructureClassification pivotStructure;
+   GS_ClearStructureClassification(pivotStructure);
+   bool pivotDataAvailable=GS_LoadConfirmedPivots(_Symbol,PERIOD_H1,hATR,PivotLookbackBars,pivotConfig,confirmedPivots);
+   bool pivotStructureValid=pivotDataAvailable &&
+      GS_ClassifyConfirmedStructure(confirmedPivots,pivotConfig.toleranceAtr,_Point,pivotStructure);
+   if(!pivotStructureValid) GS_ClearStructureClassification(pivotStructure);
+   bool hh=pivotStructure.hh;
+   bool hl=pivotStructure.hl;
+   bool lh=pivotStructure.lh;
+   bool ll=pivotStructure.ll;
+   string pivotStructureName=GS_StructureStateName(pivotStructure.state);
 
    bool breakLong = close1 > recentHigh;
    bool breakShort = close1 < recentLow;
@@ -1051,8 +1083,8 @@ bool BuildSignal(int &direction, int &score, string &setup, string &reason, doub
    pullLong = pullLong || htfPullLong;
    pullShort = pullShort || htfPullShort;
 
-   bool structureLong = breakLong || hh || hl || pullLong;
-   bool structureShort = breakShort || ll || lh || pullShort;
+   int longStructuralPoints=GS_StructuralBucketPoints(pivotStructure.state,1,pullLong,breakLong,momLong);
+   int shortStructuralPoints=GS_StructuralBucketPoints(pivotStructure.state,-1,pullShort,breakShort,momShort);
    bool clearLong = bullHTF && (bullLTF || htfPullLong) && adx>=25.0 && ((rsi>=50.0 && rsi<=68.0) || htfPullLong) && (hh || hl || breakLong || pullLong);
    bool clearShort = bearHTF && (bearLTF || htfPullShort) && adx>=25.0 && ((rsi>=32.0 && rsi<=50.0) || htfPullShort) && (ll || lh || breakShort || pullShort);
 
@@ -1069,18 +1101,10 @@ bool BuildSignal(int &direction, int &score, string &setup, string &reason, doub
 
    if(rsi>=50.0 && rsi<=68.0) longScore+=10;
    if(rsi>=32.0 && rsi<=50.0) shortScore+=10;
-   // Oversold/overbought only helps when it agrees with an H4 pullback thesis.
-   if(htfPullLong) longScore+=5;
-   if(htfPullShort) shortScore+=5;
+   // H4->H1 pullback confirmation is accounted for only inside the structural bucket.
 
-   if(structureLong) longScore+=15;
-   if(structureShort) shortScore+=15;
-   if(pullLong) longScore+=10;
-   if(pullShort) shortScore+=10;
-   if(breakLong) longScore+=10;
-   if(breakShort) shortScore+=10;
-   if(momLong) longScore+=5;
-   if(momShort) shortScore+=5;
+   longScore+=longStructuralPoints;
+   shortScore+=shortStructuralPoints;
    if(volOK) { if(close1>=open1) longScore+=5; else shortScore+=5; }
 
    longScore=(int)MathMin(100,longScore);
@@ -1096,7 +1120,7 @@ bool BuildSignal(int &direction, int &score, string &setup, string &reason, doub
    if(breakLong || breakShort) g_diagStructure="BREAKOUT";
    else if(htfPullLong || htfPullShort) g_diagStructure="PULLBACK H4->H1";
    else if(pullLong || pullShort) g_diagStructure="PULLBACK";
-   else if(hh || hl || lh || ll) g_diagStructure=(hh||hl)?"ESTRUCTURA ALCISTA":"ESTRUCTURA BAJISTA";
+   else if(hh || hl || lh || ll) g_diagStructure="ESTRUCTURA "+pivotStructureName;
    else if(momLong || momShort) g_diagStructure="MOMENTUM";
    else if(strongTrend) g_diagStructure="CONTINUACION";
    else g_diagStructure="RANGO/NEUTRA";
@@ -1109,8 +1133,9 @@ bool BuildSignal(int &direction, int &score, string &setup, string &reason, doub
    int finalShort=(int)MathMax(0,MathMin(100,shortScore+newsPtsShort+g_intrabarShortBoost));
    g_diagLongFinal=finalLong; g_diagShortFinal=finalShort;
 
-   g_diagTechnicalReason=StringFormat("Tecnico L=%d/S=%d | H4=%s | H1=%s | RSI=%.1f | ADX=%.1f | ATR=%.2f | volumen=%s | estructura=%s | HH=%s HL=%s LH=%s LL=%s",
+   g_diagTechnicalReason=StringFormat("Tecnico L=%d/S=%d | H4=%s | H1=%s | RSI=%.1f | ADX=%.1f | ATR=%.2f | volumen=%s | estructura=%s | pivots=%d estado=%s bucketL=%d bucketS=%d | HH=%s HL=%s LH=%s LL=%s",
       longScore,shortScore,g_diagH4Trend,g_diagH1Trend,rsi,adx,atr,g_diagVolume,g_diagStructure,
+      pivotStructure.alternatingPivotCount,pivotStructureName,longStructuralPoints,shortStructuralPoints,
       hh?"SI":"NO",hl?"SI":"NO",lh?"SI":"NO",ll?"SI":"NO");
    g_diagNewsReason=StringFormat("Noticias: bias=%d conf=%d riesgo=%s | puntos L=%+d/S=%+d | dir=%s | %s",
       g_newsBias,g_newsConfidence,g_newsRisk,newsPtsLong,newsPtsShort,g_newsDirection,g_newsSummary);
