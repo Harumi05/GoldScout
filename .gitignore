@@ -1,0 +1,14 @@
+# Python caches and local environments
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Local credentials
+.env
+.env.*
+!.env.example
+
+# Generated news snapshots and MetaTrader build output
+dashboard/data/*.json
+*.ex5
