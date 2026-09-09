@@ -47,6 +47,61 @@ struct GoldScoutStructureClassification
    int                      alternatingPivotCount;
 };
 
+enum GoldScoutPatternType
+{
+   GOLDSCOUT_PATTERN_M    = -1,
+   GOLDSCOUT_PATTERN_NONE = 0,
+   GOLDSCOUT_PATTERN_W    = 1
+};
+
+enum GoldScoutPatternState
+{
+   GOLDSCOUT_PATTERN_STATE_NONE        = 0,
+   GOLDSCOUT_PATTERN_STATE_CANDIDATE   = 1,
+   GOLDSCOUT_PATTERN_STATE_CONFIRMED   = 2,
+   GOLDSCOUT_PATTERN_STATE_INVALIDATED = 3,
+   GOLDSCOUT_PATTERN_STATE_EXPIRED     = 4
+};
+
+struct GoldScoutPatternConfig
+{
+   double extremeToleranceAtr;
+   double minDepthAtr;
+   int    minPivotBars;
+   int    maxPivotBars;
+   int    maxConfirmationBars;
+   double breakoutBufferAtr;
+   double invalidationAtr;
+   double minLegBalance;
+   bool   useVolumeQuality;
+   int    volumeLookback;
+   double volumeMultiplier;
+   bool   useMomentumQuality;
+   double momentumBodyAtr;
+};
+
+struct GoldScoutPatternDiagnostic
+{
+   bool                      detected;
+   GoldScoutPatternType      type;
+   GoldScoutPatternState     state;
+   GoldScoutPivot            first;
+   GoldScoutPivot            neckline;
+   GoldScoutPivot            second;
+   datetime                  eventTime;
+   int                       firstLegBars;
+   int                       secondLegBars;
+   int                       barsAfterSecond;
+   double                    referenceAtr;
+   double                    extremeTolerance;
+   double                    depth;
+   double                    breakoutStrengthAtr;
+   bool                      volumeConfirmed;
+   bool                      momentumConfirmed;
+   double                    quality;
+   string                    identity;
+};
+
 const int GOLDSCOUT_MAX_STRUCTURAL_BUCKET_POINTS=25;
 
 void GS_ClearPivots(GoldScoutPivot &pivots[])
@@ -90,12 +145,75 @@ void GS_ClearStructureClassification(GoldScoutStructureClassification &classific
    classification.alternatingPivotCount=0;
 }
 
+void GS_ClearPatternDiagnostic(GoldScoutPatternDiagnostic &pattern)
+{
+   pattern.detected=false;
+   pattern.type=GOLDSCOUT_PATTERN_NONE;
+   pattern.state=GOLDSCOUT_PATTERN_STATE_NONE;
+   GS_ClearPivot(pattern.first);
+   GS_ClearPivot(pattern.neckline);
+   GS_ClearPivot(pattern.second);
+   pattern.eventTime=0;
+   pattern.firstLegBars=0;
+   pattern.secondLegBars=0;
+   pattern.barsAfterSecond=0;
+   pattern.referenceAtr=0.0;
+   pattern.extremeTolerance=0.0;
+   pattern.depth=0.0;
+   pattern.breakoutStrengthAtr=0.0;
+   pattern.volumeConfirmed=false;
+   pattern.momentumConfirmed=false;
+   pattern.quality=0.0;
+   pattern.identity="";
+}
+
 string GS_StructureStateName(const GoldScoutStructureState state)
 {
    if(state==GOLDSCOUT_STRUCTURE_BULLISH) return "ALCISTA";
    if(state==GOLDSCOUT_STRUCTURE_BEARISH) return "BAJISTA";
    if(state==GOLDSCOUT_STRUCTURE_NEUTRAL) return "NEUTRA / INDETERMINADA";
    return "INSUFICIENTE";
+}
+
+string GS_PatternTypeName(const GoldScoutPatternType type)
+{
+   if(type==GOLDSCOUT_PATTERN_W) return "W";
+   if(type==GOLDSCOUT_PATTERN_M) return "M";
+   return "NONE";
+}
+
+string GS_PatternStateName(const GoldScoutPatternState state)
+{
+   if(state==GOLDSCOUT_PATTERN_STATE_CANDIDATE) return "CANDIDATE";
+   if(state==GOLDSCOUT_PATTERN_STATE_CONFIRMED) return "CONFIRMED";
+   if(state==GOLDSCOUT_PATTERN_STATE_INVALIDATED) return "INVALIDATED";
+   if(state==GOLDSCOUT_PATTERN_STATE_EXPIRED) return "EXPIRED";
+   return "NONE";
+}
+
+string GS_PatternQualityName(const double quality)
+{
+   if(quality>=75.0) return "HIGH";
+   if(quality>=50.0) return "MEDIUM";
+   return "LOW";
+}
+
+bool GS_ValidatePatternConfig(const GoldScoutPatternConfig &config)
+{
+   return GS_ValidPositiveNumber(config.extremeToleranceAtr) &&
+          GS_ValidPositiveNumber(config.minDepthAtr) &&
+          config.minPivotBars>=1 &&
+          config.maxPivotBars>=config.minPivotBars &&
+          config.maxConfirmationBars>=1 &&
+          MathIsValidNumber(config.breakoutBufferAtr) &&
+          config.breakoutBufferAtr>=0.0 &&
+          MathIsValidNumber(config.invalidationAtr) &&
+          config.invalidationAtr>=0.0 &&
+          GS_ValidPositiveNumber(config.minLegBalance) &&
+          config.minLegBalance<=1.0 &&
+          (!config.useVolumeQuality ||
+             (config.volumeLookback>=1 && GS_ValidPositiveNumber(config.volumeMultiplier))) &&
+          (!config.useMomentumQuality || GS_ValidPositiveNumber(config.momentumBodyAtr));
 }
 
 // The structural bucket is directional and deliberately capped. Pullback adds
@@ -260,6 +378,221 @@ bool GS_ClassifyConfirmedStructure(const GoldScoutPivot &confirmedPivots[],
    return true;
 }
 
+int GS_FindClosedRateByTime(const MqlRates &closedRates[],const datetime pivotTime)
+{
+   for(int i=0;i<ArraySize(closedRates);i++)
+      if(closedRates[i].time==pivotTime) return i;
+   return -1;
+}
+
+bool GS_ClosedRatesValid(const MqlRates &closedRates[])
+{
+   int count=ArraySize(closedRates);
+   for(int i=0;i<count;i++)
+   {
+      if(closedRates[i].time<=0 ||
+         !GS_ValidPositiveNumber(closedRates[i].open) ||
+         !GS_ValidPositiveNumber(closedRates[i].high) ||
+         !GS_ValidPositiveNumber(closedRates[i].low) ||
+         !GS_ValidPositiveNumber(closedRates[i].close) ||
+         closedRates[i].high<MathMax(closedRates[i].open,closedRates[i].close) ||
+         closedRates[i].low>MathMin(closedRates[i].open,closedRates[i].close) ||
+         closedRates[i].tick_volume<0)
+         return false;
+      if(i>0 && closedRates[i].time<=closedRates[i-1].time) return false;
+   }
+   return true;
+}
+
+bool GS_PatternVolumeConfirmation(const MqlRates &closedRates[],
+                                  const int breakoutIndex,
+                                  const GoldScoutPatternConfig &config)
+{
+   if(!config.useVolumeQuality || breakoutIndex<=0) return false;
+   int first=MathMax(0,breakoutIndex-config.volumeLookback);
+   double total=0.0;
+   int samples=0;
+   for(int i=first;i<breakoutIndex;i++)
+   {
+      if(closedRates[i].tick_volume<=0) continue;
+      total+=(double)closedRates[i].tick_volume;
+      samples++;
+   }
+   if(samples<1 || closedRates[breakoutIndex].tick_volume<=0) return false;
+   return (double)closedRates[breakoutIndex].tick_volume >=
+      (total/(double)samples)*config.volumeMultiplier;
+}
+
+bool GS_PatternMomentumConfirmation(const MqlRates &bar,
+                                    const GoldScoutPatternType type,
+                                    const double referenceAtr,
+                                    const GoldScoutPatternConfig &config)
+{
+   if(!config.useMomentumQuality || !GS_ValidPositiveNumber(referenceAtr)) return false;
+   double directionalBody=(type==GOLDSCOUT_PATTERN_W)
+      ? bar.close-bar.open
+      : bar.open-bar.close;
+   return directionalBody>=config.momentumBodyAtr*referenceAtr;
+}
+
+double GS_PatternQuality(const GoldScoutPatternDiagnostic &pattern,
+                         const GoldScoutPatternConfig &config)
+{
+   if(!GS_ValidatePatternConfig(config) || !pattern.detected ||
+      !GS_ValidPositiveNumber(pattern.referenceAtr) ||
+      !GS_ValidPositiveNumber(pattern.extremeTolerance))
+      return 0.0;
+
+   double extremeDifference=MathAbs(pattern.first.price-pattern.second.price);
+   double similarity=MathMax(0.0,MathMin(1.0,
+      1.0-extremeDifference/pattern.extremeTolerance));
+   double minimumDepth=config.minDepthAtr*pattern.referenceAtr;
+   double depthScore=MathMax(0.0,MathMin(1.0,
+      pattern.depth/(2.0*minimumDepth)));
+   double legBalance=(double)MathMin(pattern.firstLegBars,pattern.secondLegBars)/
+      (double)MathMax(pattern.firstLegBars,pattern.secondLegBars);
+   double breakoutScore=0.0;
+   if(pattern.state==GOLDSCOUT_PATTERN_STATE_CONFIRMED)
+      breakoutScore=MathMax(0.0,MathMin(1.0,pattern.breakoutStrengthAtr));
+
+   double quality=25.0*similarity + 25.0*depthScore +
+      20.0*legBalance + 20.0*breakoutScore;
+   if(pattern.volumeConfirmed) quality+=5.0;
+   if(pattern.momentumConfirmed) quality+=5.0;
+   return MathMax(0.0,MathMin(100.0,quality));
+}
+
+// Detect the newest geometrically-valid W or M from confirmed alternating
+// pivots. closedRates must be oldest-to-newest and must exclude the open bar.
+// The first close event after the second extreme is terminal for that identity:
+// a confirmed pattern therefore cannot repaint on later closed candles.
+bool GS_DetectLatestConfirmedPattern(const GoldScoutPivot &confirmedPivots[],
+                                     const MqlRates &closedRates[],
+                                     const int newestClosedShift,
+                                     const GoldScoutPatternConfig &config,
+                                     const double minimumPriceStep,
+                                     GoldScoutPatternDiagnostic &pattern)
+{
+   GS_ClearPatternDiagnostic(pattern);
+   if(newestClosedShift<1 || !GS_ValidatePatternConfig(config) ||
+      !GS_ValidPositiveNumber(minimumPriceStep) ||
+      ArraySize(closedRates)<3 || !GS_ClosedRatesValid(closedRates))
+      return false;
+
+   GoldScoutPivot alternating[];
+   if(!GS_NormalizeAlternatingPivots(confirmedPivots,alternating)) return false;
+
+   for(int i=ArraySize(alternating)-3;i>=0;i--)
+   {
+      GoldScoutPivot first=alternating[i];
+      GoldScoutPivot neckline=alternating[i+1];
+      GoldScoutPivot second=alternating[i+2];
+      GoldScoutPatternType type=GOLDSCOUT_PATTERN_NONE;
+      if(first.type==GOLDSCOUT_PIVOT_LOW &&
+         neckline.type==GOLDSCOUT_PIVOT_HIGH &&
+         second.type==GOLDSCOUT_PIVOT_LOW)
+         type=GOLDSCOUT_PATTERN_W;
+      else if(first.type==GOLDSCOUT_PIVOT_HIGH &&
+              neckline.type==GOLDSCOUT_PIVOT_LOW &&
+              second.type==GOLDSCOUT_PIVOT_HIGH)
+         type=GOLDSCOUT_PATTERN_M;
+      else
+         continue;
+
+      int firstRateIndex=GS_FindClosedRateByTime(closedRates,first.time);
+      int necklineRateIndex=GS_FindClosedRateByTime(closedRates,neckline.time);
+      int secondRateIndex=GS_FindClosedRateByTime(closedRates,second.time);
+      if(firstRateIndex<0 || necklineRateIndex<=firstRateIndex ||
+         secondRateIndex<=necklineRateIndex)
+         continue;
+      int expectedFirstShift=newestClosedShift+(ArraySize(closedRates)-1-firstRateIndex);
+      int expectedNecklineShift=newestClosedShift+(ArraySize(closedRates)-1-necklineRateIndex);
+      int expectedSecondShift=newestClosedShift+(ArraySize(closedRates)-1-secondRateIndex);
+      if(first.shift!=expectedFirstShift || neckline.shift!=expectedNecklineShift ||
+         second.shift!=expectedSecondShift)
+         continue;
+
+      int firstLeg=first.shift-neckline.shift;
+      int secondLeg=neckline.shift-second.shift;
+      if(firstLeg<config.minPivotBars || secondLeg<config.minPivotBars ||
+         firstLeg>config.maxPivotBars || secondLeg>config.maxPivotBars)
+         continue;
+      double legBalance=(double)MathMin(firstLeg,secondLeg)/
+         (double)MathMax(firstLeg,secondLeg);
+      if(legBalance<config.minLegBalance) continue;
+
+      double tolerance=0.0;
+      if(!GS_ATRTolerance(first.atr,second.atr,config.extremeToleranceAtr,
+                          minimumPriceStep,tolerance))
+         return false;
+      if(MathAbs(first.price-second.price)>tolerance) continue;
+
+      double referenceAtr=MathMax(first.atr,MathMax(neckline.atr,second.atr));
+      if(!GS_ValidPositiveNumber(referenceAtr)) return false;
+      double depth=(type==GOLDSCOUT_PATTERN_W)
+         ? MathMin(neckline.price-first.price,neckline.price-second.price)
+         : MathMin(first.price-neckline.price,second.price-neckline.price);
+      if(depth<config.minDepthAtr*referenceAtr) continue;
+
+      pattern.detected=true;
+      pattern.type=type;
+      pattern.state=GOLDSCOUT_PATTERN_STATE_CANDIDATE;
+      pattern.first=first;
+      pattern.neckline=neckline;
+      pattern.second=second;
+      pattern.firstLegBars=firstLeg;
+      pattern.secondLegBars=secondLeg;
+      pattern.referenceAtr=referenceAtr;
+      pattern.extremeTolerance=tolerance;
+      pattern.depth=depth;
+      pattern.identity=StringFormat("%d:%I64d:%I64d:%I64d",(int)type,
+         (long)first.time,(long)neckline.time,(long)second.time);
+
+      double invalidationDistance=config.invalidationAtr*referenceAtr;
+      double breakoutDistance=config.breakoutBufferAtr*referenceAtr;
+      for(int barIndex=secondRateIndex+1;barIndex<ArraySize(closedRates);barIndex++)
+      {
+         pattern.barsAfterSecond++;
+         if(pattern.barsAfterSecond>config.maxConfirmationBars)
+         {
+            pattern.state=GOLDSCOUT_PATTERN_STATE_EXPIRED;
+            pattern.eventTime=closedRates[barIndex].time;
+            break;
+         }
+
+         bool invalidated=(type==GOLDSCOUT_PATTERN_W)
+            ? closedRates[barIndex].close<MathMin(first.price,second.price)-invalidationDistance
+            : closedRates[barIndex].close>MathMax(first.price,second.price)+invalidationDistance;
+         if(invalidated)
+         {
+            pattern.state=GOLDSCOUT_PATTERN_STATE_INVALIDATED;
+            pattern.eventTime=closedRates[barIndex].time;
+            break;
+         }
+
+         bool confirmed=(type==GOLDSCOUT_PATTERN_W)
+            ? closedRates[barIndex].close>neckline.price+breakoutDistance
+            : closedRates[barIndex].close<neckline.price-breakoutDistance;
+         if(confirmed)
+         {
+            pattern.state=GOLDSCOUT_PATTERN_STATE_CONFIRMED;
+            pattern.eventTime=closedRates[barIndex].time;
+            pattern.breakoutStrengthAtr=(type==GOLDSCOUT_PATTERN_W)
+               ? (closedRates[barIndex].close-neckline.price)/referenceAtr
+               : (neckline.price-closedRates[barIndex].close)/referenceAtr;
+            pattern.volumeConfirmed=GS_PatternVolumeConfirmation(closedRates,barIndex,config);
+            pattern.momentumConfirmed=GS_PatternMomentumConfirmation(
+               closedRates[barIndex],type,referenceAtr,config);
+            break;
+         }
+      }
+
+      pattern.quality=GS_PatternQuality(pattern,config);
+      return true;
+   }
+   return true;
+}
+
 // closedRates and closedAtr must be ordered from oldest to newest and must not
 // contain the currently open candle. newestClosedShift therefore cannot be 0.
 bool GS_DetectConfirmedPivots(const MqlRates &closedRates[],
@@ -356,6 +689,29 @@ bool GS_LoadConfirmedPivots(const string symbol,
    if(CopyBuffer(atrHandle,0,1,copied,closedAtr)!=copied) return false;
 
    return GS_DetectConfirmedPivots(closedRates,closedAtr,1,config,pivots);
+}
+
+// Terminal adapter for diagnostics. start_pos=1 guarantees that neckline
+// confirmation, invalidation and expiry are evaluated with closed candles only.
+bool GS_LoadLatestPatternDiagnostic(const string symbol,
+                                    const ENUM_TIMEFRAMES timeframe,
+                                    const int barsToLoad,
+                                    const GoldScoutPivot &confirmedPivots[],
+                                    const double minimumPriceStep,
+                                    const GoldScoutPatternConfig &config,
+                                    GoldScoutPatternDiagnostic &pattern)
+{
+   GS_ClearPatternDiagnostic(pattern);
+   if(symbol=="" || barsToLoad<3 || !GS_ValidatePatternConfig(config) ||
+      !GS_ValidPositiveNumber(minimumPriceStep))
+      return false;
+
+   MqlRates closedRates[];
+   ArraySetAsSeries(closedRates,false);
+   int copied=CopyRates(symbol,timeframe,1,barsToLoad,closedRates);
+   if(copied<3) return false;
+   return GS_DetectLatestConfirmedPattern(confirmedPivots,closedRates,1,
+      config,minimumPriceStep,pattern);
 }
 
 #endif

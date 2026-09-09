@@ -53,6 +53,23 @@ input int    PivotMinBarsBetween     = 2;
 input double PivotMinProminenceATR   = 0.20;
 input double PivotEqualityToleranceATR = 0.20;
 
+input group "=== Diagnostic W/M Patterns ==="
+input bool   EnablePatternDiagnostics       = true;
+input double PatternExtremeToleranceATR     = 0.30;
+input double PatternMinDepthATR             = 1.00;
+input int    PatternMinPivotBars             = 3;
+input int    PatternMaxPivotBars             = 36;
+input int    PatternMaxConfirmationBars      = 24;
+input double PatternBreakoutBufferATR        = 0.05;
+input double PatternInvalidationATR          = 0.25;
+input double PatternMinLegBalance            = 0.25;
+input bool   PatternUseVolumeQuality         = true;
+input int    PatternVolumeLookback           = 20;
+input double PatternVolumeMultiplier         = 1.05;
+input bool   PatternUseMomentumQuality       = true;
+input double PatternMomentumBodyATR          = 0.50;
+input bool   DebugStructurePatternLogs       = false;
+
 input group "=== News Filter ==="
 input bool   UseNewsFilter           = true;
 input int    NewsBlockBeforeMin      = 30;
@@ -125,6 +142,13 @@ int      g_intrabarShortBoost=0;
 datetime g_lastIntrabarHeartbeat=0;
 const int INTRABAR_DIAGNOSTIC_INTERVAL_SECONDS=30;
 
+// W/M diagnostics never participate in scoring or execution.
+GoldScoutPatternDiagnostic g_patternDiagnostic;
+datetime g_patternEvaluatedClosedBar=0;
+datetime g_lastPatternLogTime=0;
+string   g_lastPatternLogSignature="";
+const int STRUCTURE_PATTERN_LOG_INTERVAL_SECONDS=30;
+
 struct BrokerContractSpec
 {
    string accountCurrency;
@@ -176,6 +200,74 @@ void ConfigurePivotEngine(GoldScoutPivotConfig &config)
    config.minBarsBetween=PivotMinBarsBetween;
    config.minProminenceAtr=PivotMinProminenceATR;
    config.toleranceAtr=PivotEqualityToleranceATR;
+}
+
+void ConfigurePatternDiagnostics(GoldScoutPatternConfig &config)
+{
+   config.extremeToleranceAtr=PatternExtremeToleranceATR;
+   config.minDepthAtr=PatternMinDepthATR;
+   config.minPivotBars=PatternMinPivotBars;
+   config.maxPivotBars=PatternMaxPivotBars;
+   config.maxConfirmationBars=PatternMaxConfirmationBars;
+   config.breakoutBufferAtr=PatternBreakoutBufferATR;
+   config.invalidationAtr=PatternInvalidationATR;
+   config.minLegBalance=PatternMinLegBalance;
+   config.useVolumeQuality=PatternUseVolumeQuality;
+   config.volumeLookback=PatternVolumeLookback;
+   config.volumeMultiplier=PatternVolumeMultiplier;
+   config.useMomentumQuality=PatternUseMomentumQuality;
+   config.momentumBodyAtr=PatternMomentumBodyATR;
+}
+
+void LogStructurePattern(const GoldScoutPatternDiagnostic &pattern)
+{
+   if(!DebugStructurePatternLogs || !pattern.detected) return;
+   string signature=pattern.identity+"|"+GS_PatternStateName(pattern.state);
+   if(signature==g_lastPatternLogSignature) return;
+
+   datetime now=TimeTradeServer();
+   if(now<=0) now=TimeLocal();
+   if(now<=0 || (g_lastPatternLogTime>0 &&
+      (long)(now-g_lastPatternLogTime)<STRUCTURE_PATTERN_LOG_INTERVAL_SECONDS))
+      return;
+
+   string firstLabel=pattern.type==GOLDSCOUT_PATTERN_W?"low1":"high1";
+   string secondLabel=pattern.type==GOLDSCOUT_PATTERN_W?"low2":"high2";
+   PrintFormat("[GoldScout][STRUCTURE] pattern=%s | state=%s | %s=%.2f | neckline=%.2f | %s=%.2f | quality=%.1f (%s)",
+      GS_PatternTypeName(pattern.type),GS_PatternStateName(pattern.state),
+      firstLabel,pattern.first.price,pattern.neckline.price,secondLabel,
+      pattern.second.price,pattern.quality,GS_PatternQualityName(pattern.quality));
+   g_lastPatternLogSignature=signature;
+   g_lastPatternLogTime=now;
+}
+
+void RefreshStructurePatternDiagnostics(const GoldScoutPivot &confirmedPivots[],
+                                        const bool pivotDataAvailable)
+{
+   if(!EnablePatternDiagnostics)
+   {
+      GS_ClearPatternDiagnostic(g_patternDiagnostic);
+      return;
+   }
+
+   datetime latestClosedBar=iTime(_Symbol,PERIOD_H1,1);
+   if(latestClosedBar<=0 || latestClosedBar==g_patternEvaluatedClosedBar) return;
+
+   GoldScoutPatternConfig config;
+   ConfigurePatternDiagnostics(config);
+   GoldScoutPatternDiagnostic detectedPattern;
+   GS_ClearPatternDiagnostic(detectedPattern);
+   if(!pivotDataAvailable ||
+      !GS_LoadLatestPatternDiagnostic(_Symbol,PERIOD_H1,PivotLookbackBars,
+         confirmedPivots,_Point,config,detectedPattern))
+   {
+      GS_ClearPatternDiagnostic(g_patternDiagnostic);
+      return;
+   }
+
+   g_patternDiagnostic=detectedPattern;
+   g_patternEvaluatedClosedBar=latestClosedBar;
+   LogStructurePattern(g_patternDiagnostic);
 }
 
 bool LoadBrokerContract(BrokerContractSpec &spec,string &msg)
@@ -1066,6 +1158,7 @@ bool BuildSignal(int &direction, int &score, string &setup, string &reason, doub
    bool lh=pivotStructure.lh;
    bool ll=pivotStructure.ll;
    string pivotStructureName=GS_StructureStateName(pivotStructure.state);
+   RefreshStructurePatternDiagnostics(confirmedPivots,pivotDataAvailable);
 
    bool breakLong = close1 > recentHigh;
    bool breakShort = close1 < recentLow;
@@ -1799,6 +1892,7 @@ bool IsGoldSymbol()
 
 int OnInit()
 {
+   GS_ClearPatternDiagnostic(g_patternDiagnostic);
    if(!IsGoldSymbol())
    {
       Print("[GoldScout] BLOQUEADO: este EA solo funciona en XAUUSD. Simbolo actual: ", _Symbol);
