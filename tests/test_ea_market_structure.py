@@ -12,16 +12,24 @@ PIVOT_PATH = ROOT / "MT5" / "Include" / "GoldScout" / "MarketStructure.mqh"
 MAX_STRUCTURAL_BUCKET_POINTS = 25
 
 
-def structural_bucket_points(state, direction, pullback=False, breakout=False, momentum=False):
-    if (
-        (direction > 0 and state != "ALCISTA")
-        or (direction < 0 and state != "BAJISTA")
-        or direction == 0
-    ):
+def structural_bucket_points(
+    state, direction, pullback=False, breakout=False, momentum=False, pattern_bonus=0
+):
+    if direction == 0:
         return 0
-    points = 15
-    points += 5 if pullback else 0
-    points += 10 if breakout else 5 if momentum else 0
+    aligned = (direction > 0 and state == "ALCISTA") or (
+        direction < 0 and state == "BAJISTA"
+    )
+    contradicted = (direction > 0 and state == "BAJISTA") or (
+        direction < 0 and state == "ALCISTA"
+    )
+    points = 0
+    if aligned:
+        points = 15
+        points += 5 if pullback else 0
+        points += 10 if breakout else 5 if momentum else 0
+    if not contradicted:
+        points += max(0, min(4, pattern_bonus))
     return min(MAX_STRUCTURAL_BUCKET_POINTS, points)
 
 
@@ -775,8 +783,8 @@ class StructuralBucketScoringTests(unittest.TestCase):
     def test_source_enforces_directional_bucket_and_cap(self):
         required = (
             "const int GOLDSCOUT_MAX_STRUCTURAL_BUCKET_POINTS=25;",
-            "state!=GOLDSCOUT_STRUCTURE_BULLISH",
-            "state!=GOLDSCOUT_STRUCTURE_BEARISH",
+            "const int GOLDSCOUT_MAX_PATTERN_BONUS_POINTS=4;",
+            "GS_AllowedPatternBonus(state,direction,requestedPatternBonus)",
             "if(pullback) points+=5;",
             "if(breakout) points+=10;",
             "else if(momentum) points+=5;",

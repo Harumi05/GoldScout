@@ -570,6 +570,44 @@ void RefreshHeadShouldersPatternDiagnostics(const GoldScoutPivot &confirmedPivot
    LogHeadShouldersPattern(g_headShouldersPatternDiagnostic);
 }
 
+void CollectBestPatternEvidence(GoldScoutBestPatternEvidence &bestLong,
+                                GoldScoutBestPatternEvidence &bestShort)
+{
+   GS_ClearBestPatternEvidence(bestLong);
+   GS_ClearBestPatternEvidence(bestShort);
+
+   int direction=0;
+   if(g_patternDiagnostic.type==GOLDSCOUT_PATTERN_W) direction=1;
+   else if(g_patternDiagnostic.type==GOLDSCOUT_PATTERN_M) direction=-1;
+   GS_ConsiderConfirmedPatternEvidence(GS_PatternTypeName(g_patternDiagnostic.type),
+      g_patternDiagnostic.identity,g_patternDiagnostic.state,direction,
+      g_patternDiagnostic.quality,bestLong,bestShort);
+
+   direction=0;
+   if(g_continuationPatternDiagnostic.type==GOLDSCOUT_CONTINUATION_BULL_FLAG ||
+      g_continuationPatternDiagnostic.type==GOLDSCOUT_CONTINUATION_BULL_PENNANT)
+      direction=1;
+   else if(g_continuationPatternDiagnostic.type==GOLDSCOUT_CONTINUATION_BEAR_FLAG ||
+           g_continuationPatternDiagnostic.type==GOLDSCOUT_CONTINUATION_BEAR_PENNANT)
+      direction=-1;
+   GS_ConsiderConfirmedPatternEvidence(
+      GS_ContinuationPatternTypeName(g_continuationPatternDiagnostic.type),
+      g_continuationPatternDiagnostic.identity,g_continuationPatternDiagnostic.state,
+      direction,g_continuationPatternDiagnostic.quality,bestLong,bestShort);
+
+   GS_ConsiderConfirmedPatternEvidence(
+      GS_ConvergencePatternTypeName(g_convergencePatternDiagnostic.type),
+      g_convergencePatternDiagnostic.identity,g_convergencePatternDiagnostic.state,
+      g_convergencePatternDiagnostic.breakoutDirection,
+      g_convergencePatternDiagnostic.quality,bestLong,bestShort);
+
+   GS_ConsiderConfirmedPatternEvidence(
+      GS_HeadShouldersPatternTypeName(g_headShouldersPatternDiagnostic.type),
+      g_headShouldersPatternDiagnostic.identity,g_headShouldersPatternDiagnostic.state,
+      g_headShouldersPatternDiagnostic.breakoutDirection,
+      g_headShouldersPatternDiagnostic.quality,bestLong,bestShort);
+}
+
 bool LoadBrokerContract(BrokerContractSpec &spec,string &msg)
 {
    msg="";
@@ -1462,6 +1500,12 @@ bool BuildSignal(int &direction, int &score, string &setup, string &reason, doub
    RefreshContinuationPatternDiagnostics(confirmedPivots,pivotDataAvailable);
    RefreshConvergencePatternDiagnostics(confirmedPivots,pivotDataAvailable);
    RefreshHeadShouldersPatternDiagnostics(confirmedPivots,pivotDataAvailable);
+   GoldScoutBestPatternEvidence bestPatternLong,bestPatternShort;
+   CollectBestPatternEvidence(bestPatternLong,bestPatternShort);
+   int longPatternBonus=GS_AllowedPatternBonus(
+      pivotStructure.state,1,bestPatternLong.bonus);
+   int shortPatternBonus=GS_AllowedPatternBonus(
+      pivotStructure.state,-1,bestPatternShort.bonus);
 
    bool breakLong = close1 > recentHigh;
    bool breakShort = close1 < recentLow;
@@ -1479,8 +1523,10 @@ bool BuildSignal(int &direction, int &score, string &setup, string &reason, doub
    pullLong = pullLong || htfPullLong;
    pullShort = pullShort || htfPullShort;
 
-   int longStructuralPoints=GS_StructuralBucketPoints(pivotStructure.state,1,pullLong,breakLong,momLong);
-   int shortStructuralPoints=GS_StructuralBucketPoints(pivotStructure.state,-1,pullShort,breakShort,momShort);
+   int longStructuralPoints=GS_StructuralBucketPoints(
+      pivotStructure.state,1,pullLong,breakLong,momLong,longPatternBonus);
+   int shortStructuralPoints=GS_StructuralBucketPoints(
+      pivotStructure.state,-1,pullShort,breakShort,momShort,shortPatternBonus);
    bool clearLong = bullHTF && (bullLTF || htfPullLong) && adx>=25.0 && ((rsi>=50.0 && rsi<=68.0) || htfPullLong) && (hh || hl || breakLong || pullLong);
    bool clearShort = bearHTF && (bearLTF || htfPullShort) && adx>=25.0 && ((rsi>=32.0 && rsi<=50.0) || htfPullShort) && (ll || lh || breakShort || pullShort);
 
@@ -1533,6 +1579,10 @@ bool BuildSignal(int &direction, int &score, string &setup, string &reason, doub
       longScore,shortScore,g_diagH4Trend,g_diagH1Trend,rsi,adx,atr,g_diagVolume,g_diagStructure,
       pivotStructure.alternatingPivotCount,pivotStructureName,longStructuralPoints,shortStructuralPoints,
       hh?"SI":"NO",hl?"SI":"NO",lh?"SI":"NO",ll?"SI":"NO");
+   g_diagTechnicalReason += StringFormat(
+      " | PATTERN BEST LONG=%s quality=%.1f bonus=%d | PATTERN BEST SHORT=%s quality=%.1f bonus=%d",
+      bestPatternLong.name,bestPatternLong.quality,longPatternBonus,
+      bestPatternShort.name,bestPatternShort.quality,shortPatternBonus);
    g_diagNewsReason=StringFormat("Noticias: bias=%d conf=%d riesgo=%s | puntos L=%+d/S=%+d | dir=%s | %s",
       g_newsBias,g_newsConfidence,g_newsRisk,newsPtsLong,newsPtsShort,g_newsDirection,g_newsSummary);
 

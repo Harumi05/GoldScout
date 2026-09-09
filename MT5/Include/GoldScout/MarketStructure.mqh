@@ -294,7 +294,17 @@ struct GoldScoutHeadShouldersPatternDiagnostic
    string                                identity;
 };
 
+struct GoldScoutBestPatternEvidence
+{
+   string name;
+   string identity;
+   int    direction;
+   double quality;
+   int    bonus;
+};
+
 const int GOLDSCOUT_MAX_STRUCTURAL_BUCKET_POINTS=25;
+const int GOLDSCOUT_MAX_PATTERN_BONUS_POINTS=4;
 
 void GS_ClearPivots(GoldScoutPivot &pivots[])
 {
@@ -608,6 +618,68 @@ bool GS_ValidateHeadShouldersPatternConfig(
           (!config.useMomentumQuality || GS_ValidPositiveNumber(config.momentumBodyAtr));
 }
 
+void GS_ClearBestPatternEvidence(GoldScoutBestPatternEvidence &evidence)
+{
+   evidence.name="NONE";
+   evidence.identity="";
+   evidence.direction=0;
+   evidence.quality=0.0;
+   evidence.bonus=0;
+}
+
+int GS_PatternQualityBonus(const double quality)
+{
+   if(!MathIsValidNumber(quality) || quality<50.0) return 0;
+   if(quality<65.0) return 1;
+   if(quality<75.0) return 2;
+   if(quality<85.0) return 3;
+   return GOLDSCOUT_MAX_PATTERN_BONUS_POINTS;
+}
+
+void GS_UpdateBestPatternEvidence(const string name,const string identity,
+                                  const int direction,const double quality,
+                                  GoldScoutBestPatternEvidence &best)
+{
+   if(name=="" || identity=="" || (direction!=1 && direction!=-1) ||
+      !MathIsValidNumber(quality))
+      return;
+   double boundedQuality=MathMax(0.0,MathMin(100.0,quality));
+   int bonus=GS_PatternQualityBonus(boundedQuality);
+   if(bonus<=0 || boundedQuality<=best.quality) return;
+   best.name=name;
+   best.identity=identity;
+   best.direction=direction;
+   best.quality=boundedQuality;
+   best.bonus=bonus;
+}
+
+void GS_ConsiderConfirmedPatternEvidence(
+   const string name,const string identity,const GoldScoutPatternState state,
+   const int direction,const double quality,
+   GoldScoutBestPatternEvidence &bestLong,
+   GoldScoutBestPatternEvidence &bestShort)
+{
+   if(state!=GOLDSCOUT_PATTERN_STATE_CONFIRMED) return;
+   if(direction>0)
+      GS_UpdateBestPatternEvidence(name,identity,1,quality,bestLong);
+   else if(direction<0)
+      GS_UpdateBestPatternEvidence(name,identity,-1,quality,bestShort);
+}
+
+// A pattern opposed by an explicit confirmed structure receives no bonus. A
+// neutral/insufficient structure can still receive the soft pattern evidence;
+// this never blocks either direction and is capped independently at four.
+int GS_AllowedPatternBonus(const GoldScoutStructureState state,
+                           const int direction,const int requestedBonus)
+{
+   if(direction==0) return 0;
+   bool contradicted=(direction>0 && state==GOLDSCOUT_STRUCTURE_BEARISH) ||
+      (direction<0 && state==GOLDSCOUT_STRUCTURE_BULLISH);
+   if(contradicted) return 0;
+   return (int)MathMax(0,MathMin(GOLDSCOUT_MAX_PATTERN_BONUS_POINTS,
+                                 requestedBonus));
+}
+
 // The structural bucket is directional and deliberately capped. Pullback adds
 // only confirmation value on top of an already-confirmed structure. Momentum
 // is not counted separately when it represents the same impulse as breakout.
@@ -615,17 +687,21 @@ int GS_StructuralBucketPoints(const GoldScoutStructureState state,
                               const int direction,
                               const bool pullback,
                               const bool breakout,
-                              const bool momentum)
+                              const bool momentum,
+                              const int requestedPatternBonus=0)
 {
-   if((direction>0 && state!=GOLDSCOUT_STRUCTURE_BULLISH) ||
-      (direction<0 && state!=GOLDSCOUT_STRUCTURE_BEARISH) ||
-      direction==0)
-      return 0;
-
-   int points=15;
-   if(pullback) points+=5;
-   if(breakout) points+=10;
-   else if(momentum) points+=5;
+   if(direction==0) return 0;
+   bool aligned=(direction>0 && state==GOLDSCOUT_STRUCTURE_BULLISH) ||
+      (direction<0 && state==GOLDSCOUT_STRUCTURE_BEARISH);
+   int points=0;
+   if(aligned)
+   {
+      points=15;
+      if(pullback) points+=5;
+      if(breakout) points+=10;
+      else if(momentum) points+=5;
+   }
+   points+=GS_AllowedPatternBonus(state,direction,requestedPatternBonus);
    return (int)MathMin(GOLDSCOUT_MAX_STRUCTURAL_BUCKET_POINTS,points);
 }
 
