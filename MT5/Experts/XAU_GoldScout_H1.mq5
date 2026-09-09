@@ -14,6 +14,7 @@ input int    MinScoreToTrade         = 74;
 input bool   OnePositionAtATime      = true;
 input bool   OneDecisionPerHour      = true; // compatibilidad; ya no bloquea el monitoreo intrabar
 input bool   UseIntrabarMonitoring   = true;
+input bool   DebugIntrabarLogs       = false;
 input int    ArmScoreThreshold       = 58; // score minimo para armar un setup durante la vela
 
 
@@ -111,6 +112,8 @@ bool     g_startupAnalysisPending=true;
 int      g_startupAttempts=0;
 int      g_intrabarLongBoost=0;
 int      g_intrabarShortBoost=0;
+datetime g_lastIntrabarHeartbeat=0;
+const int INTRABAR_DIAGNOSTIC_INTERVAL_SECONDS=30;
 
 enum EntryReservationPhase
 {
@@ -1008,10 +1011,24 @@ void ArmIntrabarPlan(const int direction,const int score,const string setup,cons
    g_monitorAgeSec=0;
 }
 
+void LogIntrabarHeartbeat(const bool candidate,const int direction,const int score)
+{
+   if(!DebugIntrabarLogs) return;
+   datetime now=TimeTradeServer();
+   if(now<=0) now=TimeLocal();
+   if(now<=0) return;
+   if(g_lastIntrabarHeartbeat>0 && (long)(now-g_lastIntrabarHeartbeat)<INTRABAR_DIAGNOSTIC_INTERVAL_SECONDS) return;
+   g_lastIntrabarHeartbeat=now;
+   string candidateLabel=!candidate ? "NONE" : (direction>0 ? "LONG" : (direction<0 ? "SHORT" : "UNKNOWN"));
+   PrintFormat("[GoldScout][INTRABAR] alive | candidate=%s | score=%d | L=%d | S=%d | state=%s",
+      candidateLabel,score,g_diagLongFinal,g_diagShortFinal,g_monitorState);
+}
+
 void MonitorIntrabar()
 {
    if(!UseIntrabarMonitoring || g_entryUsedThisBar)
    {
+      LogIntrabarHeartbeat(false,0,g_lastScore);
       UpdateDashboard();
       return;
    }
@@ -1044,6 +1061,7 @@ void MonitorIntrabar()
       g_monitorState="ESPERANDO";
       g_monitorReason="Sin setup armado; vigilando continuamente por si aparece una oportunidad durante esta H1.";
       g_lastDecision="MONITOREANDO H1 | esperando condiciones suficientes";
+      LogIntrabarHeartbeat(candidate,direction,g_lastScore);
       UpdateDashboard();
       return;
    }
@@ -1068,6 +1086,7 @@ void MonitorIntrabar()
          g_monitorState="EN OPERACION";
          g_monitorReason="Entrada ejecutada; no se permiten nuevas entradas en esta H1.";
       }
+      LogIntrabarHeartbeat(candidate,direction,g_lastScore);
       return;
    }
 
@@ -1082,6 +1101,7 @@ void MonitorIntrabar()
       g_monitorReason=StringFormat("Score %d/%d | trigger=%s | boost=%d",effectiveScore,MinScoreToTrade,trigger?"SI":"NO",liveBoost);
    }
    g_lastDecision=StringFormat("MONITOREANDO %s | score=%d | %s",g_lastDirection,g_lastScore,g_monitorState);
+   LogIntrabarHeartbeat(candidate,direction,effectiveScore);
    UpdateDashboard();
 }
 
