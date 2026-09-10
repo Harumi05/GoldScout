@@ -4,6 +4,7 @@
 
 #include <Trade/Trade.mqh>
 #include <GoldScout/MarketStructure.mqh>
+#include <GoldScout/ContextScoring.mqh>
 
 CTrade trade;
 
@@ -147,10 +148,10 @@ input bool   UseNewsFilter           = true;
 input int    NewsBlockBeforeMin      = 30;
 input int    NewsBlockAfterMin       = 30;
 input bool   UseWorldNewsAnalysis     = true; // requiere archivo actualizado por dashboard/news_service.py
-input bool   RequireFreshWorldNews    = true;
+input bool   RequireFreshWorldNews    = false; // opt-in legacy hard guard; default context is soft
 input int    MaxNewsAgeMinutes        = 15;
 input bool   BlockHighNewsRisk        = false; // news risk informs context; MT5 calendar still blocks scheduled events
-input int    NewsScoreMaxPoints       = 10;
+input int    NewsScoreMaxPoints       = 2;
 
 input group "=== Dashboard ==="
 input string DashboardFile           = "xau_goldscout_dashboard.json";
@@ -180,20 +181,27 @@ double   g_tempSL = 0.0;
 int      g_newsBias = 0;
 int      g_newsConfidence = 0;
 string   g_newsRisk = "UNKNOWN";
+string   g_newsDataRisk = "UNKNOWN";
 string   g_newsDirection = "NEUTRO";
 string   g_newsSummary = "Sin análisis de noticias.";
 int      g_newsCount = 0;
 bool     g_newsAvailable = false;
 string   g_newsUpdated = "";
 long     g_newsUpdatedEpoch = 0;
+int      g_newsSourcesOk = 0;
+int      g_newsSourceCount = 0;
 
 // Detailed H1 diagnostics for Experts + dashboard
 double g_diagEmaFast=0.0, g_diagEmaSlow=0.0, g_diagH4Fast=0.0, g_diagH4Slow=0.0;
 double g_diagRSI=0.0, g_diagADX=0.0, g_diagATR=0.0, g_diagCurVol=0.0, g_diagAvgVol=0.0;
 int g_diagLongTech=0, g_diagShortTech=0, g_diagLongFinal=0, g_diagShortFinal=0;
 int g_diagLongNewsPts=0, g_diagShortNewsPts=0;
+int g_diagSessionLongPts=0, g_diagSessionShortPts=0;
+int g_diagContextLongPts=0, g_diagContextShortPts=0;
 string g_diagH4Trend="NEUTRA", g_diagH1Trend="NEUTRA";
 string g_diagStructure="-", g_diagVolume="-";
+string g_diagSessionContext="Sin contexto de sesión.";
+double g_diagSessionOpenImpulseATR=0.0;
 string g_diagTechnicalReason="";
 string g_diagNewsReason="";
 string g_diagBlockReason="";
@@ -245,6 +253,8 @@ datetime g_m15TimingEvaluatedClosedBar=0;
 datetime g_lastM15TimingLogTime=0;
 string   g_lastM15TimingLogSignature="";
 const int M15_TIMING_LOG_INTERVAL_SECONDS=30;
+
+GoldScoutSessionContext g_sessionContext;
 
 struct BrokerContractSpec
 {
@@ -1080,6 +1090,13 @@ bool SafetyInputsValid(string &msg)
       msg="Configuración inválida: parámetros de confirmación M15";
       return false;
    }
+   if(NewsScoreMaxPoints<0 ||
+      NewsScoreMaxPoints>GOLDSCOUT_MAX_NEWS_CONTEXT_POINTS)
+   {
+      msg=StringFormat("Configuración inválida: NewsScoreMaxPoints debe estar entre 0 y %d",
+         GOLDSCOUT_MAX_NEWS_CONTEXT_POINTS);
+      return false;
+   }
    return true;
 }
 
@@ -1536,7 +1553,10 @@ bool JsonFieldBool(const string json,const string key,const bool fallback=false)
 
 bool LoadWorldNews()
 {
-   g_newsBias=0; g_newsConfidence=0; g_newsRisk="UNKNOWN"; g_newsDirection="NEUTRO"; g_newsSummary="Sin análisis de noticias."; g_newsCount=0; g_newsUpdated=""; g_newsUpdatedEpoch=0; g_newsAvailable=false;
+   g_newsBias=0; g_newsConfidence=0; g_newsRisk="UNKNOWN"; g_newsDataRisk="UNKNOWN";
+   g_newsDirection="NEUTRO"; g_newsSummary="Sin análisis de noticias.";
+   g_newsCount=0; g_newsUpdated=""; g_newsUpdatedEpoch=0; g_newsAvailable=false;
+   g_newsSourcesOk=0; g_newsSourceCount=0;
    int h=FileOpen("gold_news_analysis.json",FILE_COMMON|FILE_READ|FILE_TXT|FILE_ANSI);
    if(h==INVALID_HANDLE) return false;
    string json="";
@@ -1547,10 +1567,17 @@ bool LoadWorldNews()
    g_newsBias=(int)MathRound(JsonFieldDouble(json,"bias",0.0));
    g_newsConfidence=(int)MathRound(JsonFieldDouble(json,"confidence",0.0));
    g_newsRisk=JsonFieldString(json,"risk","UNKNOWN");
+   g_newsDataRisk=JsonFieldString(json,"data_risk","UNKNOWN");
    g_newsDirection=JsonFieldString(json,"direction","NEUTRO");
    g_newsSummary=JsonFieldString(json,"summary","Sin resumen.");
    g_newsCount=(int)MathRound(JsonFieldDouble(json,"article_count",0.0));
+   g_newsSourcesOk=(int)MathRound(JsonFieldDouble(json,"sources_ok",0.0));
+   g_newsSourceCount=(int)MathRound(JsonFieldDouble(json,"source_count",0.0));
    g_newsAvailable=JsonFieldBool(json,"available",false);
+   g_newsBias=(int)MathMax(-100,MathMin(100,g_newsBias));
+   g_newsConfidence=(int)MathMax(0,MathMin(100,g_newsConfidence));
+   g_newsSourcesOk=(int)MathMax(0,g_newsSourcesOk);
+   g_newsSourceCount=(int)MathMax(0,g_newsSourceCount);
    if(g_newsUpdated=="") return false;
    if(!g_newsAvailable) return false;
    return true;
@@ -1566,13 +1593,25 @@ bool NewsDataFresh()
 
 int NewsAlignmentPoints(const int direction)
 {
-   if(!UseWorldNewsAnalysis || g_newsConfidence<50) return 0;
-   double magnitude=MathMin(100.0,MathAbs((double)g_newsBias));
-   if(magnitude<10.0) return 0;
-   int pts=(int)MathRound((magnitude/100.0)*NewsScoreMaxPoints);
-   pts=(int)MathMax(1,MathMin(NewsScoreMaxPoints,pts));
-   if(direction>0) return g_newsBias>0 ? pts : (g_newsBias<0 ? -pts : 0);
-   return g_newsBias<0 ? pts : (g_newsBias>0 ? -pts : 0);
+   return GS_NewsContextPoints(UseWorldNewsAnalysis,g_newsAvailable,
+      NewsDataFresh(),g_newsBias,g_newsConfidence,g_newsDataRisk,
+      g_newsDirection,g_newsSourcesOk,g_newsSourceCount,direction,
+      NewsScoreMaxPoints);
+}
+
+double SessionOpeningImpulseATR(const double atr)
+{
+   if(!g_sessionContext.available || g_sessionContext.referenceOpenTime<=0 ||
+      atr<=0.0)
+      return 0.0;
+   int shift=iBarShift(_Symbol,PERIOD_M15,g_sessionContext.referenceOpenTime,false);
+   if(shift<0) return 0.0;
+   double openingPrice=iOpen(_Symbol,PERIOD_M15,shift);
+   MqlTick tick;
+   if(openingPrice<=0.0 || !SymbolInfoTick(_Symbol,tick) ||
+      tick.bid<=0.0 || tick.ask<=0.0)
+      return 0.0;
+   return (((tick.bid+tick.ask)*0.5)-openingPrice)/atr;
 }
 
 bool WorldNewsPass(string &msg)
@@ -1628,6 +1667,14 @@ bool BuildSignal(int &direction, int &score, string &setup, string &reason, doub
    bool strongTrend = adx >= MinADX;
    bool adxBuild = adx >= 16.0;
    bool volOK = (avgVol>0.0 && curVol >= avgVol*1.05);
+
+   GS_ClearSessionContext(g_sessionContext);
+   GS_BuildSessionContext(TimeGMT(),g_sessionContext);
+   int sessionPoints=g_sessionContext.available?g_sessionContext.points:0;
+   g_diagSessionOpenImpulseATR=SessionOpeningImpulseATR(atr);
+   g_diagSessionContext=StringFormat("%s | fase=%s | volatilidad=%s | impulso apertura=%.2f ATR",
+      g_sessionContext.name,g_sessionContext.phase,g_sessionContext.volatility,
+      g_diagSessionOpenImpulseATR);
 
    GoldScoutPivotConfig pivotConfig;
    ConfigurePivotEngine(pivotConfig);
@@ -1722,10 +1769,20 @@ bool BuildSignal(int &direction, int &score, string &setup, string &reason, doub
    int newsPtsLong=NewsAlignmentPoints(1);
    int newsPtsShort=NewsAlignmentPoints(-1);
    g_diagLongNewsPts=newsPtsLong; g_diagShortNewsPts=newsPtsShort;
+   g_diagSessionLongPts=GS_GatedContextPoints(
+      longScore,ArmScoreThreshold,sessionPoints);
+   g_diagSessionShortPts=GS_GatedContextPoints(
+      shortScore,ArmScoreThreshold,sessionPoints);
+   int longContextPoints=GS_GatedContextPoints(longScore,ArmScoreThreshold,
+      GS_CombinedContextPoints(sessionPoints,newsPtsLong));
+   int shortContextPoints=GS_GatedContextPoints(shortScore,ArmScoreThreshold,
+      GS_CombinedContextPoints(sessionPoints,newsPtsShort));
+   g_diagContextLongPts=longContextPoints;
+   g_diagContextShortPts=shortContextPoints;
    // Intrabar confirmation is additive and is recalculated while the current H1 candle evolves.
-   int finalLong=(int)MathMax(0,MathMin(100,longScore+newsPtsLong+
+   int finalLong=(int)MathMax(0,MathMin(100,longScore+longContextPoints+
       g_intrabarLongBoost+longM15Adjustment));
-   int finalShort=(int)MathMax(0,MathMin(100,shortScore+newsPtsShort+
+   int finalShort=(int)MathMax(0,MathMin(100,shortScore+shortContextPoints+
       g_intrabarShortBoost+shortM15Adjustment));
    g_diagLongFinal=finalLong; g_diagShortFinal=finalShort;
 
@@ -1745,8 +1802,13 @@ bool BuildSignal(int &direction, int &score, string &setup, string &reason, doub
       M15DirectionName(g_m15TimingEvidence.recoveryDirection),
       M15DirectionName(g_m15TimingEvidence.momentumDirection),
       longM15Adjustment,shortM15Adjustment);
-   g_diagNewsReason=StringFormat("Noticias: bias=%d conf=%d riesgo=%s | puntos L=%+d/S=%+d | dir=%s | %s",
-      g_newsBias,g_newsConfidence,g_newsRisk,newsPtsLong,newsPtsShort,g_newsDirection,g_newsSummary);
+   g_diagTechnicalReason += StringFormat(
+      " | CONTEXTO session=%+d newsL=%+d/newsS=%+d combinadoL=%+d/combinadoS=%+d",
+      sessionPoints,newsPtsLong,newsPtsShort,longContextPoints,shortContextPoints);
+   g_diagNewsReason=StringFormat("Noticias: bias=%d conf=%d riesgo=%s dataRisk=%s fresh=%s sources=%d/%d | puntos L=%+d/S=%+d | dir=%s | %s",
+      g_newsBias,g_newsConfidence,g_newsRisk,g_newsDataRisk,
+      NewsDataFresh()?"SI":"NO",g_newsSourcesOk,g_newsSourceCount,
+      newsPtsLong,newsPtsShort,g_newsDirection,g_newsSummary);
 
    int bestScore=MathMax(finalLong,finalShort);
    if(bestScore < ArmScoreThreshold)
@@ -1769,9 +1831,10 @@ bool BuildSignal(int &direction, int &score, string &setup, string &reason, doub
    targetR=clear ? MathMax(GodTargetR,MinRewardRisk) : MathMax(ChillTargetR,MinRewardRisk);
    g_diagTechnicalReason += StringFormat(" | candidato=%s score=%d setup=%s | claro=%s",direction>0?"LONG":"SHORT",score,setup,clear?"SI":"NO");
 
-   reason=StringFormat("%s | score %d/100 | tech L=%d/S=%d | M15 L=%+d/S=%+d | final L=%d/S=%d | H4 %s | H1 %s | RSI %.1f | ADX %.1f | ATR %.2f | volumen %s | estructura %s | noticias %s bias=%d conf=%d risk=%s | objetivo %.2fR",
+   reason=StringFormat("%s | score %d/100 | tech L=%d/S=%d | M15 L=%+d/S=%+d | contexto L=%+d/S=%+d | final L=%d/S=%d | H4 %s | H1 %s | RSI %.1f | ADX %.1f | ATR %.2f | volumen %s | estructura %s | noticias %s bias=%d conf=%d risk=%s | objetivo %.2fR",
       direction>0?"LONG":"SHORT",score,longScore,shortScore,
-      longM15Adjustment,shortM15Adjustment,finalLong,finalShort,
+      longM15Adjustment,shortM15Adjustment,longContextPoints,shortContextPoints,
+      finalLong,finalShort,
       g_diagH4Trend,g_diagH1Trend,rsi,adx,atr,g_diagVolume,setup,
       g_newsDirection,g_newsBias,g_newsConfidence,g_newsRisk,targetR);
    return true;
@@ -2024,9 +2087,15 @@ void TryTrade()
    PrintFormat("[GoldScout] EMA H1=%.2f/%.2f | EMA H4=%.2f/%.2f | RSI=%.1f | ADX=%.1f | ATR=%.2f",
       g_diagEmaFast,g_diagEmaSlow,g_diagH4Fast,g_diagH4Slow,g_diagRSI,g_diagADX,g_diagATR);
    PrintFormat("[GoldScout] Volumen=%s (actual=%.0f promedio=%.0f) | Estructura=%s",g_diagVolume,g_diagCurVol,g_diagAvgVol,g_diagStructure);
-   PrintFormat("[GoldScout] TECH SCORE L=%d / S=%d | NEWS pts L=%+d / S=%+d | FINAL L=%d / S=%d",
-      g_diagLongTech,g_diagShortTech,g_diagLongNewsPts,g_diagShortNewsPts,g_diagLongFinal,g_diagShortFinal);
-   PrintFormat("[GoldScout] NEWS bias=%d conf=%d%% risk=%s dir=%s | %s",g_newsBias,g_newsConfidence,g_newsRisk,g_newsDirection,g_newsSummary);
+   PrintFormat("[GoldScout] TECH SCORE L=%d / S=%d | NEWS L=%+d/S=%+d | CONTEXT L=%+d/S=%+d | FINAL L=%d / S=%d",
+      g_diagLongTech,g_diagShortTech,g_diagLongNewsPts,g_diagShortNewsPts,
+      g_diagContextLongPts,g_diagContextShortPts,g_diagLongFinal,g_diagShortFinal);
+   PrintFormat("[GoldScout] SESSION %s | points L=%+d/S=%+d | %s",
+      g_diagSessionContext,g_diagSessionLongPts,g_diagSessionShortPts,
+      g_sessionContext.activeCenters);
+   PrintFormat("[GoldScout] NEWS bias=%d conf=%d%% risk=%s dataRisk=%s sources=%d/%d dir=%s | %s",
+      g_newsBias,g_newsConfidence,g_newsRisk,g_newsDataRisk,
+      g_newsSourcesOk,g_newsSourceCount,g_newsDirection,g_newsSummary);
 
    if(!signal)
    {
@@ -2376,12 +2445,18 @@ void UpdateDashboard()
    json += StringFormat("\"account_currency\":\"%s\",\"balance\":%.2f,\"equity\":%.2f,\"daily_pnl\":%.2f,\"risk_amount\":%.2f,\"risk_percent\":%.2f,",JsonEscape(accountCurrency),balance,equity,TodayClosedProfit(),PlannedRiskAmount(),RiskPercent);
    json += StringFormat("\"stop_mode\":\"ATR+STRUCTURE\",\"chill_r\":%.2f,\"god_r\":%.2f,\"min_rr\":%.2f,\"last_score\":%d,\"last_setup\":\"%s\",\"last_direction\":\"%s\",",ChillTargetR,GodTargetR,MinRewardRisk,g_lastScore,JsonEscape(g_lastSetup),JsonEscape(g_lastDirection));
    json += StringFormat("\"last_decision\":\"%s\",",JsonEscape(g_lastDecision));
-   json += StringFormat("\"analysis\":{\"bar\":\"%s\",\"h4_trend\":\"%s\",\"h1_trend\":\"%s\",\"ema_fast\":%.2f,\"ema_slow\":%.2f,\"h4_ema_fast\":%.2f,\"h4_ema_slow\":%.2f,\"rsi\":%.2f,\"adx\":%.2f,\"atr\":%.2f,\"volume_current\":%.0f,\"volume_avg\":%.0f,\"volume_state\":\"%s\",\"structure\":\"%s\",\"long_tech\":%d,\"short_tech\":%d,\"long_news_points\":%d,\"short_news_points\":%d,\"long_final\":%d,\"short_final\":%d,\"candidate\":\"%s\",\"block_reason\":\"%s\",\"technical_reason\":\"%s\",\"news_reason\":\"%s\"},",
+   json += StringFormat("\"analysis\":{\"bar\":\"%s\",\"h4_trend\":\"%s\",\"h1_trend\":\"%s\",\"ema_fast\":%.2f,\"ema_slow\":%.2f,\"h4_ema_fast\":%.2f,\"h4_ema_slow\":%.2f,\"rsi\":%.2f,\"adx\":%.2f,\"atr\":%.2f,\"volume_current\":%.0f,\"volume_avg\":%.0f,\"volume_state\":\"%s\",\"structure\":\"%s\",\"long_tech\":%d,\"short_tech\":%d,\"long_news_points\":%d,\"short_news_points\":%d,\"long_final\":%d,\"short_final\":%d,\"candidate\":\"%s\",\"block_reason\":\"%s\",\"technical_reason\":\"%s\",\"news_reason\":\"%s\",",
       TimeToString(g_diagBar,TIME_DATE|TIME_MINUTES),JsonEscape(g_diagH4Trend),JsonEscape(g_diagH1Trend),g_diagEmaFast,g_diagEmaSlow,g_diagH4Fast,g_diagH4Slow,g_diagRSI,g_diagADX,g_diagATR,g_diagCurVol,g_diagAvgVol,JsonEscape(g_diagVolume),JsonEscape(g_diagStructure),g_diagLongTech,g_diagShortTech,g_diagLongNewsPts,g_diagShortNewsPts,g_diagLongFinal,g_diagShortFinal,JsonEscape(g_lastDirection),JsonEscape(g_diagBlockReason),JsonEscape(g_diagTechnicalReason),JsonEscape(g_diagNewsReason));
+   json += StringFormat("\"session\":\"%s\",\"session_phase\":\"%s\",\"session_volatility\":\"%s\",\"session_open_impulse_atr\":%.3f,\"session_long_points\":%d,\"session_short_points\":%d,\"context_long_points\":%d,\"context_short_points\":%d,\"session_context\":\"%s\",\"active_market_centers\":\"%s\"},",
+      JsonEscape(g_sessionContext.name),JsonEscape(g_sessionContext.phase),
+      JsonEscape(g_sessionContext.volatility),g_diagSessionOpenImpulseATR,
+      g_diagSessionLongPts,g_diagSessionShortPts,
+      g_diagContextLongPts,g_diagContextShortPts,
+      JsonEscape(g_diagSessionContext),JsonEscape(g_sessionContext.activeCenters));
    json += StringFormat("\"monitor\":{\"state\":\"%s\",\"candidate\":\"%s\",\"score\":%d,\"boost_l\":%d,\"boost_s\":%d,\"age_sec\":%I64d,\"entry_used_this_bar\":%s,\"reason\":\"%s\"},",
       JsonEscape(g_monitorState),JsonEscape(g_armedDirection>0?"LONG":(g_armedDirection<0?"SHORT":"-")),g_lastScore,g_intrabarLongBoost,g_intrabarShortBoost,g_monitorAgeSec,g_entryUsedThisBar?"true":"false",JsonEscape(g_monitorReason));
-   json += StringFormat("\"news\":{\"available\":%s,\"updated_at\":\"%s\",\"bias\":%d,\"confidence\":%d,\"risk\":\"%s\",\"direction\":\"%s\",\"summary\":\"%s\",\"article_count\":%d},",
-      (g_newsAvailable && g_newsUpdated!="")?"true":"false",JsonEscape(g_newsUpdated),g_newsBias,g_newsConfidence,JsonEscape(g_newsRisk),JsonEscape(g_newsDirection),JsonEscape(g_newsSummary),g_newsCount);
+   json += StringFormat("\"news\":{\"available\":%s,\"updated_at\":\"%s\",\"bias\":%d,\"confidence\":%d,\"risk\":\"%s\",\"data_risk\":\"%s\",\"direction\":\"%s\",\"summary\":\"%s\",\"article_count\":%d,\"sources_ok\":%d,\"source_count\":%d},",
+      (g_newsAvailable && g_newsUpdated!="")?"true":"false",JsonEscape(g_newsUpdated),g_newsBias,g_newsConfidence,JsonEscape(g_newsRisk),JsonEscape(g_newsDataRisk),JsonEscape(g_newsDirection),JsonEscape(g_newsSummary),g_newsCount,g_newsSourcesOk,g_newsSourceCount);
    json += StringFormat("\"active_trade\":%s,",active);
    json += StringFormat("\"closed_trades\":%s",ClosedTradesJson());
    json += "}";
@@ -2414,6 +2489,7 @@ int OnInit()
    GS_ClearConvergencePatternDiagnostic(g_convergencePatternDiagnostic);
    GS_ClearHeadShouldersPatternDiagnostic(g_headShouldersPatternDiagnostic);
    GS_ClearM15TimingEvidence(g_m15TimingEvidence);
+   GS_ClearSessionContext(g_sessionContext);
    if(!IsGoldSymbol())
    {
       Print("[GoldScout] BLOQUEADO: este EA solo funciona en XAUUSD. Simbolo actual: ", _Symbol);
