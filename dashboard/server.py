@@ -5,6 +5,11 @@ try:
     from news_service import run_once as update_news
 except Exception:
     update_news = None
+try:
+    from external_signal_service import mark_snapshot_freshness, run_once as update_external
+except Exception:
+    mark_snapshot_freshness = None
+    update_external = None
 
 ROOT = Path(__file__).resolve().parent
 CANDIDATES = []
@@ -26,7 +31,10 @@ OFFLINE={"updated_at":None,"symbol":"XAUUSD","timeframe":"H1","live_trading":Fal
 "account_currency":"USD","balance":None,"equity":None,"daily_pnl":None,"risk_amount":10.0,"risk_percent":5.0,"last_score":None,
 "last_setup":"-","last_direction":"-","last_decision":"Esperando datos MT5...","analysis":{"bar":None},
 "active_trade":None,"closed_trades":[],"news":{"available":False,"bias":0,"confidence":0,"risk":"UNKNOWN",
-"data_risk":"HIGH","direction":"NEUTRO","summary":"Esperando análisis de noticias...","article_count":0,"top_headlines":[],"source_health":{}}}
+"data_risk":"HIGH","direction":"NEUTRO","summary":"Esperando análisis de noticias...","article_count":0,"top_headlines":[],"source_health":{}},
+"external_signal":{"source":"etoro","symbol":"XAUUSD","available":False,"api_status":"NO_DATA",
+"long_weight":0.0,"short_weight":0.0,"neutral_weight":0.0,"valid_traders":0,"quality":0,
+"freshness_sec":None,"data_quality":"LOW","score_effect":0,"read_only":True}}
 
 def gold(s):
     return (s or '').upper().strip().startswith('XAUUSD')
@@ -57,6 +65,19 @@ def read_news():
     except Exception:
         return d
 
+def read_external():
+    d=read_json('external_signal_etoro.json')
+    if not isinstance(d,dict):
+        return OFFLINE['external_signal'].copy()
+    d['score_effect']=0
+    d['read_only']=True
+    if mark_snapshot_freshness:
+        try:
+            d=mark_snapshot_freshness(d)
+        except Exception:
+            d={**OFFLINE['external_signal'],'api_status':'INVALID_DATA'}
+    return d
+
 def news_loop():
     interval=int(os.environ.get('GOLDSCOUT_NEWS_INTERVAL','300'))
     if update_news:
@@ -76,6 +97,19 @@ def news_loop():
             update_news(); print('[news] actualización completada')
         except Exception as exc:
             print(f'[news] actualización falló: {exc}')
+
+def external_loop():
+    interval=max(60,int(os.environ.get('GOLDSCOUT_ETORO_INTERVAL','300')))
+    if not update_external:
+        print('[etoro] external_signal_service.py no está disponible; GoldScout continúa sin contexto externo')
+        return
+    while True:
+        try:
+            d=update_external()
+            print(f"[etoro] actualización {d.get('api_status')} | traders={d.get('valid_traders',0)} | score_effect=0")
+        except Exception as exc:
+            print(f'[etoro] actualización falló sin afectar GoldScout: {type(exc).__name__}')
+        time.sleep(interval)
 
 class H(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
@@ -99,9 +133,12 @@ class H(BaseHTTPRequestHandler):
             else:
                 d={**d,'connected':True}
             d['news']=read_news()
+            d['external_signal']=read_external()
             self.send_payload(200,'application/json; charset=utf-8',json.dumps(d,ensure_ascii=False).encode()); return
         if self.path.startswith('/api/health'):
-            payload={'ok':True,'candidates':[str(p) for p in CANDIDATES], 'news_file':bool(read_json('gold_news_analysis.json'))}
+            payload={'ok':True,'candidates':[str(p) for p in CANDIDATES],
+                'news_file':bool(read_json('gold_news_analysis.json')),
+                'external_signal_file':bool(read_json('external_signal_etoro.json'))}
             self.send_payload(200,'application/json; charset=utf-8',json.dumps(payload,ensure_ascii=False).encode()); return
         if self.path.startswith('/api/log'):
             import csv
@@ -126,4 +163,5 @@ class H(BaseHTTPRequestHandler):
 if __name__=='__main__':
     print('GoldScout dashboard: http://127.0.0.1:8787')
     threading.Thread(target=news_loop,daemon=True).start()
+    threading.Thread(target=external_loop,daemon=True).start()
     ThreadingHTTPServer(('127.0.0.1',8787),H).serve_forever()
