@@ -11,4 +11,5 @@ venv/
 
 # Generated news snapshots and MetaTrader build output
 dashboard/data/*.json
+dashboard/data/*.jsonl
 *.ex5
