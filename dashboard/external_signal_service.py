@@ -15,7 +15,6 @@ import json
 import math
 import os
 from pathlib import Path
-import re
 import time
 from typing import Any, Callable, Iterable, Mapping, Sequence
 from urllib.parse import quote
@@ -26,6 +25,8 @@ import requests
 
 SOURCE = "etoro"
 NORMALIZED_SYMBOL = "XAUUSD"
+ETORO_GOLD_INSTRUMENT_ID = 559
+ETORO_GOLD_INTERNAL_SYMBOL = "GOLD.24-7"
 BASE_URL = "https://public-api.etoro.com"
 ROOT = Path(__file__).resolve().parent
 OUT = ROOT / "data" / "external_signal_etoro.json"
@@ -38,6 +39,21 @@ READ_ONLY_ENDPOINTS = {
     "pi_data": "/api/v1/pi-data/copiers",
     "social_feed": "/api/v1/feeds/users/{user_id}",
     "instrument_search": "/api/v1/market-data/search",
+    "market_exposure_history": "/api/v2/portfolios/{username}/exposure/history",
+}
+MAX_RANKING_PAGE_SIZE = 100
+PORTFOLIO_ENDPOINT_INFO = {
+    "method": "GET",
+    "path": READ_ONLY_ENDPOINTS["user_live_portfolio"],
+    "purpose": "Live positions for the requested eToro username",
+}
+PORTFOLIO_FALLBACK_DESIGN = {
+    "status": "NOT_EXECUTED",
+    "method": "GET",
+    "path": READ_ONLY_ENDPOINTS["market_exposure_history"],
+    "purpose": "Daily directional exposure per instrument for a publicly visible portfolio",
+    "direction_field": "netExposurePct",
+    "live_positions": False,
 }
 
 
@@ -171,6 +187,7 @@ class EtoroClient:
         self.session = session or requests.Session()
         self.sleeper = sleeper
         self.now = now
+        self.last_status_code: int | None = None
 
     @property
     def has_credentials(self) -> bool:
@@ -196,10 +213,13 @@ class EtoroClient:
             try:
                 response = self.session.get(url, params=params, headers=headers, timeout=self.timeout)
             except (requests.Timeout, requests.ConnectionError) as exc:
+                self.last_status_code = None
                 if attempt >= self.max_retries:
                     raise EtoroAPIError(type(exc).__name__) from exc
                 self.sleeper(min(self.max_backoff_seconds, self.backoff_seconds * (2**attempt)))
                 continue
+
+            self.last_status_code = response.status_code
 
             if 200 <= response.status_code < 300:
                 try:
@@ -210,8 +230,10 @@ class EtoroClient:
                     raise EtoroInvalidResponse("unexpected JSON response type", response.status_code)
                 return payload
 
-            if response.status_code in (403, 404):
-                raise EtoroUnavailable("resource private or unavailable", response.status_code)
+            if response.status_code == 403:
+                raise EtoroUnavailable("permission denied", response.status_code)
+            if response.status_code == 404:
+                raise EtoroUnavailable("resource not found", response.status_code)
             if response.status_code == 429 or 500 <= response.status_code < 600:
                 if attempt >= self.max_retries:
                     raise EtoroAPIError(f"HTTP {response.status_code}", response.status_code)
@@ -229,13 +251,21 @@ def normalize_gold_symbol(*identifiers: Any) -> str | None:
 
     for identifier in identifiers:
         text = str(identifier or "").strip().upper()
-        token = re.sub(r"[\s/_-]+", "", text)
-        if token in {"GOLD", "XAUUSD"}:
+        if text in {"GOLD", "XAUUSD", ETORO_GOLD_INTERNAL_SYMBOL}:
             return NORMALIZED_SYMBOL
     return None
 
 
+def _is_etoro_gold_24_7(row: Mapping[str, Any]) -> bool:
+    return (
+        _integer(row.get("instrumentId"), -1) == ETORO_GOLD_INSTRUMENT_ID
+        and str(row.get("internalSymbolFull") or "").strip() == ETORO_GOLD_INTERNAL_SYMBOL
+    )
+
+
 def normalize_gold_instruments(payloads: Iterable[Any]) -> dict[int, str]:
+    """Accept only eToro GOLD 24/7 by its exact immutable ID and symbol."""
+
     instruments: dict[int, str] = {}
     for payload in payloads:
         if not isinstance(payload, dict):
@@ -246,17 +276,68 @@ def normalize_gold_instruments(payloads: Iterable[Any]) -> dict[int, str]:
         for row in rows:
             if not isinstance(row, dict):
                 continue
-            normalized = normalize_gold_symbol(
-                row.get("internalSymbolFull"),
-                row.get("internalInstrumentDisplayName"),
-                row.get("displayname"),
-            )
-            instrument_id = _integer(row.get("instrumentId"), -1)
-            if normalized and instrument_id >= 0:
-                instruments[instrument_id] = str(
-                    row.get("internalSymbolFull") or row.get("displayname") or "GOLD"
-                )
+            if _is_etoro_gold_24_7(row):
+                instruments[ETORO_GOLD_INSTRUMENT_ID] = ETORO_GOLD_INTERNAL_SYMBOL
     return instruments
+
+
+def _diagnostic_text(value: Any, limit: int) -> str:
+    return " ".join(str(value or "").split())[:limit]
+
+
+def sanitize_instrument_rows(payload: Any) -> list[dict[str, Any]]:
+    """Retain only non-secret fields needed to diagnose eToro symbol mapping."""
+
+    if not isinstance(payload, dict) or not isinstance(payload.get("items"), list):
+        return []
+    sanitized: list[dict[str, Any]] = []
+    for row in payload["items"]:
+        if not isinstance(row, dict):
+            continue
+        instrument_id = _integer(row.get("instrumentId"), -1)
+        display_name = (
+            row.get("displayName")
+            or row.get("displayname")
+            or row.get("name")
+            or row.get("internalInstrumentDisplayName")
+            or ""
+        )
+        asset_class = row.get("assetClass") or row.get("internalAssetClassName") or ""
+        instrument_type = (
+            row.get("instrumentType")
+            or row.get("type")
+            or row.get("instrumentTypeID")
+            or row.get("instrumentTypeId")
+            or ""
+        )
+        sanitized.append({
+            "instrumentId": instrument_id if instrument_id >= 0 else None,
+            "internalSymbolFull": _diagnostic_text(row.get("internalSymbolFull"), 100),
+            "displayName": _diagnostic_text(display_name, 160),
+            "assetClass": _diagnostic_text(asset_class, 100),
+            "instrumentType": _diagnostic_text(instrument_type, 100),
+        })
+    return sanitized
+
+
+def resolve_max_traders(value: Any) -> tuple[int, int]:
+    """Return requested and API-safe Rankings page sizes without a hidden clamp."""
+
+    configured = int(value)
+    effective = max(1, min(MAX_RANKING_PAGE_SIZE, configured))
+    return configured, effective
+
+
+def portfolio_position_count(portfolio: Any) -> int:
+    if not isinstance(portfolio, dict):
+        return 0
+    positions = sum(1 for row in portfolio.get("positions") or [] if isinstance(row, dict))
+    for social_trade in portfolio.get("socialTrades") or []:
+        if isinstance(social_trade, dict):
+            positions += sum(
+                1 for row in social_trade.get("positions") or [] if isinstance(row, dict)
+            )
+    return positions
 
 
 def _nth_weekday(year: int, month: int, weekday: int, occurrence: int) -> int:
@@ -537,6 +618,21 @@ def empty_snapshot(status: str, message: str, *, now: datetime | None = None) ->
         "traders": [],
         "signals": [],
         "endpoint_status": {},
+        "endpoint_http_status": {},
+        "instrument_search": [],
+        "gold_instrument_id": None,
+        "portfolio_diagnostics": [],
+        "portfolio_summary": {
+            "reviewed_traders": 0,
+            "portfolio_ok": 0,
+            "portfolio_403": 0,
+            "portfolio_404": 0,
+            "portfolio_other_errors": 0,
+        },
+        "portfolio_endpoint": dict(PORTFOLIO_ENDPOINT_INFO),
+        "portfolio_fallback": dict(PORTFOLIO_FALLBACK_DESIGN),
+        "configured_max_traders": None,
+        "effective_max_traders": None,
         "future_metrics": [
             "accuracy_global",
             "accuracy_london",
@@ -577,31 +673,51 @@ class EtoroExternalSignalService:
         now: Callable[[], datetime] = _utc_now,
     ) -> None:
         self.client = client
-        self.max_traders = max(1, min(10, int(max_traders)))
+        self.configured_max_traders, self.max_traders = resolve_max_traders(max_traders)
         self.stale_after_seconds = max(60, int(stale_after_seconds))
         self.now = now
         self.endpoint_status: dict[str, str] = {}
+        self.endpoint_http_status: dict[str, int | None] = {}
+        self.instrument_search: list[dict[str, Any]] = []
+        self.portfolio_diagnostics: list[dict[str, Any]] = []
 
     def _get(self, name: str, path: str, params: Any = None) -> Any:
         try:
             payload = self.client.get(path, params=params)
             self.endpoint_status[name] = "OK"
+            self.endpoint_http_status[name] = getattr(self.client, "last_status_code", None) or 200
             return payload
-        except EtoroUnavailable:
-            self.endpoint_status[name] = "UNAVAILABLE"
+        except EtoroUnavailable as exc:
+            self.endpoint_http_status[name] = exc.status_code
+            self.endpoint_status[name] = "FORBIDDEN" if exc.status_code == 403 else "NOT_FOUND"
         except EtoroAPIError as exc:
-            if exc.status_code == 429:
+            self.endpoint_http_status[name] = exc.status_code
+            if isinstance(exc, EtoroInvalidResponse):
+                self.endpoint_status[name] = "INVALID_RESPONSE"
+            elif exc.status_code == 429:
                 self.endpoint_status[name] = "RATE_LIMITED"
+            elif exc.status_code == 401:
+                self.endpoint_status[name] = "AUTH_ERROR"
+            elif exc.status_code == 403:
+                self.endpoint_status[name] = "FORBIDDEN"
+            elif exc.status_code == 404:
+                self.endpoint_status[name] = "NOT_FOUND"
+            elif exc.status_code is not None and 500 <= exc.status_code < 600:
+                self.endpoint_status[name] = "PROVIDER_ERROR"
             else:
                 self.endpoint_status[name] = "ERROR"
         return None
 
     def _gold_instruments(self) -> dict[int, str]:
         payloads = []
-        fields = "instrumentId,displayname,internalInstrumentDisplayName,internalSymbolFull"
+        fields = (
+            "instrumentId,displayname,internalInstrumentDisplayName,internalSymbolFull,"
+            "internalAssetClassName,instrumentType"
+        )
         for symbol in ("GOLD", "XAUUSD"):
+            endpoint_name = f"instrument_search_{symbol.lower()}"
             payload = self._get(
-                f"instrument_search_{symbol.lower()}",
+                endpoint_name,
                 READ_ONLY_ENDPOINTS["instrument_search"],
                 {
                     "fields": fields,
@@ -610,19 +726,85 @@ class EtoroExternalSignalService:
                     "pageSize": 20,
                 },
             )
+            rows = sanitize_instrument_rows(payload)
+            self.instrument_search.append({
+                "query": symbol,
+                "http_status": self.endpoint_http_status.get(endpoint_name),
+                "status": self.endpoint_status.get(endpoint_name, "ERROR"),
+                "row_count": len(rows),
+                "rows": rows,
+            })
             if payload is not None:
                 payloads.append(payload)
         return normalize_gold_instruments(payloads)
 
+    def _search_state(self, instruments: Mapping[int, str]) -> str:
+        if instruments:
+            return "GOLD_FOUND"
+        statuses = [row["status"] for row in self.instrument_search]
+        if "AUTH_ERROR" in statuses:
+            return "AUTH_ERROR"
+        if "FORBIDDEN" in statuses:
+            return "PERMISSION_DENIED"
+        if "RATE_LIMITED" in statuses:
+            return "RATE_LIMITED"
+        if "PROVIDER_ERROR" in statuses:
+            return "PROVIDER_ERROR"
+        if "INVALID_RESPONSE" in statuses:
+            return "PROVIDER_ERROR"
+        if "NOT_FOUND" in statuses and "OK" not in statuses:
+            return "NOT_FOUND"
+        rows_found = sum(_integer(row.get("row_count"), 0) for row in self.instrument_search)
+        return "SEARCH_EMPTY" if rows_found == 0 else "GOLD_ALIAS_NOT_MATCHED"
+
+    def _portfolio_summary(self) -> dict[str, int]:
+        statuses = [row.get("http_status") for row in self.portfolio_diagnostics]
+        return {
+            "reviewed_traders": len(statuses),
+            "portfolio_ok": sum(1 for value in statuses if value == 200),
+            "portfolio_403": sum(1 for value in statuses if value == 403),
+            "portfolio_404": sum(1 for value in statuses if value == 404),
+            "portfolio_other_errors": sum(
+                1 for value in statuses if value not in (200, 403, 404)
+            ),
+        }
+
+    def _with_diagnostics(self, snapshot: dict[str, Any]) -> dict[str, Any]:
+        gold_ids = sorted({
+            _integer(row.get("instrumentId"), -1)
+            for search in self.instrument_search
+            for row in search.get("rows", [])
+            if _is_etoro_gold_24_7(row)
+        })
+        snapshot.update({
+            "endpoint_status": dict(self.endpoint_status),
+            "endpoint_http_status": dict(self.endpoint_http_status),
+            "instrument_search": list(self.instrument_search),
+            "gold_instrument_id": gold_ids[0] if gold_ids else None,
+            "portfolio_diagnostics": list(self.portfolio_diagnostics),
+            "portfolio_summary": self._portfolio_summary(),
+            "portfolio_endpoint": dict(PORTFOLIO_ENDPOINT_INFO),
+            "portfolio_fallback": dict(PORTFOLIO_FALLBACK_DESIGN),
+            "configured_max_traders": self.configured_max_traders,
+            "effective_max_traders": self.max_traders,
+            "score_effect": 0,
+        })
+        return snapshot
+
     def collect(self) -> dict[str, Any]:
         stamp = self.now()
         fetched_at = _iso(stamp)
+        self.endpoint_status.clear()
+        self.endpoint_http_status.clear()
+        self.instrument_search.clear()
+        self.portfolio_diagnostics.clear()
         if not self.client.has_credentials:
             snapshot = empty_snapshot("NO_CREDENTIALS", "Faltan credenciales de eToro.", now=stamp)
             snapshot["stale_after_seconds"] = self.stale_after_seconds
-            return snapshot
+            return self._with_diagnostics(snapshot)
 
         instruments = self._gold_instruments()
+        search_state = self._search_state(instruments)
         ranking_payload = self._get(
             "rankings",
             READ_ONLY_ENDPOINTS["rankings"],
@@ -631,38 +813,53 @@ class EtoroExternalSignalService:
         self._get("pi_data", READ_ONLY_ENDPOINTS["pi_data"])
         ranking_rows = ranking_payload.get("results") if isinstance(ranking_payload, dict) else None
         if not isinstance(ranking_rows, list):
-            snapshot = empty_snapshot("API_ERROR", "Rankings de eToro no disponibles.", now=stamp)
-            snapshot["endpoint_status"] = self.endpoint_status
+            ranking_state = self.endpoint_status.get("rankings", "ERROR")
+            status = search_state if search_state != "GOLD_FOUND" else {
+                "AUTH_ERROR": "AUTH_ERROR",
+                "FORBIDDEN": "PERMISSION_DENIED",
+                "RATE_LIMITED": "RATE_LIMITED",
+                "PROVIDER_ERROR": "PROVIDER_ERROR",
+                "NOT_FOUND": "NOT_FOUND",
+            }.get(ranking_state, "GOLD_FOUND_NO_TRADERS")
+            snapshot = empty_snapshot(status, "Rankings de eToro no disponibles.", now=stamp)
             snapshot["stale_after_seconds"] = self.stale_after_seconds
-            return snapshot
+            return self._with_diagnostics(snapshot)
 
         traders: list[ExternalTrader] = []
         signals: list[ExternalSignal] = []
-        for row in ranking_rows[: self.max_traders]:
+        for row_index, row in enumerate(ranking_rows[: self.max_traders], start=1):
             if not isinstance(row, dict):
                 continue
             username = str(row.get("username") or "").strip()
             if not username:
                 continue
             safe_username = quote(username, safe="")
+            trader_tag = f"trader_{row_index}"
             profile_payload = self._get(
-                f"profile:{username}", READ_ONLY_ENDPOINTS["users_info"], {"usernames": username}
+                f"profile:{trader_tag}", READ_ONLY_ENDPOINTS["users_info"], {"usernames": username}
             )
             profiles = profile_payload.get("users") if isinstance(profile_payload, dict) else None
             profile = profiles[0] if isinstance(profiles, list) and profiles and isinstance(profiles[0], dict) else None
             portfolio = self._get(
-                f"portfolio:{username}",
+                f"portfolio:{trader_tag}",
                 READ_ONLY_ENDPOINTS["user_live_portfolio"].format(username=safe_username),
             )
+            portfolio_endpoint = f"portfolio:{trader_tag}"
+            portfolio_available = isinstance(portfolio, dict)
+            self.portfolio_diagnostics.append({
+                "http_status": self.endpoint_http_status.get(portfolio_endpoint),
+                "portfolio_available": portfolio_available,
+                "positions": portfolio_position_count(portfolio),
+            })
             gain = self._get(
-                f"gain:{username}", READ_ONLY_ENDPOINTS["user_gain"].format(username=safe_username)
+                f"gain:{trader_tag}", READ_ONLY_ENDPOINTS["user_gain"].format(username=safe_username)
             )
             copiers = self._get(
-                f"copiers:{username}", READ_ONLY_ENDPOINTS["user_copiers"].format(username=safe_username)
+                f"copiers:{trader_tag}", READ_ONLY_ENDPOINTS["user_copiers"].format(username=safe_username)
             )
             user_id = str(row.get("cid") or (profile or {}).get("gcid") or "").strip()
             feed = self._get(
-                f"feed:{username}",
+                f"feed:{trader_tag}",
                 READ_ONLY_ENDPOINTS["social_feed"].format(user_id=quote(user_id, safe="")),
                 {"take": 10, "offset": 0},
             ) if user_id else None
@@ -673,7 +870,7 @@ class EtoroExternalSignalService:
             trader = normalize_trader(
                 row,
                 profile=profile,
-                portfolio_available=isinstance(portfolio, dict),
+                portfolio_available=portfolio_available,
                 gain_payload=gain,
                 copiers_payload=copiers,
                 feed_payload=feed,
@@ -684,27 +881,39 @@ class EtoroExternalSignalService:
             signals.extend(trader_signals)
 
         consensus = calculate_consensus(traders, signals, updated_at=fetched_at)
-        ok = sum(1 for status in self.endpoint_status.values() if status == "OK")
-        total = len(self.endpoint_status)
-        status = "OK" if total and ok == total else ("PARTIAL" if ok else "API_ERROR")
+        portfolio_summary = self._portfolio_summary()
+        if search_state != "GOLD_FOUND":
+            status = search_state
+        elif not traders:
+            status = "GOLD_FOUND_NO_TRADERS"
+        elif signals:
+            status = "OK"
+        elif portfolio_summary["portfolio_ok"] > 0:
+            status = "GOLD_FOUND_NO_ACTIVE_POSITION"
+        elif (
+            portfolio_summary["reviewed_traders"] > 0
+            and portfolio_summary["portfolio_403"] == portfolio_summary["reviewed_traders"]
+        ):
+            status = "GOLD_FOUND_PORTFOLIO_UNAVAILABLE"
+        else:
+            status = "GOLD_FOUND"
         available = bool(consensus["valid_traders"])
         data_quality = "HIGH" if consensus["quality"] >= 75 else (
             "MEDIUM" if consensus["quality"] >= 50 else "LOW"
         )
-        return {
+        return self._with_diagnostics({
             **consensus,
             "updated_epoch": int(stamp.timestamp()),
             "stale_after_seconds": self.stale_after_seconds,
             "available": available,
             "fresh": True,
-            "api_status": status if instruments else "NO_GOLD_INSTRUMENT",
+            "api_status": status,
             "data_quality": data_quality,
             "message": "Consenso diagnóstico; no altera ni ejecuta operaciones.",
             "read_only": True,
             "copy_trading_mode": "READ_ONLY_PORTFOLIO_DATA",
             "traders": [asdict(trader) for trader in traders],
             "signals": [asdict(signal) for signal in signals],
-            "endpoint_status": self.endpoint_status,
             "future_metrics": [
                 "accuracy_global",
                 "accuracy_london",
@@ -715,7 +924,7 @@ class EtoroExternalSignalService:
             "future_sources": ["etoro", "zulutrade"],
             "future_max_score_effect": 5,
             "score_effect": 0,
-        }
+        })
 
 
 def write_snapshot(snapshot: Mapping[str, Any], output_path: Path = OUT) -> None:
@@ -725,6 +934,63 @@ def write_snapshot(snapshot: Mapping[str, Any], output_path: Path = OUT) -> None
     temporary = output_path.with_suffix(output_path.suffix + ".tmp")
     temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     temporary.replace(output_path)
+
+
+def diagnostic_log_lines(
+    snapshot: Mapping[str, Any], *, include_limits: bool = False
+) -> list[str]:
+    """Build credential-free runtime diagnostics from the sanitized snapshot."""
+
+    lines: list[str] = []
+    if include_limits:
+        lines.extend([
+            f"[ETORO] configured_max_traders={snapshot.get('configured_max_traders')}",
+            f"[ETORO] effective_max_traders={snapshot.get('effective_max_traders')}",
+        ])
+    portfolio_endpoint = snapshot.get("portfolio_endpoint")
+    if isinstance(portfolio_endpoint, dict):
+        lines.append(
+            f"[ETORO] portfolio_endpoint method={portfolio_endpoint.get('method')} "
+            f"path={portfolio_endpoint.get('path')} purpose={portfolio_endpoint.get('purpose')}"
+        )
+    for search in snapshot.get("instrument_search") or []:
+        if not isinstance(search, dict):
+            continue
+        prefix = (
+            f"[ETORO] search={search.get('query')} http={search.get('http_status')} "
+            f"status={search.get('status')}"
+        )
+        rows = search.get("rows") if isinstance(search.get("rows"), list) else []
+        if not rows:
+            lines.append(f"{prefix} rows=0")
+            continue
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            lines.append(
+                f"{prefix} instrumentId={row.get('instrumentId')} "
+                f"internalSymbolFull={row.get('internalSymbolFull')} "
+                f"displayName={row.get('displayName')} assetClass={row.get('assetClass')} "
+                f"type={row.get('instrumentType')}"
+            )
+    for index, portfolio in enumerate(snapshot.get("portfolio_diagnostics") or [], start=1):
+        if isinstance(portfolio, dict):
+            lines.append(
+                f"[ETORO] portfolio={index} http={portfolio.get('http_status')} "
+                f"portfolio_available={str(bool(portfolio.get('portfolio_available'))).lower()} "
+                f"positions={portfolio.get('positions', 0)}"
+            )
+    summary = snapshot.get("portfolio_summary")
+    if isinstance(summary, dict):
+        lines.append(
+            "[ETORO] "
+            f"reviewed_traders={summary.get('reviewed_traders', 0)} "
+            f"portfolio_ok={summary.get('portfolio_ok', 0)} "
+            f"portfolio_403={summary.get('portfolio_403', 0)} "
+            f"portfolio_404={summary.get('portfolio_404', 0)} "
+            f"portfolio_other_errors={summary.get('portfolio_other_errors', 0)}"
+        )
+    return lines
 
 
 def run_once(
@@ -753,18 +1019,22 @@ def run_once(
 def main() -> None:
     interval = max(60, int(os.getenv("GOLDSCOUT_ETORO_INTERVAL", "300")))
     print(f"GoldScout eToro observer: {OUT}")
+    limits_logged = False
     while True:
         try:
             snapshot = run_once()
+            for line in diagnostic_log_lines(snapshot, include_limits=not limits_logged):
+                print(line)
+            limits_logged = True
             print(
-                "[etoro] refresh "
+                "[ETORO] refresh "
                 f"{snapshot.get('api_status')} | traders={snapshot.get('valid_traders', 0)} "
                 f"quality={snapshot.get('quality', 0)} | score_effect=0"
             )
         except Exception as exc:
             fallback = empty_snapshot("ERROR", f"Observador eToro degradado: {type(exc).__name__}")
             write_snapshot(fallback)
-            print(f"[etoro] refresh ERROR: {type(exc).__name__}")
+            print(f"[ETORO] refresh ERROR: {type(exc).__name__}")
         time.sleep(interval)
 
 

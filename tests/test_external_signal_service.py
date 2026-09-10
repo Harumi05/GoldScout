@@ -62,10 +62,11 @@ class AvailableClient:
             symbol = (params or {}).get("internalSymbolFull")
             if symbol == "GOLD" and self.gold_instrument:
                 return {"items": [{
-                    "instrumentId": 100,
-                    "displayname": "Gold",
-                    "internalInstrumentDisplayName": "Gold",
-                    "internalSymbolFull": "GOLD",
+                    "instrumentId": 559,
+                    "displayname": "GOLD 24/7",
+                    "internalInstrumentDisplayName": "GOLD 24/7",
+                    "internalSymbolFull": "GOLD.24-7",
+                    "internalAssetClassName": "Commodity",
                 }]}
             return {"items": []}
         if path == external.READ_ONLY_ENDPOINTS["rankings"]:
@@ -90,7 +91,7 @@ class AvailableClient:
                 "positionId": 9001,
                 "openTimestamp": "2026-09-10T13:30:00Z",
                 "openRate": 2500.5,
-                "instrumentId": 100,
+                "instrumentId": 559,
                 "isBuy": True,
                 "investmentPct": 4.0,
             }], "socialTrades": []}
@@ -200,7 +201,26 @@ class EtoroTransportTests(unittest.TestCase):
         )
         service = external.EtoroExternalSignalService(client)
         self.assertIsNone(service._get("private", "/api/v1/private"))
-        self.assertEqual(service.endpoint_status["private"], "UNAVAILABLE")
+        self.assertEqual(service.endpoint_status["private"], "FORBIDDEN")
+        self.assertEqual(service.endpoint_http_status["private"], 403)
+
+    def test_http_failures_are_kept_distinct(self):
+        expected = {
+            401: "AUTH_ERROR",
+            403: "FORBIDDEN",
+            404: "NOT_FOUND",
+            429: "RATE_LIMITED",
+            503: "PROVIDER_ERROR",
+        }
+        for code, status in expected.items():
+            with self.subTest(code=code):
+                client = external.EtoroClient(
+                    "api", "user", session=FakeSession([FakeResponse(code)]), max_retries=0
+                )
+                service = external.EtoroExternalSignalService(client)
+                self.assertIsNone(service._get("endpoint", "/api/v1/test"))
+                self.assertEqual(service.endpoint_status["endpoint"], status)
+                self.assertEqual(service.endpoint_http_status["endpoint"], code)
 
     def test_only_relative_api_paths_are_accepted(self):
         client = external.EtoroClient("api", "user", session=FakeSession([]))
@@ -216,12 +236,51 @@ class EtoroTransportTests(unittest.TestCase):
 
 class EtoroNormalizationTests(unittest.TestCase):
     def test_only_explicit_gold_symbols_are_normalized(self):
-        for value in ("Gold", "GOLD", "XAUUSD", "XAU/USD", "XAU-USD"):
+        for value in ("Gold", "GOLD", "XAUUSD", "GOLD.24-7"):
             self.assertEqual(external.normalize_gold_symbol(value), "XAUUSD")
 
     def test_non_gold_or_ambiguous_instrument_is_rejected(self):
-        for value in ("Gold Miners ETF", "Barrick Gold", "XAU/EUR", "Silver", ""):
+        for value in (
+            "Gold Miners ETF", "Barrick Gold", "XAU/EUR", "XAU/USD", "XAU-USD",
+            "GOLD.APR27", "GOLD.AUG27", "GOLD.DEC27", "MGC.DEC27", "GOLD.ASX", "Silver", "",
+        ):
             self.assertIsNone(external.normalize_gold_symbol(value))
+
+    def test_instrument_mapping_requires_exact_gold_24_7_id_and_symbol(self):
+        payload = {"items": [
+            {"instrumentId": 559, "internalSymbolFull": "GOLD.24-7", "displayname": "GOLD 24/7"},
+            {"instrumentId": 560, "internalSymbolFull": "MGC.DEC27", "displayname": "Micro Gold"},
+            {"instrumentId": 561, "internalSymbolFull": "GOLD.ASX", "displayname": "Gold ETF"},
+            {"instrumentId": 562, "internalSymbolFull": "GOLD.DEC27", "displayname": "Gold Future"},
+            {"instrumentId": 558, "internalSymbolFull": "GOLD.24-7", "displayname": "Wrong ID"},
+            {"instrumentId": 559, "internalSymbolFull": "GOLD", "displayname": "Gold"},
+        ]}
+        self.assertEqual(
+            external.normalize_gold_instruments([payload]),
+            {559: "GOLD.24-7"},
+        )
+
+    def test_search_rows_are_sanitized_and_never_keep_unknown_fields(self):
+        rows = external.sanitize_instrument_rows({"items": [{
+            "instrumentId": 100,
+            "internalSymbolFull": "GOLD",
+            "displayname": "Gold",
+            "internalAssetClassName": "Commodities",
+            "instrumentTypeId": 7,
+            "apiKey": "must-not-survive",
+        }]})
+        self.assertEqual(rows, [{
+            "instrumentId": 100,
+            "internalSymbolFull": "GOLD",
+            "displayName": "Gold",
+            "assetClass": "Commodities",
+            "instrumentType": "7",
+        }])
+        self.assertNotIn("must-not-survive", json.dumps(rows))
+
+    def test_configured_twenty_traders_is_not_silently_reduced_to_ten(self):
+        self.assertEqual(external.resolve_max_traders(20), (20, 20))
+        self.assertEqual(external.resolve_max_traders(101), (101, 100))
 
     def test_long_portfolio_position_normalizes_to_external_signal(self):
         rows = external.normalize_portfolio_signals(
@@ -336,6 +395,47 @@ class EtoroIntegrationTests(unittest.TestCase):
         result = service.collect()
         self.assertFalse(result["available"])
         self.assertEqual(result["valid_traders"], 0)
+        self.assertEqual(result["api_status"], "GOLD_FOUND_PORTFOLIO_UNAVAILABLE")
+        self.assertEqual(result["portfolio_summary"], {
+            "reviewed_traders": 1,
+            "portfolio_ok": 0,
+            "portfolio_403": 1,
+            "portfolio_404": 0,
+            "portfolio_other_errors": 0,
+        })
+        self.assertEqual(result["portfolio_diagnostics"], [{
+            "http_status": 403,
+            "portfolio_available": False,
+            "positions": 0,
+        }])
+        self.assertEqual(result["score_effect"], 0)
+
+    def test_twenty_forbidden_portfolios_report_gold_portfolio_unavailable(self):
+        class TwentyPrivateClient(AvailableClient):
+            def __init__(self):
+                super().__init__(private_portfolio=True)
+
+            def get(self, path, params=None):
+                if path == external.READ_ONLY_ENDPOINTS["rankings"]:
+                    return {"results": [
+                        {
+                            "cid": index,
+                            "username": f"public_trader_{index}",
+                            "riskScore": 4,
+                            "copiers": 100,
+                            "annualizedReturn": 5,
+                        }
+                        for index in range(1, 21)
+                    ]}
+                return super().get(path, params)
+
+        result = external.EtoroExternalSignalService(
+            TwentyPrivateClient(), max_traders=20, now=lambda: FIXED_NOW
+        ).collect()
+        self.assertEqual(result["api_status"], "GOLD_FOUND_PORTFOLIO_UNAVAILABLE")
+        self.assertEqual(result["portfolio_summary"]["reviewed_traders"], 20)
+        self.assertEqual(result["portfolio_summary"]["portfolio_ok"], 0)
+        self.assertEqual(result["portfolio_summary"]["portfolio_403"], 20)
         self.assertEqual(result["score_effect"], 0)
 
     def test_no_explicit_gold_instrument_yields_safe_empty_consensus(self):
@@ -344,9 +444,136 @@ class EtoroIntegrationTests(unittest.TestCase):
         )
         result = service.collect()
         self.assertFalse(result["available"])
-        self.assertEqual(result["api_status"], "NO_GOLD_INSTRUMENT")
+        self.assertEqual(result["api_status"], "SEARCH_EMPTY")
         self.assertEqual(result["valid_traders"], 0)
         self.assertEqual(result["score_effect"], 0)
+
+    def test_search_rows_without_exact_gold_report_alias_not_matched(self):
+        class AliasClient(AvailableClient):
+            def get(self, path, params=None):
+                if path == external.READ_ONLY_ENDPOINTS["instrument_search"]:
+                    return {"items": [{
+                        "instrumentId": 555,
+                        "internalSymbolFull": "GOLD.FUT",
+                        "displayname": "Gold",
+                    }]}
+                return super().get(path, params)
+
+        result = external.EtoroExternalSignalService(
+            AliasClient(), max_traders=1, now=lambda: FIXED_NOW
+        ).collect()
+        self.assertEqual(result["api_status"], "GOLD_ALIAS_NOT_MATCHED")
+        self.assertIsNone(result["gold_instrument_id"])
+        self.assertEqual(result["instrument_search"][0]["rows"][0]["instrumentId"], 555)
+
+    def test_exact_gold_search_keeps_official_instrument_id(self):
+        result = external.EtoroExternalSignalService(
+            AvailableClient(), max_traders=20, now=lambda: FIXED_NOW
+        ).collect()
+        self.assertEqual(result["gold_instrument_id"], 559)
+        self.assertEqual(result["configured_max_traders"], 20)
+        self.assertEqual(result["effective_max_traders"], 20)
+
+    def test_gold_found_without_ranked_traders_is_distinct(self):
+        class NoTraderClient(AvailableClient):
+            def get(self, path, params=None):
+                if path == external.READ_ONLY_ENDPOINTS["rankings"]:
+                    return {"results": []}
+                return super().get(path, params)
+
+        result = external.EtoroExternalSignalService(
+            NoTraderClient(), max_traders=20, now=lambda: FIXED_NOW
+        ).collect()
+        self.assertEqual(result["api_status"], "GOLD_FOUND_NO_TRADERS")
+
+    def test_gold_found_without_active_position_is_distinct(self):
+        class EmptyPortfolioClient(AvailableClient):
+            def get(self, path, params=None):
+                if path.endswith("/portfolio/live"):
+                    return {"positions": [], "socialTrades": []}
+                return super().get(path, params)
+
+        result = external.EtoroExternalSignalService(
+            EmptyPortfolioClient(), max_traders=1, now=lambda: FIXED_NOW
+        ).collect()
+        self.assertEqual(result["api_status"], "GOLD_FOUND_NO_ACTIVE_POSITION")
+        self.assertEqual(result["portfolio_summary"]["portfolio_ok"], 1)
+
+    def test_portfolio_not_found_is_counted_separately(self):
+        class MissingPortfolioClient(AvailableClient):
+            def get(self, path, params=None):
+                if path.endswith("/portfolio/live"):
+                    raise external.EtoroUnavailable("missing", 404)
+                return super().get(path, params)
+
+        result = external.EtoroExternalSignalService(
+            MissingPortfolioClient(), max_traders=1, now=lambda: FIXED_NOW
+        ).collect()
+        self.assertEqual(result["portfolio_summary"]["portfolio_403"], 0)
+        self.assertEqual(result["portfolio_summary"]["portfolio_404"], 1)
+        self.assertEqual(result["portfolio_diagnostics"][0]["http_status"], 404)
+
+    def test_search_transport_failures_define_exact_final_state(self):
+        expected = {
+            401: "AUTH_ERROR",
+            403: "PERMISSION_DENIED",
+            404: "NOT_FOUND",
+            429: "RATE_LIMITED",
+            503: "PROVIDER_ERROR",
+        }
+
+        class SearchFailureClient(AvailableClient):
+            def __init__(self, status_code):
+                super().__init__()
+                self.status_code = status_code
+
+            def get(self, path, params=None):
+                if path == external.READ_ONLY_ENDPOINTS["instrument_search"]:
+                    if self.status_code in (403, 404):
+                        raise external.EtoroUnavailable("search failed", self.status_code)
+                    raise external.EtoroAPIError("search failed", self.status_code)
+                return super().get(path, params)
+
+        for code, status in expected.items():
+            with self.subTest(code=code):
+                result = external.EtoroExternalSignalService(
+                    SearchFailureClient(code), max_traders=1, now=lambda: FIXED_NOW
+                ).collect()
+                self.assertEqual(result["api_status"], status)
+                self.assertEqual(
+                    [row["http_status"] for row in result["instrument_search"]],
+                    [code, code],
+                )
+
+    def test_diagnostic_logs_contain_only_sanitized_runtime_fields(self):
+        result = external.EtoroExternalSignalService(
+            AvailableClient(), max_traders=20, now=lambda: FIXED_NOW
+        ).collect()
+        log = "\n".join(external.diagnostic_log_lines(result, include_limits=True))
+        self.assertIn("[ETORO] configured_max_traders=20", log)
+        self.assertIn("[ETORO] effective_max_traders=20", log)
+        self.assertIn("instrumentId=559", log)
+        self.assertIn("portfolio_available=true", log)
+        self.assertIn(
+            "path=/api/v1/user-info/people/{username}/portfolio/live",
+            log,
+        )
+        self.assertNotIn("goldobserver", log)
+        self.assertNotIn("api_key", log.lower())
+
+    def test_fallback_design_is_get_only_and_never_claims_live_positions(self):
+        result = external.EtoroExternalSignalService(
+            AvailableClient(private_portfolio=True), max_traders=1, now=lambda: FIXED_NOW
+        ).collect()
+        fallback = result["portfolio_fallback"]
+        self.assertEqual(fallback["method"], "GET")
+        self.assertEqual(
+            fallback["path"],
+            "/api/v2/portfolios/{username}/exposure/history",
+        )
+        self.assertEqual(fallback["direction_field"], "netExposurePct")
+        self.assertFalse(fallback["live_positions"])
+        self.assertEqual(fallback["status"], "NOT_EXECUTED")
 
     def test_score_effect_is_forced_to_zero_when_written(self):
         with tempfile.TemporaryDirectory() as directory:

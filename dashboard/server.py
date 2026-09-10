@@ -6,8 +6,13 @@ try:
 except Exception:
     update_news = None
 try:
-    from external_signal_service import mark_snapshot_freshness, run_once as update_external
+    from external_signal_service import (
+        diagnostic_log_lines,
+        mark_snapshot_freshness,
+        run_once as update_external,
+    )
 except Exception:
+    diagnostic_log_lines = None
     mark_snapshot_freshness = None
     update_external = None
 
@@ -103,9 +108,14 @@ def external_loop():
     if not update_external:
         print('[etoro] external_signal_service.py no está disponible; GoldScout continúa sin contexto externo')
         return
+    limits_logged=False
     while True:
         try:
             d=update_external()
+            if diagnostic_log_lines:
+                for line in diagnostic_log_lines(d,include_limits=not limits_logged):
+                    print(line)
+            limits_logged=True
             print(f"[etoro] actualización {d.get('api_status')} | traders={d.get('valid_traders',0)} | score_effect=0")
         except Exception as exc:
             print(f'[etoro] actualización falló sin afectar GoldScout: {type(exc).__name__}')
