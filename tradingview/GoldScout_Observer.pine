@@ -1,0 +1,185 @@
+//@version=6
+indicator("GoldScout Observer", "GoldScout Observer", overlay = true, max_labels_count = 100)
+
+// Observation only. This indicator never submits orders and its webhook payload
+// is contractually fixed to score_effect=0 by the GoldScout backend.
+
+string GROUP_WEBHOOK = "Webhook"
+string GROUP_STRUCTURE = "Structure"
+string GROUP_MOMENTUM = "Momentum"
+string GROUP_PULLBACK = "Pullback / recovery"
+
+string webhookToken = input.string("", "GoldScout Webhook Token", group = GROUP_WEBHOOK,
+     tooltip = "Dedicated local token configured as GOLDSCOUT_TRADINGVIEW_WEBHOOK_TOKEN. It is never plotted or logged by this script.")
+string normalizedWebhookToken = str.trim(webhookToken)
+bool enableAlerts = input.bool(true, "Enable observation alerts", group = GROUP_WEBHOOK)
+
+int pivotLeft = input.int(3, "Pivot bars left", minval = 1, maxval = 20, group = GROUP_STRUCTURE)
+int pivotRight = input.int(3, "Pivot bars right", minval = 1, maxval = 20, group = GROUP_STRUCTURE)
+int breakoutMaxAge = input.int(100, "Maximum pivot age for breakout", minval = 5, maxval = 500, group = GROUP_STRUCTURE)
+
+int rsiLength = input.int(14, "RSI length", minval = 2, group = GROUP_MOMENTUM)
+int dmiLength = input.int(14, "DMI length", minval = 2, group = GROUP_MOMENTUM)
+int adxSmoothing = input.int(14, "ADX smoothing", minval = 2, group = GROUP_MOMENTUM)
+float adxThreshold = input.float(25.0, "ADX threshold", minval = 1.0, maxval = 100.0, step = 0.5, group = GROUP_MOMENTUM)
+float bullishRsiThreshold = input.float(55.0, "Bullish RSI threshold", minval = 50.0, maxval = 90.0, step = 0.5, group = GROUP_MOMENTUM)
+float bearishRsiThreshold = input.float(45.0, "Bearish RSI threshold", minval = 10.0, maxval = 50.0, step = 0.5, group = GROUP_MOMENTUM)
+
+float pullbackToleranceAtr = input.float(0.35, "EMA/level tolerance in ATR", minval = 0.05, maxval = 1.0, step = 0.05, group = GROUP_PULLBACK)
+
+f_jsonEscape(string value) =>
+    string escaped = str.replace_all(value, "\\", "\\\\")
+    escaped := str.replace_all(escaped, "\"", "\\\"")
+    escaped := str.replace_all(escaped, "\n", "\\n")
+    escaped := str.replace_all(escaped, "\r", "\\r")
+    escaped := str.replace_all(escaped, "\t", "\\t")
+    escaped
+
+f_number(float value) =>
+    str.tostring(value, "#.########")
+
+float ema20 = ta.ema(close, 20)
+float ema200 = ta.ema(close, 200)
+float rsi = ta.rsi(close, rsiLength)
+[diPlus, diMinus, adx] = ta.dmi(dmiLength, adxSmoothing)
+float atr = ta.atr(14)
+float observedVolume = volume
+
+f_message(string eventName, string eventDirection) =>
+    string message = "{"
+    message += "\"token\":\"" + f_jsonEscape(normalizedWebhookToken) + "\","
+    message += "\"source\":\"tradingview\","
+    message += "\"symbol\":\"XAUUSD\","
+    message += "\"timeframe\":\"" + str.tostring(timeframe.multiplier) + "\","
+    message += "\"event\":\"" + eventName + "\","
+    message += "\"direction\":\"" + eventDirection + "\","
+    message += "\"price\":" + f_number(close) + ","
+    message += "\"rsi\":" + f_number(rsi) + ","
+    message += "\"adx\":" + f_number(adx) + ","
+    message += "\"atr\":" + f_number(atr) + ","
+    message += "\"ema20\":" + f_number(ema20) + ","
+    message += "\"ema200\":" + f_number(ema200) + ","
+    message += "\"timestamp\":" + str.tostring(time_close)
+    message += "}"
+    message
+
+float confirmedPivotHigh = ta.pivothigh(high, pivotLeft, pivotRight)
+float confirmedPivotLow = ta.pivotlow(low, pivotLeft, pivotRight)
+
+var float previousPivotHigh = na
+var float lastPivotHigh = na
+var float previousPivotLow = na
+var float lastPivotLow = na
+var int lastPivotHighBar = na
+var int lastPivotLowBar = na
+
+if barstate.isconfirmed
+    if not na(confirmedPivotHigh)
+        previousPivotHigh := lastPivotHigh
+        lastPivotHigh := confirmedPivotHigh
+        lastPivotHighBar := bar_index - pivotRight
+    if not na(confirmedPivotLow)
+        previousPivotLow := lastPivotLow
+        lastPivotLow := confirmedPivotLow
+        lastPivotLowBar := bar_index - pivotRight
+
+bool structureReady = not na(previousPivotHigh) and not na(lastPivotHigh) and not na(previousPivotLow) and not na(lastPivotLow)
+bool bullishStructure = structureReady and lastPivotHigh > previousPivotHigh and lastPivotLow > previousPivotLow
+bool bearishStructure = structureReady and lastPivotHigh < previousPivotHigh and lastPivotLow < previousPivotLow
+int structure = bullishStructure ? 1 : bearishStructure ? -1 : 0
+bool structureChanged = barstate.isconfirmed and structureReady and (not structureReady[1] or structure != structure[1])
+
+bool recentHigh = not na(lastPivotHighBar) and bar_index > lastPivotHighBar and bar_index - lastPivotHighBar <= breakoutMaxAge
+bool recentLow = not na(lastPivotLowBar) and bar_index > lastPivotLowBar and bar_index - lastPivotLowBar <= breakoutMaxAge
+bool bullishBreakout = barstate.isconfirmed and recentHigh and close > lastPivotHigh and close[1] <= lastPivotHigh
+bool bearishBreakout = barstate.isconfirmed and recentLow and close < lastPivotLow and close[1] >= lastPivotLow
+
+bool indicatorsReady = not na(rsi) and not na(adx) and not na(atr) and not na(ema20) and not na(ema200)
+bool bullishMomentumState = indicatorsReady and adx >= adxThreshold and diPlus > diMinus and rsi >= bullishRsiThreshold
+bool bearishMomentumState = indicatorsReady and adx >= adxThreshold and diMinus > diPlus and rsi <= bearishRsiThreshold
+bool bullishMomentum = barstate.isconfirmed and bullishMomentumState and not bullishMomentumState[1]
+bool bearishMomentum = barstate.isconfirmed and bearishMomentumState and not bearishMomentumState[1]
+
+var float bullishBreakoutLevel = na
+var float bearishBreakoutLevel = na
+var bool bullishPullbackActive = false
+var bool bearishPullbackActive = false
+
+bool validBullTrend = bullishStructure and close > ema200
+bool validBearTrend = bearishStructure and close < ema200
+bool bullishEmaPullback = validBullTrend and close <= ema20 and close >= ema20 - atr * pullbackToleranceAtr
+bool bearishEmaPullback = validBearTrend and close >= ema20 and close <= ema20 + atr * pullbackToleranceAtr
+bool bullishLevelPullback = validBullTrend and not na(bullishBreakoutLevel) and close <= bullishBreakoutLevel and close >= bullishBreakoutLevel - atr * pullbackToleranceAtr
+bool bearishLevelPullback = validBearTrend and not na(bearishBreakoutLevel) and close >= bearishBreakoutLevel and close <= bearishBreakoutLevel + atr * pullbackToleranceAtr
+bool bullishPullbackState = indicatorsReady and (bullishEmaPullback or bullishLevelPullback)
+bool bearishPullbackState = indicatorsReady and (bearishEmaPullback or bearishLevelPullback)
+bool bullishPullback = barstate.isconfirmed and bullishPullbackState and not bullishPullbackState[1]
+bool bearishPullback = barstate.isconfirmed and bearishPullbackState and not bearishPullbackState[1]
+
+bool bullishEmaRecovery = close > ema20 and close[1] <= ema20[1]
+bool bearishEmaRecovery = close < ema20 and close[1] >= ema20[1]
+bool bullishLevelRecovery = not na(bullishBreakoutLevel) and close > bullishBreakoutLevel and close[1] <= bullishBreakoutLevel
+bool bearishLevelRecovery = not na(bearishBreakoutLevel) and close < bearishBreakoutLevel and close[1] >= bearishBreakoutLevel
+bool bullishRecovery = barstate.isconfirmed and bullishPullbackActive and validBullTrend and (bullishEmaRecovery or bullishLevelRecovery)
+bool bearishRecovery = barstate.isconfirmed and bearishPullbackActive and validBearTrend and (bearishEmaRecovery or bearishLevelRecovery)
+
+if barstate.isconfirmed
+    if bullishBreakout
+        bullishBreakoutLevel := lastPivotHigh
+    if bearishBreakout
+        bearishBreakoutLevel := lastPivotLow
+    if not bullishStructure
+        bullishPullbackActive := false
+        bullishBreakoutLevel := na
+    else if bullishRecovery
+        bullishPullbackActive := false
+    else if bullishPullback
+        bullishPullbackActive := true
+    if not bearishStructure
+        bearishPullbackActive := false
+        bearishBreakoutLevel := na
+    else if bearishRecovery
+        bearishPullbackActive := false
+    else if bearishPullback
+        bearishPullbackActive := true
+
+string chartTicker = str.upper(syminfo.ticker)
+bool supportedSymbol = chartTicker == "XAUUSD" or chartTicker == "GOLD"
+bool supportedTimeframe = timeframe.isminutes and (timeframe.multiplier == 15 or timeframe.multiplier == 60 or timeframe.multiplier == 240)
+bool tokenReady = str.length(normalizedWebhookToken) > 0
+bool canAlert = enableAlerts and supportedSymbol and supportedTimeframe and tokenReady and indicatorsReady and barstate.isconfirmed
+
+if canAlert
+    if structureChanged
+        alert(f_message("structure", bullishStructure ? "LONG" : bearishStructure ? "SHORT" : "NEUTRAL"), alert.freq_all)
+    if bullishBreakout
+        alert(f_message("breakout", "LONG"), alert.freq_all)
+    if bearishBreakout
+        alert(f_message("breakout", "SHORT"), alert.freq_all)
+    if bullishMomentum
+        alert(f_message("momentum", "LONG"), alert.freq_all)
+    if bearishMomentum
+        alert(f_message("momentum", "SHORT"), alert.freq_all)
+    if bullishPullback
+        alert(f_message("pullback", "LONG"), alert.freq_all)
+    if bearishPullback
+        alert(f_message("pullback", "SHORT"), alert.freq_all)
+    if bullishRecovery
+        alert(f_message("recovery", "LONG"), alert.freq_all)
+    if bearishRecovery
+        alert(f_message("recovery", "SHORT"), alert.freq_all)
+
+plot(ema20, "EMA 20", color = color.orange, linewidth = 2)
+plot(ema200, "EMA 200", color = color.blue, linewidth = 2)
+plot(lastPivotHigh, "Last confirmed pivot high", color = color.new(color.red, 35), style = plot.style_stepline)
+plot(lastPivotLow, "Last confirmed pivot low", color = color.new(color.green, 35), style = plot.style_stepline)
+plot(observedVolume, "Volume (observation only)", display = display.data_window)
+
+plotshape(bullishBreakout, "Bullish breakout", shape.triangleup, location.belowbar, color.green, size = size.tiny, text = "BO")
+plotshape(bearishBreakout, "Bearish breakout", shape.triangledown, location.abovebar, color.red, size = size.tiny, text = "BO")
+plotshape(bullishPullback, "Bullish pullback", shape.circle, location.belowbar, color.orange, size = size.tiny, text = "PB")
+plotshape(bearishPullback, "Bearish pullback", shape.circle, location.abovebar, color.orange, size = size.tiny, text = "PB")
+plotshape(bullishRecovery, "Bullish recovery", shape.diamond, location.belowbar, color.aqua, size = size.tiny, text = "R")
+plotshape(bearishRecovery, "Bearish recovery", shape.diamond, location.abovebar, color.aqua, size = size.tiny, text = "R")
+
+bgcolor(not supportedSymbol or not supportedTimeframe ? color.new(color.red, 88) : na, title = "Unsupported symbol/timeframe")

@@ -27,6 +27,10 @@ except Exception:
     ingest_tradingview_webhook = None
     read_tradingview_snapshot = None
     record_tradingview_status = None
+try:
+    from market_observer_service import observation_snapshot as read_market_observer_snapshot
+except Exception:
+    read_market_observer_snapshot = None
 
 try:
     _tv_rate_limit=max(1,int(os.environ.get('GOLDSCOUT_TRADINGVIEW_RATE_LIMIT_PER_MINUTE','120')))
@@ -60,7 +64,10 @@ OFFLINE={"updated_at":None,"symbol":"XAUUSD","timeframe":"H1","live_trading":Fal
 "freshness_sec":None,"data_quality":"LOW","score_effect":0,"read_only":True},
 "tradingview":{"source":"tradingview","symbol":"XAUUSD","available":False,"api_status":"NO_DATA",
 "last_signal":None,"freshness_sec":None,"event_count":0,"score_effect":0,"read_only":True,
-"observation_only":True}}
+"observation_only":True},
+"market_observer":{"source":"MT5","observer_only":True,"score_effect":0,"status":"NO_DATA",
+"observation_count":0,"latest_by_timeframe":{"M15":None,"H1":None,"H4":None},
+"last_decision":None,"freshness_sec":None}}
 
 def gold(s):
     return (s or '').upper().strip().startswith('XAUUSD')
@@ -115,6 +122,19 @@ def read_tradingview():
         return d
     except Exception:
         return OFFLINE['tradingview'].copy()
+
+def read_market_observer():
+    if not read_market_observer_snapshot:
+        return OFFLINE['market_observer'].copy()
+    try:
+        paths=[candidate/'market_observations.jsonl' for candidate in CANDIDATES]
+        d=read_market_observer_snapshot(paths)
+        d['source']='MT5'
+        d['observer_only']=True
+        d['score_effect']=0
+        return d
+    except Exception:
+        return {**OFFLINE['market_observer'],'status':'PERSISTENCE_ERROR'}
 
 def request_token(headers):
     token=(headers.get('X-GoldScout-Token') or '').strip()
@@ -189,12 +209,14 @@ class H(BaseHTTPRequestHandler):
             d['news']=read_news()
             d['external_signal']=read_external()
             d['tradingview']=read_tradingview()
+            d['market_observer']=read_market_observer()
             self.send_payload(200,'application/json; charset=utf-8',json.dumps(d,ensure_ascii=False).encode()); return
         if self.path.startswith('/api/health'):
             payload={'ok':True,'candidates':[str(p) for p in CANDIDATES],
                 'news_file':bool(read_json('gold_news_analysis.json')),
                 'external_signal_file':bool(read_json('external_signal_etoro.json')),
-                'tradingview_events':read_tradingview().get('event_count',0)}
+                'tradingview_events':read_tradingview().get('event_count',0),
+                'market_observations':read_market_observer().get('observation_count',0)}
             self.send_payload(200,'application/json; charset=utf-8',json.dumps(payload,ensure_ascii=False).encode()); return
         if self.path.startswith('/api/log'):
             import csv

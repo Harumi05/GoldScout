@@ -5,6 +5,7 @@
 #include <Trade/Trade.mqh>
 #include <GoldScout/MarketStructure.mqh>
 #include <GoldScout/ContextScoring.mqh>
+#include <GoldScout/MarketObserver.mqh>
 
 CTrade trade;
 
@@ -157,6 +158,10 @@ input group "=== Dashboard ==="
 input string DashboardFile           = "xau_goldscout_dashboard.json";
 input bool   WriteDashboard           = true;
 
+input group "=== Market Observer (read-only) ==="
+input bool   EnableMarketObserver     = true;
+input string MarketObserverFile       = "market_observations.jsonl"; // MT5 Common/Files; dashboard maps this dataset to dashboard/data
+
 int hEmaFast = INVALID_HANDLE;
 int hEmaSlow = INVALID_HANDLE;
 int hEmaHTFFast = INVALID_HANDLE;
@@ -165,6 +170,7 @@ int hRSI = INVALID_HANDLE;
 int hADX = INVALID_HANDLE;
 int hATR = INVALID_HANDLE;
 int hM15ATR = INVALID_HANDLE;
+GoldScoutMarketObserver g_marketObserver;
 
 datetime g_lastH1Bar = 0;
 double   g_peakEquity = 0.0;
@@ -307,6 +313,36 @@ void ConfigurePivotEngine(GoldScoutPivotConfig &config)
    config.minBarsBetween=PivotMinBarsBetween;
    config.minProminenceAtr=PivotMinProminenceATR;
    config.toleranceAtr=PivotEqualityToleranceATR;
+}
+
+void BuildMarketObserverContext(GoldScoutObserverContext &context)
+{
+   context.session=g_sessionContext.name;
+   context.newsBias=g_newsBias;
+   context.newsDataRisk=g_newsDataRisk;
+   context.longScore=g_diagLongFinal;
+   context.shortScore=g_diagShortFinal;
+   context.decision=g_lastDecision;
+   context.decisionReason=g_diagBlockReason!="" ? g_diagBlockReason : g_monitorReason;
+   context.monitorState=g_monitorState;
+   context.direction=g_lastDirection;
+   context.liveTrading=EnableLiveTrading;
+}
+
+void PollMarketObserverClosedBars()
+{
+   if(!EnableMarketObserver || !g_marketObserver.IsInitialized()) return;
+   GoldScoutObserverContext context;
+   BuildMarketObserverContext(context);
+   g_marketObserver.PollClosedBars(context);
+}
+
+void CaptureMarketObserverState()
+{
+   if(!EnableMarketObserver || !g_marketObserver.IsInitialized()) return;
+   GoldScoutObserverContext context;
+   BuildMarketObserverContext(context);
+   g_marketObserver.CaptureStateChange(context);
 }
 
 string M15DirectionName(const int direction)
@@ -2429,6 +2465,9 @@ string ClosedTradesJson()
 
 void UpdateDashboard()
 {
+   // Observation failures are deliberately ignored: dataset persistence must
+   // never change an existing trading, scoring or risk decision.
+   CaptureMarketObserverState();
    if(!WriteDashboard) return;
    double balance=AccountInfoDouble(ACCOUNT_BALANCE), equity=AccountInfoDouble(ACCOUNT_EQUITY);
    string accountCurrency=AccountInfoString(ACCOUNT_CURRENCY);
@@ -2522,6 +2561,16 @@ int OnInit()
    ResetIntrabarPlan(g_lastH1Bar);
    trade.SetExpertMagicNumber(MagicNumber);
    InitIndicators();
+   if(EnableMarketObserver)
+   {
+      GoldScoutPivotConfig observerPivotConfig;
+      ConfigurePivotEngine(observerPivotConfig);
+      if(!g_marketObserver.Initialize(_Symbol,MarketObserverFile,RSIPeriod,
+         ADXPeriod,ATRPeriod,PivotLookbackBars,observerPivotConfig))
+         Print("[GoldScout][MARKET_OBSERVER] no disponible; trading y scoring continúan sin cambios");
+      else
+         PrintFormat("[GoldScout][MARKET_OBSERVER] activo M15/H1/H4 | FILE_COMMON=%s | observer_only=true | score_effect=0",MarketObserverFile);
+   }
    EventSetTimer(MathMax(1,TimerSeconds));
    LoadWorldNews();
    g_lastDecision=EnableLiveTrading?"LIVE habilitado — iniciando análisis inmediato":"PAPER MODE — iniciando análisis inmediato";
@@ -2533,6 +2582,7 @@ int OnInit()
    TryTrade();
    if(g_diagATR>0.0 || g_diagRSI>0.0 || g_diagADX>0.0)
       g_startupAnalysisPending=false;
+   PollMarketObserverClosedBars();
    UpdateDashboard();
    return(INIT_SUCCEEDED);
 }
@@ -2540,6 +2590,7 @@ int OnInit()
 void OnDeinit(const int reason)
 {
    EventKillTimer();
+   g_marketObserver.Shutdown();
    if(hEmaFast!=INVALID_HANDLE) IndicatorRelease(hEmaFast);
    if(hEmaSlow!=INVALID_HANDLE) IndicatorRelease(hEmaSlow);
    if(hEmaHTFFast!=INVALID_HANDLE) IndicatorRelease(hEmaHTFFast);
@@ -2554,6 +2605,7 @@ void OnTimer()
 {
    if(!IsGoldSymbol()) return;
    LoadWorldNews();
+   PollMarketObserverClosedBars();
    datetime bar=iTime(_Symbol,PERIOD_H1,0);
    if(bar<=0) return;
 
