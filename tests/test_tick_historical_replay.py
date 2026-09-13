@@ -4,26 +4,37 @@ from datetime import datetime, timedelta, timezone
 from contextlib import redirect_stdout
 import io
 import json
+import os
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 
 from research.tick_historical_replay import (
     ChronologyError,
     DeduplicatingJsonlWriter,
     HORIZONS,
     IngestionStats,
+    MANIFEST_FILENAME,
     OutcomeTracker,
+    ProcessedInputManifest,
+    ReplayError,
     SOURCE,
     TIMEFRAMES,
     Tick,
+    adopt_existing_input,
     directional_outcome,
     discover_inputs,
+    fingerprint_input,
+    incremental_replay_once,
     iter_ticks,
     main,
+    normalized_input_path,
     parse_mt5_timestamp,
     replay_files,
     validate_m1,
+    watch_input_directory,
+    FileStabilityTracker,
 )
 
 
@@ -60,6 +71,42 @@ def read_jsonl(path: Path) -> list[dict]:
 def minute_rows(count: int, *, start=None):
     start = start or datetime(2026, 1, 5, tzinfo=timezone.utc)
     return [row_at(start, minute * 60, 2000 + minute * 0.01, 2000.5 + minute * 0.01) for minute in range(count)]
+
+
+def write_existing_outputs(output_dir: Path, first_ms: int, last_ms: int, symbol: str = "XAUUSD") -> None:
+    bars_dir = output_dir / "historical_bars"
+    bars_dir.mkdir(parents=True, exist_ok=True)
+    first_bucket = first_ms // 60_000 * 60_000
+    last_closed_at = last_ms // 60_000 * 60_000
+    for timeframe in ("M1", "M15", "H1", "H4"):
+        records = [
+            {
+                "bar_id": f"{SOURCE}-{symbol}-{timeframe}-{first_bucket}",
+                "source": SOURCE,
+                "symbol": symbol,
+                "timeframe": timeframe,
+                "timestamp": first_bucket,
+                "close_timestamp": first_bucket + TIMEFRAMES[timeframe] * 1000,
+            }
+        ]
+        if timeframe == "M1":
+            records.append(
+                {
+                    "bar_id": f"{SOURCE}-{symbol}-M1-{last_closed_at - 60_000}",
+                    "source": SOURCE,
+                    "symbol": symbol,
+                    "timeframe": "M1",
+                    "timestamp": last_closed_at - 60_000,
+                    "close_timestamp": last_closed_at,
+                }
+            )
+        (bars_dir / f"{symbol}_{timeframe}.jsonl").write_text(
+            "".join(json.dumps(record) + "\n" for record in records), encoding="utf-8"
+        )
+    observation = {"source": SOURCE, "observer_only": True, "score_effect": 0, "event_id": "existing"}
+    outcome = {"source": SOURCE, "observer_only": True, "score_effect": 0, "outcome_id": "existing|15m"}
+    (output_dir / "historical_observations.jsonl").write_text(json.dumps(observation) + "\n", encoding="utf-8")
+    (output_dir / "historical_outcomes.jsonl").write_text(json.dumps(outcome) + "\n", encoding="utf-8")
 
 
 class TickIngestionTests(unittest.TestCase):
@@ -189,7 +236,16 @@ class InputDirectoryTests(unittest.TestCase):
             write_ticks(root / "XAUUSD_ticks.csv", [row_at(start, 0, 2000, 2001), row_at(start, 60, 2001, 2002)])
             output = io.StringIO()
             with redirect_stdout(output):
-                result = main(["--input-dir", str(root), "--output-dir", str(root / "out")])
+                result = main(
+                    [
+                        "--input-dir",
+                        str(root),
+                        "--output-dir",
+                        str(root / "out"),
+                        "--stability-check-interval",
+                        "0",
+                    ]
+                )
         text = output.getvalue()
         self.assertEqual(result, 0)
         for marker in (
@@ -207,6 +263,374 @@ class InputDirectoryTests(unittest.TestCase):
             "[HISTORICAL] ticks_per_second=",
         ):
             self.assertIn(marker, text)
+
+
+class IncrementalInputTests(unittest.TestCase):
+    def run_once(self, root: Path, **kwargs):
+        return incremental_replay_once(
+            input_dir=root,
+            output_dir=root / "out",
+            stability_interval=0.0,
+            emit_logs=False,
+            **kwargs,
+        )
+
+    def manifest_record(self, root: Path, path: Path) -> dict:
+        return ProcessedInputManifest.load(root / "out" / MANIFEST_FILENAME).get(path)
+
+    def test_new_file_is_manifested_and_processed_successfully(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            path = root / "XAUUSD_new.csv"
+            write_ticks(path, minute_rows(3))
+            summary = self.run_once(root)
+            record = self.manifest_record(root, path)
+        self.assertEqual(summary["processed_now"], 1)
+        self.assertEqual(record["status"], "SUCCESS")
+        self.assertEqual(record["ticks_read"], 3)
+        self.assertEqual(record["ticks_valid"], 3)
+        self.assertTrue(record["fingerprint"].startswith("sha256:"))
+
+    def test_new_status_is_persisted_before_fingerprinting(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            path = root / "XAUUSD_new.csv"
+            write_ticks(path, minute_rows(3))
+            real_fingerprint = fingerprint_input
+
+            def assert_new(candidate):
+                record = ProcessedInputManifest.load(root / "out" / MANIFEST_FILENAME).get(path)
+                self.assertEqual(record["status"], "NEW")
+                return real_fingerprint(candidate)
+
+            with mock.patch("research.tick_historical_replay.fingerprint_input", side_effect=assert_new):
+                self.run_once(root)
+
+    def test_success_file_is_skipped_after_restart(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            path = root / "XAUUSD_ticks.csv"
+            write_ticks(path, minute_rows(3))
+            self.run_once(root)
+            second = self.run_once(root)
+        self.assertEqual(second["processed_now"], 0)
+        self.assertEqual(second["skipped"], 1)
+        self.assertEqual(second["counts_before"]["unchanged_files"], 1)
+
+    def test_unchanged_success_is_never_hashed_inspected_or_replayed(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            path = root / "XAUUSD_ticks.csv"
+            write_ticks(path, minute_rows(3))
+            self.run_once(root)
+            with mock.patch("research.tick_historical_replay.fingerprint_input", side_effect=AssertionError), mock.patch(
+                "research.tick_historical_replay.inspect_tick_csv", side_effect=AssertionError
+            ), mock.patch("research.tick_historical_replay.replay_files", side_effect=AssertionError):
+                summary = self.run_once(root)
+        self.assertEqual(summary["skipped"], 1)
+
+    def test_modified_success_requires_rebuild_without_touching_outputs(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            path = root / "XAUUSD_ticks.csv"
+            write_ticks(path, minute_rows(3))
+            self.run_once(root)
+            observations = root / "out" / "historical_observations.jsonl"
+            before = observations.read_bytes()
+            write_ticks(path, minute_rows(4))
+            stat_result = path.stat()
+            os.utime(path, ns=(stat_result.st_atime_ns, stat_result.st_mtime_ns + 1_000_000))
+            summary = self.run_once(root)
+            record = self.manifest_record(root, path)
+            after = observations.read_bytes()
+        self.assertEqual(record["status"], "CHANGED_REQUIRES_REBUILD")
+        self.assertIn("affected_range", record)
+        self.assertEqual(before, after)
+        self.assertEqual(summary["processed_now"], 0)
+
+    def test_fingerprint_changes_when_content_changes(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "XAUUSD_ticks.csv"
+            write_ticks(path, minute_rows(2))
+            first = fingerprint_input(path)
+            write_ticks(path, minute_rows(3))
+            second = fingerprint_input(path)
+        self.assertNotEqual(first, second)
+
+    def test_corrupt_manifest_fails_closed(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            output = root / "out"
+            output.mkdir()
+            (output / MANIFEST_FILENAME).write_text("{broken", encoding="utf-8")
+            write_ticks(root / "XAUUSD_ticks.csv", minute_rows(2))
+            with self.assertRaises(ReplayError):
+                self.run_once(root)
+
+    def test_interrupted_processing_is_recovered_and_retried(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            path = root / "XAUUSD_ticks.csv"
+            write_ticks(path, minute_rows(3))
+            self.run_once(root)
+            manifest = ProcessedInputManifest.load(root / "out" / MANIFEST_FILENAME)
+            record = manifest.get(path)
+            record["status"] = "PROCESSING"
+            manifest.set(record)
+            manifest.save()
+            summary = self.run_once(root)
+            recovered = self.manifest_record(root, path)
+        self.assertEqual(summary["interrupted_recovered"], 1)
+        self.assertEqual(recovered["status"], "SUCCESS")
+
+    def test_failed_file_can_retry_after_becoming_valid(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            path = root / "XAUUSD_ticks.csv"
+            path.write_text("DATE,TIME,OPEN\n", encoding="utf-8")
+            first = self.run_once(root)
+            self.assertEqual(self.manifest_record(root, path)["status"], "FAILED")
+            write_ticks(path, minute_rows(3))
+            second = self.run_once(root)
+            record = self.manifest_record(root, path)
+        self.assertEqual(first["failed_now"], 1)
+        self.assertEqual(second["processed_now"], 1)
+        self.assertEqual(record["status"], "SUCCESS")
+
+    def test_processing_status_is_atomic_before_tick_replay(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            path = root / "XAUUSD_ticks.csv"
+            write_ticks(path, minute_rows(3))
+            from research import tick_historical_replay as replay_module
+
+            real_replay = replay_module.replay_files
+
+            def assert_processing(*args, **kwargs):
+                record = ProcessedInputManifest.load(root / "out" / MANIFEST_FILENAME).get(path)
+                self.assertEqual(record["status"], "PROCESSING")
+                return real_replay(*args, **kwargs)
+
+            with mock.patch("research.tick_historical_replay.replay_files", side_effect=assert_processing):
+                self.run_once(root)
+
+    def test_overlapping_new_files_deduplicate_exact_ticks(self):
+        start = datetime(2026, 1, 5, tzinfo=timezone.utc)
+        duplicate = row_at(start, 60, 2001, 2002)
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            first = root / "XAUUSD_one.csv"
+            second = root / "XAUUSD_two.csv"
+            write_ticks(first, [row_at(start, 0, 2000, 2001), duplicate])
+            write_ticks(second, [duplicate, row_at(start, 120, 2002, 2003)])
+            summary = self.run_once(root)
+        self.assertTrue(summary["overlap_detected"])
+        self.assertEqual(summary["processed_now"], 2)
+        self.assertEqual(summary["replay_report"]["duplicates"], 1)
+
+    def test_exact_copy_added_later_is_skipped_without_duplicate_outputs(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            original = root / "XAUUSD_original.csv"
+            duplicate = root / "XAUUSD_duplicate.csv"
+            write_ticks(original, minute_rows(3))
+            self.run_once(root)
+            before = {item: item.read_bytes() for item in (root / "out").rglob("*.jsonl")}
+            duplicate.write_bytes(original.read_bytes())
+            summary = self.run_once(root)
+            record = self.manifest_record(root, duplicate)
+            after = {item: item.read_bytes() for item in (root / "out").rglob("*.jsonl")}
+        self.assertEqual(summary["processed_now"], 0)
+        self.assertEqual(record["status"], "SUCCESS")
+        self.assertEqual(record["duplicate_of"], normalized_input_path(original))
+        self.assertEqual(before, after)
+
+    def test_late_nonidentical_overlap_requires_rebuild_without_corruption(self):
+        start = datetime(2026, 1, 5, tzinfo=timezone.utc)
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            original = root / "XAUUSD_original.csv"
+            late = root / "XAUUSD_late.csv"
+            write_ticks(original, [row_at(start, 0, 2000, 2001), row_at(start, 60, 2001, 2002)])
+            self.run_once(root)
+            before = {item: item.read_bytes() for item in (root / "out").rglob("*.jsonl")}
+            write_ticks(late, [row_at(start, 60, 2001, 2002), row_at(start, 120, 2002, 2003)])
+            summary = self.run_once(root)
+            record = self.manifest_record(root, late)
+            after = {item: item.read_bytes() for item in (root / "out").rglob("*.jsonl")}
+        self.assertTrue(summary["overlap_detected"])
+        self.assertEqual(record["status"], "CHANGED_REQUIRES_REBUILD")
+        self.assertEqual(before, after)
+
+    def test_repeated_incremental_run_does_not_duplicate_outputs(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            path = root / "XAUUSD_ticks.csv"
+            write_ticks(path, minute_rows(31))
+            self.run_once(root)
+            before = {item: item.read_bytes() for item in (root / "out").rglob("*.jsonl")}
+            self.run_once(root)
+            after = {item: item.read_bytes() for item in (root / "out").rglob("*.jsonl")}
+        self.assertEqual(before, after)
+
+    def test_copying_file_waits_for_two_stable_observations(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            path = root / "XAUUSD_copying.csv"
+            write_ticks(path, minute_rows(2))
+            tracker = FileStabilityTracker()
+            first = self.run_once(root, stability_tracker=tracker)
+            write_ticks(path, minute_rows(3))
+            second = self.run_once(root, stability_tracker=tracker)
+            third = self.run_once(root, stability_tracker=tracker)
+            record = self.manifest_record(root, path)
+        self.assertEqual(first["processed_now"], 0)
+        self.assertEqual(second["processed_now"], 0)
+        self.assertEqual(third["processed_now"], 1)
+        self.assertEqual(record["status"], "SUCCESS")
+
+    def test_watch_detects_a_new_stable_file(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            calls = 0
+
+            def advance(_seconds):
+                nonlocal calls
+                calls += 1
+                if calls == 1:
+                    write_ticks(root / "XAUUSD_watch.csv", minute_rows(3))
+
+            reports = watch_input_directory(
+                input_dir=root,
+                output_dir=root / "out",
+                watch_interval=0.01,
+                max_cycles=3,
+                sleep=advance,
+                emit_logs=False,
+            )
+            record = self.manifest_record(root, root / "XAUUSD_watch.csv")
+        self.assertEqual([report["processed_now"] for report in reports], [0, 0, 1])
+        self.assertEqual(record["status"], "SUCCESS")
+
+
+class ExistingInputAdoptionTests(unittest.TestCase):
+    FIRST = "2026-01-05T00:00:00.000"
+    LAST = "2026-01-05T00:02:00.000"
+
+    def prepare(self, temp: str):
+        root = Path(temp)
+        input_dir = root / "inputs"
+        output_dir = root / "out"
+        input_dir.mkdir()
+        path = input_dir / "XAUUSD_full.csv"
+        write_ticks(path, minute_rows(3))
+        first_ms = parse_mt5_timestamp("2026.01.05", "00:00:00.000")
+        last_ms = parse_mt5_timestamp("2026.01.05", "00:02:00.000")
+        write_existing_outputs(output_dir, first_ms, last_ms)
+        return root, input_dir, output_dir, path
+
+    def adopt(self, input_dir: Path, output_dir: Path, path: Path, **overrides):
+        arguments = {
+            "input_dir": input_dir,
+            "output_dir": output_dir,
+            "expected_first_timestamp": self.FIRST,
+            "expected_last_timestamp": self.LAST,
+            "expected_size_bytes": path.stat().st_size,
+            "expected_ticks_valid": 3,
+            "stability_interval": 0.0,
+            "emit_logs": False,
+        }
+        arguments.update(overrides)
+        return adopt_existing_input(**arguments)
+
+    def test_valid_adoption_generates_success_manifest_without_replay(self):
+        with tempfile.TemporaryDirectory() as temp:
+            _, input_dir, output_dir, path = self.prepare(temp)
+            outputs_before = {
+                item: item.read_bytes() for item in output_dir.rglob("*.jsonl")
+            }
+            with mock.patch("research.tick_historical_replay.replay_files", side_effect=AssertionError):
+                result = self.adopt(input_dir, output_dir, path)
+            record = ProcessedInputManifest.load(output_dir / MANIFEST_FILENAME).get(path)
+            outputs_after = {item: item.read_bytes() for item in output_dir.rglob("*.jsonl")}
+        self.assertTrue(result["adopted"])
+        self.assertEqual(record["status"], "SUCCESS")
+        self.assertEqual(record["ticks_valid"], 3)
+        self.assertTrue(record["adopted_existing_output"])
+        self.assertTrue(record["fingerprint"].startswith("sha256:"))
+        self.assertEqual(outputs_before, outputs_after)
+
+    def test_expected_hash_mismatch_aborts_without_manifest(self):
+        with tempfile.TemporaryDirectory() as temp:
+            _, input_dir, output_dir, path = self.prepare(temp)
+            with self.assertRaisesRegex(ReplayError, "fingerprint mismatch"):
+                self.adopt(
+                    input_dir,
+                    output_dir,
+                    path,
+                    expected_fingerprint="sha256:" + "0" * 64,
+                )
+            self.assertFalse((output_dir / MANIFEST_FILENAME).exists())
+
+    def test_timestamp_mismatch_aborts_without_manifest(self):
+        with tempfile.TemporaryDirectory() as temp:
+            _, input_dir, output_dir, path = self.prepare(temp)
+            with self.assertRaisesRegex(ReplayError, "first timestamp mismatch"):
+                self.adopt(
+                    input_dir,
+                    output_dir,
+                    path,
+                    expected_first_timestamp="2026-01-05T00:00:01.000",
+                )
+            self.assertFalse((output_dir / MANIFEST_FILENAME).exists())
+
+    def test_missing_output_aborts_without_manifest(self):
+        with tempfile.TemporaryDirectory() as temp:
+            _, input_dir, output_dir, path = self.prepare(temp)
+            (output_dir / "historical_outcomes.jsonl").unlink()
+            with self.assertRaisesRegex(ReplayError, "missing or empty"):
+                self.adopt(input_dir, output_dir, path)
+            self.assertFalse((output_dir / MANIFEST_FILENAME).exists())
+
+    def test_existing_nonmatching_manifest_is_preserved(self):
+        with tempfile.TemporaryDirectory() as temp:
+            _, input_dir, output_dir, path = self.prepare(temp)
+            manifest = ProcessedInputManifest(output_dir / MANIFEST_FILENAME)
+            manifest.set({"normalized_path": normalized_input_path(path), "status": "FAILED"})
+            manifest.save()
+            before = manifest.path.read_bytes()
+            with self.assertRaisesRegex(ReplayError, "manifest already contains"):
+                self.adopt(input_dir, output_dir, path)
+            after = manifest.path.read_bytes()
+        self.assertEqual(before, after)
+
+    def test_second_adoption_is_idempotent_and_does_not_rewrite_manifest(self):
+        with tempfile.TemporaryDirectory() as temp:
+            _, input_dir, output_dir, path = self.prepare(temp)
+            self.adopt(input_dir, output_dir, path)
+            manifest_path = output_dir / MANIFEST_FILENAME
+            before = manifest_path.read_bytes()
+            second = self.adopt(input_dir, output_dir, path)
+            after = manifest_path.read_bytes()
+        self.assertTrue(second["already_adopted"])
+        self.assertEqual(before, after)
+
+    def test_normal_mode_skips_adopted_file_without_tick_reader(self):
+        with tempfile.TemporaryDirectory() as temp:
+            _, input_dir, output_dir, path = self.prepare(temp)
+            self.adopt(input_dir, output_dir, path)
+            with mock.patch("research.tick_historical_replay.TickCsvReader", side_effect=AssertionError), mock.patch(
+                "research.tick_historical_replay.fingerprint_input", side_effect=AssertionError
+            ), mock.patch("research.tick_historical_replay.inspect_tick_csv", side_effect=AssertionError):
+                summary = incremental_replay_once(
+                    input_dir=input_dir,
+                    output_dir=output_dir,
+                    stability_interval=0.0,
+                    emit_logs=False,
+                )
+        self.assertEqual(summary["processed_now"], 0)
+        self.assertEqual(summary["skipped"], 1)
+        self.assertEqual(summary["counts_before"]["unchanged_files"], 1)
 
 
 class BarAndReplayTests(unittest.TestCase):

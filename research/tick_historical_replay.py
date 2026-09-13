@@ -22,7 +22,7 @@ from pathlib import Path
 import re
 import sys
 import time
-from typing import Iterator, Sequence
+from typing import Callable, Iterator, Sequence
 
 
 SOURCE = "HISTORICAL_MT5_TICKS"
@@ -30,6 +30,17 @@ TIMEFRAMES = {"M1": 60, "M15": 15 * 60, "H1": 60 * 60, "H4": 4 * 60 * 60}
 OBSERVATION_TIMEFRAMES = ("M15", "H1", "H4")
 HORIZONS = (("15m", 15 * 60 * 1000), ("1h", 60 * 60 * 1000), ("4h", 4 * 60 * 60 * 1000))
 EPOCH_ORDINAL = datetime(1970, 1, 1).toordinal()
+MANIFEST_SCHEMA_VERSION = 1
+OUTPUT_SCHEMA_VERSION = "historical-replay-v1"
+MANIFEST_FILENAME = "processed_inputs.json"
+INPUT_STATUSES = {
+    "NEW",
+    "PROCESSING",
+    "SUCCESS",
+    "FAILED",
+    "CHANGED_REQUIRES_REBUILD",
+    "WAITING_FOR_STABLE_FILE",
+}
 
 
 class ReplayError(RuntimeError):
@@ -85,6 +96,18 @@ class IngestionStats:
     discard_reasons: dict[str, int] = field(default_factory=dict)
     file_discard_reasons: dict[str, dict[str, int]] = field(default_factory=dict)
     optional_field_errors: dict[str, int] = field(default_factory=dict)
+    file_stats: dict[str, dict[str, int]] = field(default_factory=dict)
+
+    def _file(self, path: Path | str) -> dict[str, int]:
+        key = str(path)
+        return self.file_stats.setdefault(
+            key,
+            {"ticks_read": 0, "ticks_valid": 0, "ticks_discarded": 0, "duplicates": 0},
+        )
+
+    def read(self, path: Path) -> None:
+        self.ticks_read += 1
+        self._file(path)["ticks_read"] += 1
 
     def discard(self, reason: str, path: Path | None = None) -> None:
         self.ticks_discarded += 1
@@ -93,12 +116,14 @@ class IngestionStats:
             key = str(path)
             reasons = self.file_discard_reasons.setdefault(key, {})
             reasons[reason] = reasons.get(reason, 0) + 1
+            self._file(path)["ticks_discarded"] += 1
 
     def optional_error(self, field_name: str) -> None:
         self.optional_field_errors[field_name] = self.optional_field_errors.get(field_name, 0) + 1
 
     def accept(self, tick: Tick) -> None:
         self.ticks_valid += 1
+        self._file(tick.source_file)["ticks_valid"] += 1
         if self.first_timestamp_ms is None:
             self.first_timestamp_ms = tick.timestamp_ms
         self.last_timestamp_ms = tick.timestamp_ms
@@ -106,6 +131,10 @@ class IngestionStats:
             self.flags_nonempty += 1
             if tick.flags not in self.flag_samples and len(self.flag_samples) < 10:
                 self.flag_samples.append(tick.flags)
+
+    def duplicate(self, tick: Tick) -> None:
+        self.duplicates += 1
+        self._file(tick.source_file)["duplicates"] += 1
 
 
 @dataclass(frozen=True)
@@ -311,6 +340,32 @@ def inspect_tick_csv(path: Path, symbol: str = "XAUUSD") -> CsvFileMetadata:
     return CsvFileMetadata(path, path.stat().st_size, first_timestamp_ms, last_timestamp_ms)
 
 
+def _find_overlaps(metadata: Sequence[CsvFileMetadata]) -> list[dict]:
+    ordered = sorted(
+        metadata,
+        key=lambda item: (item.first_timestamp_ms, item.last_timestamp_ms, str(item.path).lower()),
+    )
+    overlaps: list[dict] = []
+    if not ordered:
+        return overlaps
+    covering = ordered[0]
+    farthest_end = covering.last_timestamp_ms
+    for item in ordered[1:]:
+        if item.first_timestamp_ms <= farthest_end:
+            overlaps.append(
+                {
+                    "earlier_file": str(covering.path),
+                    "later_file": str(item.path),
+                    "overlap_start": format_timestamp(item.first_timestamp_ms),
+                    "overlap_end": format_timestamp(min(farthest_end, item.last_timestamp_ms)),
+                }
+            )
+        if item.last_timestamp_ms > farthest_end:
+            covering = item
+            farthest_end = item.last_timestamp_ms
+    return overlaps
+
+
 def discover_inputs(
     explicit_files: Sequence[Path] = (),
     input_dir: Path | None = None,
@@ -343,23 +398,7 @@ def discover_inputs(
             issues.append({"file": str(path), "cause": str(error)})
     metadata.sort(key=lambda item: (item.first_timestamp_ms, item.last_timestamp_ms, str(item.path).lower()))
 
-    overlaps: list[dict] = []
-    if metadata:
-        covering = metadata[0]
-        farthest_end = covering.last_timestamp_ms
-        for item in metadata[1:]:
-            if item.first_timestamp_ms <= farthest_end:
-                overlaps.append(
-                    {
-                        "earlier_file": str(covering.path),
-                        "later_file": str(item.path),
-                        "overlap_start": format_timestamp(item.first_timestamp_ms),
-                        "overlap_end": format_timestamp(min(farthest_end, item.last_timestamp_ms)),
-                    }
-                )
-            if item.last_timestamp_ms > farthest_end:
-                covering = item
-                farthest_end = item.last_timestamp_ms
+    overlaps = _find_overlaps(metadata)
     return InputDiscovery(input_dir, len(unique_candidates), metadata, issues, overlaps)
 
 
@@ -370,6 +409,466 @@ def format_size(size_bytes: int) -> str:
             return f"{value:.2f} {unit}"
         value /= 1024.0
     return f"{size_bytes} B"
+
+
+def _utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def normalized_input_path(path: Path) -> str:
+    return os.path.normcase(str(Path(path).resolve(strict=False)))
+
+
+def _modified_time(stat_result: os.stat_result) -> str:
+    return datetime.fromtimestamp(stat_result.st_mtime, timezone.utc).isoformat(timespec="milliseconds").replace(
+        "+00:00", "Z"
+    )
+
+
+def fingerprint_input(
+    path: Path,
+    block_size: int = 4 * 1024 * 1024,
+    progress: Callable[[int, int], None] | None = None,
+) -> str:
+    """Return a full-file SHA-256 without loading the CSV into memory."""
+    digest = hashlib.sha256()
+    total_size = Path(path).stat().st_size
+    bytes_read = 0
+    with Path(path).open("rb") as stream:
+        while True:
+            block = stream.read(block_size)
+            if not block:
+                break
+            digest.update(block)
+            bytes_read += len(block)
+            if progress is not None:
+                progress(bytes_read, total_size)
+    return f"sha256:{digest.hexdigest()}"
+
+
+class ProcessedInputManifest:
+    """Crash-safe identity and processing state for historical CSV inputs."""
+
+    def __init__(self, path: Path, records: dict[str, dict] | None = None):
+        self.path = Path(path)
+        self.records = records or {}
+
+    @classmethod
+    def load(cls, path: Path) -> "ProcessedInputManifest":
+        path = Path(path)
+        if not path.exists():
+            return cls(path)
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8-sig"))
+        except (OSError, json.JSONDecodeError) as error:
+            raise ReplayError(f"corrupt processed input manifest: {path}: {error}") from error
+        if not isinstance(payload, dict) or payload.get("schema_version") != MANIFEST_SCHEMA_VERSION:
+            raise ReplayError(f"unsupported processed input manifest schema: {path}")
+        inputs = payload.get("inputs")
+        if not isinstance(inputs, list):
+            raise ReplayError(f"corrupt processed input manifest inputs: {path}")
+        records: dict[str, dict] = {}
+        for value in inputs:
+            if not isinstance(value, dict):
+                raise ReplayError(f"corrupt processed input manifest record: {path}")
+            normalized = value.get("normalized_path")
+            status = value.get("status")
+            if not isinstance(normalized, str) or not normalized or status not in INPUT_STATUSES:
+                raise ReplayError(f"invalid processed input manifest record: {path}")
+            records[os.path.normcase(normalized)] = dict(value)
+        return cls(path, records)
+
+    def get(self, path: Path) -> dict | None:
+        return self.records.get(normalized_input_path(path))
+
+    def set(self, record: dict) -> None:
+        normalized = record.get("normalized_path")
+        if not isinstance(normalized, str) or not normalized:
+            raise ReplayError("manifest record has no normalized_path")
+        if record.get("status") not in INPUT_STATUSES:
+            raise ReplayError(f"invalid manifest status: {record.get('status')}")
+        self.records[os.path.normcase(normalized)] = dict(record)
+
+    def save(self) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "schema_version": MANIFEST_SCHEMA_VERSION,
+            "output_version": OUTPUT_SCHEMA_VERSION,
+            "updated_at": _utc_now(),
+            "inputs": sorted(self.records.values(), key=lambda item: item["normalized_path"]),
+        }
+        temporary = self.path.with_name(f".{self.path.name}.{os.getpid()}.{time.time_ns()}.tmp")
+        try:
+            with temporary.open("w", encoding="utf-8", newline="\n") as stream:
+                json.dump(payload, stream, ensure_ascii=False, indent=2)
+                stream.write("\n")
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, self.path)
+        finally:
+            if temporary.exists():
+                temporary.unlink()
+
+    def recover_interrupted(self) -> int:
+        recovered = 0
+        for record in self.records.values():
+            if record.get("status") == "PROCESSING":
+                record["status"] = "FAILED"
+                record["error"] = "interrupted while PROCESSING; safe retry required"
+                record["failed_at"] = _utc_now()
+                recovered += 1
+        if recovered:
+            self.save()
+        return recovered
+
+    def success_records(self) -> list[dict]:
+        return [record for record in self.records.values() if record.get("status") == "SUCCESS"]
+
+
+class FileStabilityTracker:
+    """Require the same size and mtime in consecutive directory observations."""
+
+    def __init__(self, required_observations: int = 2):
+        if required_observations < 2:
+            raise ValueError("required_observations must be at least two")
+        self.required_observations = required_observations
+        self._seen: dict[str, tuple[tuple[int, int], int]] = {}
+
+    def observe(self, path: Path) -> bool:
+        stat_result = Path(path).stat()
+        signature = (stat_result.st_size, stat_result.st_mtime_ns)
+        key = normalized_input_path(path)
+        previous = self._seen.get(key)
+        count = previous[1] + 1 if previous is not None and previous[0] == signature else 1
+        self._seen[key] = (signature, count)
+        return count >= self.required_observations
+
+    def forget(self, path: Path) -> None:
+        self._seen.pop(normalized_input_path(path), None)
+
+    def retain(self, paths: Sequence[Path]) -> None:
+        current = {normalized_input_path(path) for path in paths}
+        self._seen = {key: value for key, value in self._seen.items() if key in current}
+
+
+def wait_for_stable_file(
+    path: Path,
+    *,
+    checks: int = 2,
+    interval: float = 1.0,
+    sleep: Callable[[float], None] = time.sleep,
+) -> os.stat_result:
+    if checks < 2:
+        raise ValueError("checks must be at least two")
+    if interval < 0.0:
+        raise ValueError("stability interval cannot be negative")
+    previous: tuple[int, int] | None = None
+    stable_observations = 0
+    latest: os.stat_result | None = None
+    while stable_observations < checks:
+        latest = Path(path).stat()
+        signature = (latest.st_size, latest.st_mtime_ns)
+        stable_observations = stable_observations + 1 if signature == previous else 1
+        previous = signature
+        if stable_observations < checks:
+            sleep(interval)
+    return latest
+
+
+def _base_manifest_record(path: Path, stat_result: os.stat_result, status: str) -> dict:
+    return {
+        "normalized_path": normalized_input_path(path),
+        "filename": Path(path).name,
+        "size_bytes": stat_result.st_size,
+        "modified_time": _modified_time(stat_result),
+        "modified_time_ns": stat_result.st_mtime_ns,
+        "fingerprint": None,
+        "first_timestamp": None,
+        "last_timestamp": None,
+        "first_timestamp_ms": None,
+        "last_timestamp_ms": None,
+        "processed_at": None,
+        "status": status,
+        "ticks_read": 0,
+        "ticks_valid": 0,
+        "ticks_discarded": 0,
+        "duplicates": 0,
+        "output_version": OUTPUT_SCHEMA_VERSION,
+        "schema_version": MANIFEST_SCHEMA_VERSION,
+    }
+
+
+def _record_with_metadata(record: dict, metadata: CsvFileMetadata, fingerprint: str) -> dict:
+    value = dict(record)
+    stat_result = metadata.path.stat()
+    value.update(
+        {
+            "normalized_path": normalized_input_path(metadata.path),
+            "filename": metadata.path.name,
+            "size_bytes": stat_result.st_size,
+            "modified_time": _modified_time(stat_result),
+            "modified_time_ns": stat_result.st_mtime_ns,
+            "fingerprint": fingerprint,
+            "first_timestamp": format_timestamp(metadata.first_timestamp_ms),
+            "last_timestamp": format_timestamp(metadata.last_timestamp_ms),
+            "first_timestamp_ms": metadata.first_timestamp_ms,
+            "last_timestamp_ms": metadata.last_timestamp_ms,
+            "output_version": OUTPUT_SCHEMA_VERSION,
+            "schema_version": MANIFEST_SCHEMA_VERSION,
+        }
+    )
+    return value
+
+
+def parse_expected_timestamp(value: str) -> int:
+    text = value.strip()
+    if text.endswith("Z"):
+        text = text[:-1]
+    if "T" not in text:
+        raise ReplayError(f"expected ISO timestamp with T separator: {value}")
+    date_value, time_value = text.split("T", 1)
+    try:
+        return parse_mt5_timestamp(date_value, time_value)
+    except (TypeError, ValueError) as error:
+        raise ReplayError(f"invalid expected timestamp: {value}") from error
+
+
+def _jsonl_edges(path: Path) -> tuple[dict, dict]:
+    path = Path(path)
+    if not path.is_file() or path.stat().st_size <= 0:
+        raise ReplayError(f"required historical output is missing or empty: {path}")
+    first_line = None
+    with path.open("r", encoding="utf-8-sig", errors="strict") as stream:
+        for line in stream:
+            if line.strip():
+                first_line = line
+                break
+    last_line = next(_reverse_lines(path), None)
+    if first_line is None or last_line is None:
+        raise ReplayError(f"required historical output has no records: {path}")
+    try:
+        first = json.loads(first_line)
+        last = json.loads(last_line)
+    except json.JSONDecodeError as error:
+        raise ReplayError(f"invalid JSONL edge record in historical output {path}: {error}") from error
+    if not isinstance(first, dict) or not isinstance(last, dict):
+        raise ReplayError(f"invalid JSONL object in historical output: {path}")
+    return first, last
+
+
+def verify_existing_historical_outputs(
+    output_dir: Path,
+    *,
+    symbol: str,
+    expected_first_ms: int,
+    expected_last_ms: int,
+) -> dict[str, int]:
+    output_dir = Path(output_dir)
+    required = {
+        f"historical_bars/{symbol}_M1.jsonl": ("bar", "M1"),
+        f"historical_bars/{symbol}_M15.jsonl": ("bar", "M15"),
+        f"historical_bars/{symbol}_H1.jsonl": ("bar", "H1"),
+        f"historical_bars/{symbol}_H4.jsonl": ("bar", "H4"),
+        "historical_observations.jsonl": ("observation", None),
+        "historical_outcomes.jsonl": ("outcome", None),
+    }
+    verified: dict[str, int] = {}
+    m1_first: dict | None = None
+    m1_last: dict | None = None
+    for relative, (kind, timeframe) in required.items():
+        path = output_dir / relative
+        first, last = _jsonl_edges(path)
+        for record in (first, last):
+            if record.get("source") != SOURCE:
+                raise ReplayError(f"unexpected source in historical output: {path}")
+            if kind == "bar":
+                if record.get("symbol") != symbol or record.get("timeframe") != timeframe:
+                    raise ReplayError(f"unexpected bar contract in historical output: {path}")
+            elif record.get("observer_only") is not True or record.get("score_effect") != 0:
+                raise ReplayError(f"historical output is not observation-only: {path}")
+        if timeframe == "M1":
+            m1_first, m1_last = first, last
+        verified[relative] = path.stat().st_size
+
+    assert m1_first is not None and m1_last is not None
+    expected_first_bucket = expected_first_ms // 60_000 * 60_000
+    expected_last_closed_at = expected_last_ms // 60_000 * 60_000
+    actual_first = m1_first.get("timestamp")
+    actual_last_closed = m1_last.get("close_timestamp")
+    if not isinstance(actual_first, int) or not isinstance(actual_last_closed, int):
+        raise ReplayError("historical M1 output has invalid timestamp fields")
+    if actual_first != expected_first_bucket:
+        raise ReplayError(
+            "historical M1 output starts outside the adopted input range: "
+            f"expected {format_timestamp(expected_first_bucket)}, "
+            f"found {format_timestamp(actual_first)}"
+        )
+    if actual_last_closed != expected_last_closed_at:
+        raise ReplayError(
+            "historical M1 output ends outside the adopted input range: "
+            f"expected closed through {format_timestamp(expected_last_closed_at)}, "
+            f"found {format_timestamp(actual_last_closed)}"
+        )
+    return verified
+
+
+def adopt_existing_input(
+    *,
+    input_dir: Path,
+    output_dir: Path,
+    expected_first_timestamp: str,
+    expected_last_timestamp: str,
+    expected_size_bytes: int,
+    expected_ticks_valid: int,
+    symbol: str = "XAUUSD",
+    adopt_file: Path | None = None,
+    expected_fingerprint: str | None = None,
+    stability_checks: int = 2,
+    stability_interval: float = 1.0,
+    sleep: Callable[[float], None] = time.sleep,
+    emit_logs: bool = True,
+) -> dict:
+    """Adopt a validated legacy full-run without replaying any tick."""
+    if expected_size_bytes <= 0 or expected_ticks_valid <= 0:
+        raise ReplayError("expected size and ticks_valid must be positive")
+    expected_first_ms = parse_expected_timestamp(expected_first_timestamp)
+    expected_last_ms = parse_expected_timestamp(expected_last_timestamp)
+    if expected_last_ms < expected_first_ms:
+        raise ReplayError("expected last timestamp precedes first timestamp")
+
+    manifest = ProcessedInputManifest.load(Path(output_dir) / MANIFEST_FILENAME)
+    if adopt_file is not None:
+        candidates = [Path(adopt_file)]
+    else:
+        candidates = _candidate_paths((), Path(input_dir))
+    accepted: list[CsvFileMetadata] = []
+    rejected: list[str] = []
+    for path in candidates:
+        try:
+            accepted.append(inspect_tick_csv(path, symbol))
+        except (OSError, ReplayError) as error:
+            rejected.append(f"{path}: {error}")
+    if len(accepted) != 1:
+        detail = "; ".join(rejected) if rejected else "no unique candidate"
+        raise ReplayError(f"adoption requires exactly one valid {symbol} tick CSV; found {len(accepted)}: {detail}")
+    metadata = accepted[0]
+    path = metadata.path
+    stat_result = path.stat()
+    existing = manifest.get(path)
+    already_adopted = False
+    if existing is not None:
+        if (
+            existing.get("status") == "SUCCESS"
+            and existing.get("adopted_existing_output") is True
+            and existing.get("size_bytes") == stat_result.st_size
+            and existing.get("modified_time_ns") == stat_result.st_mtime_ns
+            and existing.get("first_timestamp_ms") == expected_first_ms
+            and existing.get("last_timestamp_ms") == expected_last_ms
+            and existing.get("ticks_valid") == expected_ticks_valid
+        ):
+            already_adopted = True
+        else:
+            raise ReplayError(f"manifest already contains a non-matching record for adopted input: {path}")
+
+    if metadata.size_bytes != expected_size_bytes:
+        raise ReplayError(
+            f"input size mismatch: expected {expected_size_bytes}, found {metadata.size_bytes}"
+        )
+    if metadata.first_timestamp_ms != expected_first_ms:
+        raise ReplayError(
+            "input first timestamp mismatch: "
+            f"expected {format_timestamp(expected_first_ms)}, found {format_timestamp(metadata.first_timestamp_ms)}"
+        )
+    if metadata.last_timestamp_ms != expected_last_ms:
+        raise ReplayError(
+            "input last timestamp mismatch: "
+            f"expected {format_timestamp(expected_last_ms)}, found {format_timestamp(metadata.last_timestamp_ms)}"
+        )
+    verified_outputs = verify_existing_historical_outputs(
+        output_dir,
+        symbol=symbol,
+        expected_first_ms=expected_first_ms,
+        expected_last_ms=expected_last_ms,
+    )
+    if already_adopted:
+        if emit_logs:
+            print(f"[HISTORICAL] already_adopted: {path.name}")
+        return {
+            "adopted": False,
+            "already_adopted": True,
+            "manifest": str(manifest.path),
+            "input": str(path),
+            "fingerprint": existing.get("fingerprint"),
+            "outputs_verified": verified_outputs,
+        }
+    stable_stat = wait_for_stable_file(
+        path,
+        checks=stability_checks,
+        interval=stability_interval,
+        sleep=sleep,
+    )
+    if stable_stat.st_size != expected_size_bytes:
+        raise ReplayError("input size changed while preparing adoption")
+
+    last_reported = -1
+
+    def report_fingerprint(bytes_read: int, total_size: int) -> None:
+        nonlocal last_reported
+        if not emit_logs or total_size <= 0:
+            return
+        percent = min(100, int(bytes_read * 100 / total_size))
+        step = percent // 10 * 10
+        if step > last_reported:
+            last_reported = step
+            print(f"[HISTORICAL] fingerprint_progress={step}%")
+
+    actual_fingerprint = fingerprint_input(path, progress=report_fingerprint)
+    verified_stat = path.stat()
+    if (stable_stat.st_size, stable_stat.st_mtime_ns) != (
+        verified_stat.st_size,
+        verified_stat.st_mtime_ns,
+    ):
+        raise ReplayError("input changed while calculating adoption fingerprint")
+    if expected_fingerprint is not None and actual_fingerprint.lower() != expected_fingerprint.lower():
+        raise ReplayError(
+            f"input fingerprint mismatch: expected {expected_fingerprint}, found {actual_fingerprint}"
+        )
+
+    record = _record_with_metadata(
+        _base_manifest_record(path, verified_stat, "SUCCESS"),
+        metadata,
+        actual_fingerprint,
+    )
+    record.update(
+        {
+            "status": "SUCCESS",
+            "processed_at": _utc_now(),
+            "ticks_read": None,
+            "ticks_valid": expected_ticks_valid,
+            "ticks_discarded": None,
+            "duplicates": None,
+            "adopted_existing_output": True,
+            "verified_output_files": verified_outputs,
+        }
+    )
+    manifest.set(record)
+    manifest.save()
+    if emit_logs:
+        print(f"[HISTORICAL] adopted_existing_input={path}")
+        print(f"[HISTORICAL] fingerprint={actual_fingerprint}")
+        print(f"[HISTORICAL] status=SUCCESS | ticks_valid={expected_ticks_valid}")
+    return {
+        "adopted": True,
+        "already_adopted": False,
+        "manifest": str(manifest.path),
+        "input": str(path),
+        "fingerprint": actual_fingerprint,
+        "first_timestamp": format_timestamp(metadata.first_timestamp_ms),
+        "last_timestamp": format_timestamp(metadata.last_timestamp_ms),
+        "size_bytes": metadata.size_bytes,
+        "ticks_valid": expected_ticks_valid,
+        "outputs_verified": verified_outputs,
+    }
 
 
 class TickCsvReader:
@@ -404,7 +903,7 @@ class TickCsvReader:
             try:
                 line = raw.decode("utf-8-sig").strip("\r\n")
             except UnicodeDecodeError:
-                self.stats.ticks_read += 1
+                self.stats.read(self.path)
                 self.stats.discard("encoding", self.path)
                 continue
             if line.strip():
@@ -419,7 +918,7 @@ class TickCsvReader:
             line = self._read_nonempty_line()
             if line is None:
                 return None
-            self.stats.ticks_read += 1
+            self.stats.read(self.path)
             try:
                 row = next(csv.reader([line], delimiter=self.delimiter))
                 timestamp_ms = parse_mt5_timestamp(self._field(row, "DATE"), self._field(row, "TIME"))
@@ -521,7 +1020,7 @@ def iter_ticks(
             for tick in group:
                 key = tick.exact_key()
                 if key == previous_key:
-                    stats.duplicates += 1
+                    stats.duplicate(tick)
                     continue
                 previous_key = key
                 stats.accept(tick)
@@ -1249,6 +1748,7 @@ def replay_files(
         "last_timestamp": format_timestamp(stats.last_timestamp_ms),
         "discard_reasons": stats.discard_reasons,
         "file_discard_reasons": stats.file_discard_reasons,
+        "file_stats": stats.file_stats,
         "flags_nonempty": stats.flags_nonempty,
         "flag_samples": stats.flag_samples,
         "optional_field_errors": stats.optional_field_errors,
@@ -1268,6 +1768,515 @@ def replay_files(
         "ticks_per_second": stats.ticks_valid / elapsed,
         "peak_working_set_mb": peak_working_set_mb(),
     }
+
+
+def _candidate_paths(explicit_files: Sequence[Path], input_dir: Path | None) -> list[Path]:
+    candidates = [Path(path) for path in explicit_files]
+    if input_dir is not None:
+        directory = Path(input_dir)
+        if not directory.is_dir():
+            raise ReplayError(f"input directory does not exist: {directory}")
+        candidates.extend(
+            path for path in directory.iterdir() if path.is_file() and path.suffix.lower() == ".csv"
+        )
+    unique: dict[str, Path] = {}
+    for path in candidates:
+        unique.setdefault(normalized_input_path(path), path)
+    return sorted(unique.values(), key=lambda path: normalized_input_path(path))
+
+
+def _metadata_from_record(record: dict) -> CsvFileMetadata | None:
+    first = record.get("first_timestamp_ms")
+    last = record.get("last_timestamp_ms")
+    size = record.get("size_bytes")
+    normalized = record.get("normalized_path")
+    if not isinstance(first, int) or not isinstance(last, int) or not isinstance(size, int):
+        return None
+    if not isinstance(normalized, str) or not normalized:
+        return None
+    return CsvFileMetadata(Path(normalized), size, first, last)
+
+
+def _ranges_overlap(first: CsvFileMetadata, second: CsvFileMetadata) -> bool:
+    return first.first_timestamp_ms <= second.last_timestamp_ms and second.first_timestamp_ms <= first.last_timestamp_ms
+
+
+def _affected_range(previous: dict, current: CsvFileMetadata) -> dict:
+    previous_first = previous.get("first_timestamp_ms")
+    previous_last = previous.get("last_timestamp_ms")
+    starts = [current.first_timestamp_ms]
+    ends = [current.last_timestamp_ms]
+    if isinstance(previous_first, int):
+        starts.append(previous_first)
+    if isinstance(previous_last, int):
+        ends.append(previous_last)
+    return {"start": format_timestamp(min(starts)), "end": format_timestamp(max(ends))}
+
+
+def _mark_waiting(
+    manifest: ProcessedInputManifest,
+    path: Path,
+    stat_result: os.stat_result,
+    previous: dict | None,
+) -> None:
+    if previous is None:
+        record = _base_manifest_record(path, stat_result, "WAITING_FOR_STABLE_FILE")
+        record["waiting_previous_status"] = "NEW"
+    else:
+        record = dict(previous)
+        record["status"] = "WAITING_FOR_STABLE_FILE"
+        record["waiting_previous_status"] = previous.get("waiting_previous_status", previous.get("status"))
+        record["waiting_size_bytes"] = stat_result.st_size
+        record["waiting_modified_time"] = _modified_time(stat_result)
+        record["waiting_modified_time_ns"] = stat_result.st_mtime_ns
+    manifest.set(record)
+    manifest.save()
+
+
+def _is_stable(
+    path: Path,
+    *,
+    stability_tracker: FileStabilityTracker | None,
+    stability_checks: int,
+    stability_interval: float,
+    sleep: Callable[[float], None],
+) -> bool:
+    if stability_tracker is not None:
+        return stability_tracker.observe(path)
+    wait_for_stable_file(
+        path,
+        checks=stability_checks,
+        interval=stability_interval,
+        sleep=sleep,
+    )
+    return True
+
+
+def _print_incremental_before(counts: dict[str, int]) -> None:
+    for name in ("total_csv", "new_files", "unchanged_files", "changed_files", "failed_files"):
+        print(f"[HISTORICAL] {name}={counts[name]}")
+
+
+def _print_incremental_after(summary: dict) -> None:
+    print(f"[HISTORICAL] processed_now={summary['processed_now']}")
+    print(f"[HISTORICAL] skipped={summary['skipped']}")
+    print(f"[HISTORICAL] failed_now={summary['failed_now']}")
+    print(f"[HISTORICAL] new_range_added={summary['new_range_added']}")
+    print(f"[HISTORICAL] overlap_detected={summary['overlap_detected']}")
+    print(f"[HISTORICAL] total_success_files={summary['total_success_files']}")
+
+
+def incremental_replay_once(
+    *,
+    input_dir: Path | None,
+    output_dir: Path,
+    explicit_files: Sequence[Path] = (),
+    symbol: str = "XAUUSD",
+    chunk_size: int = 50_000,
+    max_ticks: int | None = None,
+    stability_checks: int = 2,
+    stability_interval: float = 1.0,
+    stability_tracker: FileStabilityTracker | None = None,
+    sleep: Callable[[float], None] = time.sleep,
+    emit_logs: bool = True,
+) -> dict:
+    """Process only stable NEW/FAILED inputs and atomically record file state."""
+    output_dir = Path(output_dir)
+    manifest = ProcessedInputManifest.load(output_dir / MANIFEST_FILENAME)
+    interrupted = manifest.recover_interrupted()
+    candidates = _candidate_paths(explicit_files, input_dir)
+    if stability_tracker is not None:
+        stability_tracker.retain(candidates)
+    counts = {
+        "total_csv": len(candidates),
+        "new_files": 0,
+        "unchanged_files": 0,
+        "changed_files": 0,
+        "failed_files": 0,
+    }
+    processable: list[tuple[CsvFileMetadata, str, dict]] = []
+    accepted_metadata: list[CsvFileMetadata] = []
+    issues: list[dict] = []
+    overlap_rows: list[dict] = []
+    skipped = 0
+    failed_now = 0
+
+    successful_metadata = [
+        metadata
+        for record in manifest.success_records()
+        if (metadata := _metadata_from_record(record)) is not None
+    ]
+
+    for path in candidates:
+        normalized = normalized_input_path(path)
+        previous = manifest.get(path)
+        try:
+            stat_result = path.stat()
+        except OSError as error:
+            counts["failed_files"] += 1
+            failed_now += 1
+            if emit_logs:
+                print(f"[FAILED] {path} | {error}")
+            continue
+
+        previous_status = previous.get("status") if previous is not None else None
+        if previous_status == "WAITING_FOR_STABLE_FILE":
+            previous_status = previous.get("waiting_previous_status", "NEW")
+        same_stat = bool(
+            previous is not None
+            and previous.get("size_bytes") == stat_result.st_size
+            and previous.get("modified_time_ns") == stat_result.st_mtime_ns
+        )
+        if previous_status == "CHANGED_REQUIRES_REBUILD" and previous is not None and same_stat:
+            counts["changed_files"] += 1
+            metadata = _metadata_from_record(previous)
+            if metadata is not None:
+                accepted_metadata.append(metadata)
+            if emit_logs:
+                print(f"[CHANGED] rebuild_required={path}")
+            continue
+        if previous_status == "SUCCESS" and previous is not None:
+            if same_stat:
+                counts["unchanged_files"] += 1
+                skipped += 1
+                metadata = _metadata_from_record(previous)
+                if metadata is not None:
+                    accepted_metadata.append(metadata)
+                if emit_logs:
+                    print(f"[UNCHANGED] {path}")
+                    print(f"[HISTORICAL] SKIP already_processed: {path.name}")
+                continue
+
+        classification = "FAILED" if previous_status in {"FAILED", "PROCESSING"} else "NEW"
+        if previous_status in {"SUCCESS", "CHANGED_REQUIRES_REBUILD"}:
+            classification = "CHANGED"
+        counts[
+            "failed_files" if classification == "FAILED" else "changed_files" if classification == "CHANGED" else "new_files"
+        ] += 1
+        if emit_logs:
+            print(f"[{classification}] {path}")
+        if previous is None:
+            previous = _base_manifest_record(path, stat_result, "NEW")
+            manifest.set(previous)
+            manifest.save()
+
+        try:
+            stable = _is_stable(
+                path,
+                stability_tracker=stability_tracker,
+                stability_checks=stability_checks,
+                stability_interval=stability_interval,
+                sleep=sleep,
+            )
+        except OSError as error:
+            record = dict(previous) if previous is not None else _base_manifest_record(path, stat_result, "FAILED")
+            record.update({"status": "FAILED", "error": str(error), "failed_at": _utc_now()})
+            manifest.set(record)
+            manifest.save()
+            failed_now += 1
+            issues.append({"file": str(path), "cause": str(error)})
+            continue
+        if not stable:
+            _mark_waiting(manifest, path, stat_result, previous)
+            if emit_logs:
+                print(f"[HISTORICAL] WAITING_FOR_STABLE_FILE: {path.name}")
+            continue
+
+        try:
+            stable_stat = path.stat()
+            current_fingerprint = fingerprint_input(path)
+            metadata = inspect_tick_csv(path, symbol)
+            verified_stat = path.stat()
+        except (OSError, ReplayError) as error:
+            record = dict(previous) if previous is not None else _base_manifest_record(path, stat_result, "FAILED")
+            record.update(
+                {
+                    "normalized_path": normalized,
+                    "filename": path.name,
+                    "size_bytes": stat_result.st_size,
+                    "modified_time": _modified_time(stat_result),
+                    "modified_time_ns": stat_result.st_mtime_ns,
+                    "status": "FAILED",
+                    "error": str(error),
+                    "failed_at": _utc_now(),
+                }
+            )
+            manifest.set(record)
+            manifest.save()
+            failed_now += 1
+            issues.append({"file": str(path), "cause": str(error)})
+            if emit_logs:
+                print(f"[HISTORICAL][WARNING] file={path} | cause={error}")
+            continue
+        if (stable_stat.st_size, stable_stat.st_mtime_ns) != (
+            verified_stat.st_size,
+            verified_stat.st_mtime_ns,
+        ):
+            _mark_waiting(manifest, path, verified_stat, previous)
+            if emit_logs:
+                print(f"[HISTORICAL] WAITING_FOR_STABLE_FILE changed_during_fingerprint: {path.name}")
+            continue
+
+        if previous_status == "SUCCESS" and previous is not None:
+            if previous.get("fingerprint") == current_fingerprint:
+                record = _record_with_metadata(previous, metadata, current_fingerprint)
+                record["status"] = "SUCCESS"
+                record.pop("waiting_previous_status", None)
+                record.pop("error", None)
+                manifest.set(record)
+                manifest.save()
+                counts["changed_files"] -= 1
+                counts["unchanged_files"] += 1
+                skipped += 1
+                accepted_metadata.append(metadata)
+                if emit_logs:
+                    print(f"[UNCHANGED] fingerprint match: {path}")
+                    print(f"[HISTORICAL] SKIP already_processed: {path.name}")
+                continue
+            record = _record_with_metadata(previous, metadata, current_fingerprint)
+            record["status"] = "CHANGED_REQUIRES_REBUILD"
+            record["previous_fingerprint"] = previous.get("fingerprint")
+            record["affected_range"] = _affected_range(previous, metadata)
+            record["error"] = "processed input changed; append-only outputs require rebuild"
+            manifest.set(record)
+            manifest.save()
+            accepted_metadata.append(metadata)
+            if emit_logs:
+                affected = record["affected_range"]
+                print(f"[CHANGED] rebuild_required={path} | range={affected['start']}..{affected['end']}")
+            continue
+        if previous_status == "CHANGED_REQUIRES_REBUILD":
+            record = _record_with_metadata(previous or {}, metadata, current_fingerprint)
+            record["status"] = "CHANGED_REQUIRES_REBUILD"
+            record["affected_range"] = _affected_range(previous or {}, metadata)
+            record["error"] = "processed input changed; append-only outputs require rebuild"
+            manifest.set(record)
+            manifest.save()
+            accepted_metadata.append(metadata)
+            continue
+
+        record = _record_with_metadata(
+            previous or _base_manifest_record(path, stat_result, classification),
+            metadata,
+            current_fingerprint,
+        )
+        record["status"] = classification
+        record.pop("waiting_previous_status", None)
+        record.pop("error", None)
+
+        duplicate_of = next(
+            (
+                existing
+                for existing in manifest.success_records()
+                if existing.get("fingerprint") == current_fingerprint
+                and existing.get("first_timestamp_ms") == metadata.first_timestamp_ms
+                and existing.get("last_timestamp_ms") == metadata.last_timestamp_ms
+            ),
+            None,
+        )
+        if duplicate_of is not None:
+            record.update(
+                {
+                    "status": "SUCCESS",
+                    "processed_at": _utc_now(),
+                    "duplicate_of": duplicate_of["normalized_path"],
+                    "ticks_read": 0,
+                    "ticks_valid": 0,
+                    "ticks_discarded": 0,
+                    "duplicates": 0,
+                }
+            )
+            manifest.set(record)
+            manifest.save()
+            skipped += 1
+            accepted_metadata.append(metadata)
+            overlap_rows.extend(_find_overlaps([_metadata_from_record(duplicate_of), metadata]))
+            if emit_logs:
+                print(f"[HISTORICAL] SKIP duplicate_input: {path.name}")
+            continue
+
+        prior_overlap = next((existing for existing in successful_metadata if _ranges_overlap(existing, metadata)), None)
+        if prior_overlap is not None:
+            overlap = _find_overlaps([prior_overlap, metadata])[0]
+            overlap_rows.append(overlap)
+            record["status"] = "CHANGED_REQUIRES_REBUILD"
+            record["affected_range"] = {
+                "start": overlap["overlap_start"],
+                "end": overlap["overlap_end"],
+            }
+            record["error"] = "new input overlaps finalized append-only history; rebuild required"
+            manifest.set(record)
+            manifest.save()
+            accepted_metadata.append(metadata)
+            counts["new_files"] -= 1
+            counts["changed_files"] += 1
+            if emit_logs:
+                print(
+                    f"[CHANGED] overlap_requires_rebuild={path} | "
+                    f"range={overlap['overlap_start']}..{overlap['overlap_end']}"
+                )
+            continue
+
+        processable.append((metadata, classification, record))
+        accepted_metadata.append(metadata)
+
+    new_overlaps = _find_overlaps([item[0] for item in processable])
+    overlap_rows.extend(new_overlaps)
+    discovery = InputDiscovery(
+        Path(input_dir) if input_dir is not None else None,
+        len(candidates),
+        sorted(
+            accepted_metadata,
+            key=lambda item: (item.first_timestamp_ms, item.last_timestamp_ms, str(item.path).lower()),
+        ),
+        issues,
+        overlap_rows,
+    )
+    if emit_logs:
+        _print_incremental_before(counts)
+        print_discovery(discovery)
+
+    replay_report: dict | None = None
+    processed_now = 0
+    successful_now: list[CsvFileMetadata] = []
+    if processable:
+        for metadata, _, record in processable:
+            value = dict(record)
+            value.update(
+                {
+                    "status": "PROCESSING",
+                    "processing_started_at": _utc_now(),
+                    "error": None,
+                }
+            )
+            manifest.set(value)
+        manifest.save()
+        try:
+            ordered = sorted(
+                (item[0] for item in processable),
+                key=lambda item: (item.first_timestamp_ms, item.last_timestamp_ms, str(item.path).lower()),
+            )
+            replay_report = replay_files(
+                [metadata.path for metadata in ordered],
+                output_dir,
+                symbol=symbol,
+                chunk_size=chunk_size,
+                max_ticks=max_ticks,
+            )
+            runtime_errors = {
+                normalized_input_path(Path(issue["file"])): issue["cause"]
+                for issue in replay_report["runtime_file_issues"]
+            }
+            partial_error = "max_ticks stopped before complete input; safe retry required" if max_ticks is not None else None
+            for metadata, _, _ in processable:
+                current = manifest.get(metadata.path) or {}
+                file_stats = replay_report["file_stats"].get(
+                    str(metadata.path),
+                    {"ticks_read": 0, "ticks_valid": 0, "ticks_discarded": 0, "duplicates": 0},
+                )
+                error = runtime_errors.get(normalized_input_path(metadata.path)) or partial_error
+                changed_during_replay = False
+                if error is None:
+                    try:
+                        final_stat = metadata.path.stat()
+                        changed_during_replay = (
+                            current.get("size_bytes") != final_stat.st_size
+                            or current.get("modified_time_ns") != final_stat.st_mtime_ns
+                        )
+                    except OSError as stat_error:
+                        error = str(stat_error)
+                if changed_during_replay:
+                    error = "input changed during replay; append-only outputs require rebuild"
+                current.update(file_stats)
+                current["processed_at"] = _utc_now()
+                current.pop("processing_started_at", None)
+                if error is None:
+                    current["status"] = "SUCCESS"
+                    current.pop("error", None)
+                    processed_now += 1
+                    successful_now.append(metadata)
+                else:
+                    current["status"] = (
+                        "CHANGED_REQUIRES_REBUILD" if changed_during_replay else "FAILED"
+                    )
+                    current["error"] = error
+                    current["failed_at"] = _utc_now()
+                    failed_now += 1
+                manifest.set(current)
+            manifest.save()
+        except Exception as error:
+            for metadata, _, _ in processable:
+                current = manifest.get(metadata.path) or {}
+                current.update({"status": "FAILED", "error": str(error), "failed_at": _utc_now()})
+                current.pop("processing_started_at", None)
+                manifest.set(current)
+            manifest.save()
+            failed_now += len(processable)
+            issues.append({"file": "<replay>", "cause": str(error)})
+            if emit_logs:
+                print(f"[HISTORICAL][ERROR] replay failed safely: {error}")
+
+    if successful_now:
+        new_range_added = (
+            f"{format_timestamp(min(item.first_timestamp_ms for item in successful_now))}.."
+            f"{format_timestamp(max(item.last_timestamp_ms for item in successful_now))}"
+        )
+    else:
+        new_range_added = "NONE"
+    summary = {
+        "manifest": str(manifest.path),
+        "interrupted_recovered": interrupted,
+        "counts_before": counts,
+        "processed_now": processed_now,
+        "skipped": skipped,
+        "failed_now": failed_now,
+        "new_range_added": new_range_added,
+        "overlap_detected": bool(overlap_rows),
+        "overlaps": overlap_rows,
+        "total_success_files": len(manifest.success_records()),
+        "issues": issues,
+        "replay_report": replay_report,
+    }
+    if emit_logs:
+        _print_incremental_after(summary)
+        if replay_report is not None:
+            print_final_summary(replay_report)
+    return summary
+
+
+def watch_input_directory(
+    *,
+    input_dir: Path,
+    output_dir: Path,
+    symbol: str = "XAUUSD",
+    chunk_size: int = 50_000,
+    watch_interval: float = 60.0,
+    max_cycles: int | None = None,
+    sleep: Callable[[float], None] = time.sleep,
+    emit_logs: bool = True,
+) -> list[dict]:
+    if watch_interval <= 0.0:
+        raise ValueError("watch_interval must be positive")
+    tracker = FileStabilityTracker(required_observations=2)
+    reports: list[dict] = []
+    cycles = 0
+    while max_cycles is None or cycles < max_cycles:
+        reports.append(
+            incremental_replay_once(
+                input_dir=input_dir,
+                output_dir=output_dir,
+                symbol=symbol,
+                chunk_size=chunk_size,
+                stability_tracker=tracker,
+                stability_interval=0.0,
+                sleep=sleep,
+                emit_logs=emit_logs,
+            )
+        )
+        cycles += 1
+        if max_cycles is None or cycles < max_cycles:
+            sleep(watch_interval)
+    return reports
 
 
 def _reference_bars(path: Path) -> Iterator[dict]:
@@ -1360,6 +2369,25 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-ticks", type=int)
     parser.add_argument("--validate-m1", type=Path)
     parser.add_argument("--tolerance", type=float, default=1e-5)
+    parser.add_argument(
+        "--adopt-existing-input",
+        action="store_true",
+        help="register one verified legacy full-run input as SUCCESS without replaying ticks",
+    )
+    parser.add_argument("--adopt-file", type=Path, help="explicit CSV to adopt when the directory is ambiguous")
+    parser.add_argument("--expected-first-timestamp")
+    parser.add_argument("--expected-last-timestamp")
+    parser.add_argument("--expected-size-bytes", type=int)
+    parser.add_argument("--expected-ticks-valid", type=int)
+    parser.add_argument("--expected-fingerprint", help="optional sha256:... value to verify during adoption")
+    parser.add_argument("--watch", action="store_true", help="keep watching --input-dir for stable new CSV files")
+    parser.add_argument("--watch-interval", type=float, default=60.0, help="seconds between watch scans")
+    parser.add_argument(
+        "--stability-check-interval",
+        type=float,
+        default=1.0,
+        help="seconds between the two stable size/mtime checks in one-shot mode",
+    )
     return parser
 
 
@@ -1410,6 +2438,79 @@ def main(argv: Sequence[str] | None = None) -> int:
     arguments = parser.parse_args(argv)
     if not arguments.inputs and arguments.input_dir is None:
         parser.error("provide explicit CSV files or --input-dir")
+    if arguments.adopt_existing_input:
+        if arguments.input_dir is None:
+            parser.error("--adopt-existing-input requires --input-dir")
+        if arguments.watch:
+            parser.error("--adopt-existing-input cannot be combined with --watch")
+        required = {
+            "--expected-first-timestamp": arguments.expected_first_timestamp,
+            "--expected-last-timestamp": arguments.expected_last_timestamp,
+            "--expected-size-bytes": arguments.expected_size_bytes,
+            "--expected-ticks-valid": arguments.expected_ticks_valid,
+        }
+        missing = [name for name, value in required.items() if value is None]
+        if missing:
+            parser.error(f"--adopt-existing-input requires {', '.join(missing)}")
+        try:
+            result = adopt_existing_input(
+                input_dir=arguments.input_dir,
+                output_dir=arguments.output_dir,
+                adopt_file=arguments.adopt_file,
+                symbol=arguments.symbol,
+                expected_first_timestamp=arguments.expected_first_timestamp,
+                expected_last_timestamp=arguments.expected_last_timestamp,
+                expected_size_bytes=arguments.expected_size_bytes,
+                expected_ticks_valid=arguments.expected_ticks_valid,
+                expected_fingerprint=arguments.expected_fingerprint,
+                stability_interval=arguments.stability_check_interval,
+            )
+        except (OSError, ReplayError, ValueError) as error:
+            print(f"[HISTORICAL][ERROR] adoption aborted: {error}")
+            return 2
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+    if arguments.watch and arguments.input_dir is None:
+        parser.error("--watch requires --input-dir")
+    if arguments.watch:
+        try:
+            watch_input_directory(
+                input_dir=arguments.input_dir,
+                output_dir=arguments.output_dir,
+                symbol=arguments.symbol,
+                chunk_size=arguments.chunk_size,
+                watch_interval=arguments.watch_interval,
+            )
+        except KeyboardInterrupt:
+            print("[HISTORICAL] watch stopped")
+        except (OSError, ReplayError, ValueError) as error:
+            print(f"[HISTORICAL][ERROR] {error}")
+            return 2
+        return 0
+    if arguments.input_dir is not None:
+        try:
+            summary = incremental_replay_once(
+                input_dir=arguments.input_dir,
+                explicit_files=arguments.inputs,
+                output_dir=arguments.output_dir,
+                symbol=arguments.symbol,
+                chunk_size=arguments.chunk_size,
+                max_ticks=arguments.max_ticks,
+                stability_interval=arguments.stability_check_interval,
+            )
+        except (OSError, ReplayError, ValueError) as error:
+            print(f"[HISTORICAL][ERROR] {error}")
+            return 2
+        if arguments.validate_m1:
+            validation = validate_m1(
+                arguments.output_dir / "historical_bars" / f"{arguments.symbol}_M1.jsonl",
+                arguments.validate_m1,
+                arguments.tolerance,
+            )
+            print(json.dumps({"incremental": summary, "m1_validation": validation}, ensure_ascii=False, indent=2))
+        else:
+            print(json.dumps(summary, ensure_ascii=False, indent=2))
+        return 0
     discovery = discover_inputs(arguments.inputs, arguments.input_dir, symbol=arguments.symbol)
     print_discovery(discovery)
     if not discovery.files:
