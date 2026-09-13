@@ -2,6 +2,7 @@
 #define GOLDSCOUT_MARKET_OBSERVER_MQH
 
 #include <GoldScout/MarketStructure.mqh>
+#include <GoldScout/MarketOutcomes.mqh>
 
 // Observation-only market dataset. Nothing in this module returns a trading
 // signal or modifies an EA score.
@@ -116,6 +117,7 @@ private:
    bool            m_initialized;
    datetime        m_lastErrorLog;
    string          m_lastStateIdentity;
+   GoldScoutMarketOutcomeLabeler m_outcomeLabeler;
 
    bool ReadValue(const int handle,const int buffer,const int shift,double &value)
    {
@@ -288,18 +290,30 @@ private:
          rsi,adx,plusDi,minusDi,atr,ema20,ema200)) return false;
 
       datetime capturedAt=TimeTradeServer();
-      if(capturedAt<=0) capturedAt=TimeLocal();
+      if(capturedAt<=0) capturedAt=TimeCurrent();
       if(capturedAt<=0) return false;
+      datetime outcomeAnchorAt=capturedAt;
+      if(shift>0)
+      {
+         int timeframeSeconds=PeriodSeconds(m_timeframes[index]);
+         if(timeframeSeconds>0)
+            outcomeAnchorAt=(datetime)((long)rates[0].time+timeframeSeconds);
+      }
       string timeframe=GSMO_TimeframeName(m_timeframes[index]);
       string eventId=StringFormat("MT5-%s-%s-%I64d-%s-%u",m_symbol,timeframe,
          (long)rates[0].time,snapshotType,GSMO_Hash(identity));
-      if(IsRecentId(eventId)) return true;
+      if(IsRecentId(eventId))
+      {
+         m_outcomeLabeler.Track(eventId,outcomeAnchorAt,rates[0].close);
+         return true;
+      }
 
       string json="{";
       json+="\"event_id\":\""+GSMO_JsonEscape(eventId)+"\",";
       json+="\"source\":\"MT5\",\"observer_only\":true,\"score_effect\":0,";
       json+="\"snapshot_type\":\""+GSMO_JsonEscape(snapshotType)+"\",";
-      json+=StringFormat("\"captured_at\":%I64d,\"timestamp\":%I64d,",(long)capturedAt,(long)rates[0].time);
+      json+=StringFormat("\"captured_at\":%I64d,\"timestamp\":%I64d,\"outcome_anchor_at\":%I64d,",
+         (long)capturedAt,(long)rates[0].time,(long)outcomeAnchorAt);
       json+="\"symbol\":\""+GSMO_JsonEscape(m_symbol)+"\",\"timeframe\":\""+timeframe+"\",";
       json+="\"bar_closed\":"+(shift>0?"true":"false")+",";
       json+="\"open\":"+GSMO_Number(rates[0].open)+",\"high\":"+GSMO_Number(rates[0].high)+",";
@@ -320,7 +334,9 @@ private:
       json+="\"mfe_15m\":null,\"mae_15m\":null,\"mfe_1h\":null,\"mae_1h\":null,";
       json+="\"mfe_4h\":null,\"mae_4h\":null";
       json+="}";
-      return AppendRecord(eventId,json);
+      bool stored=AppendRecord(eventId,json);
+      if(stored) m_outcomeLabeler.Track(eventId,outcomeAnchorAt,rates[0].close);
+      return stored;
    }
 
 public:
@@ -348,7 +364,7 @@ public:
       m_lastStateIdentity="";
    }
 
-   bool Initialize(const string symbol,const string filename,
+   bool Initialize(const string symbol,const string filename,const string outcomeFilename,
                    const int rsiPeriod,const int adxPeriod,const int atrPeriod,
                    const int lookback,const GoldScoutPivotConfig &pivotConfig)
    {
@@ -377,11 +393,14 @@ public:
       }
       m_initialized=true;
       LoadRecentIds();
+      if(!m_outcomeLabeler.Initialize(m_symbol,m_filename,outcomeFilename))
+         Print("[GoldScout][MARKET_OUTCOMES] no disponible; trading y observaciones continúan sin cambios");
       return true;
    }
 
    void Shutdown()
    {
+      m_outcomeLabeler.Shutdown();
       for(int i=0;i<3;i++)
       {
          if(m_rsi[i]!=INVALID_HANDLE) IndicatorRelease(m_rsi[i]);
@@ -403,6 +422,12 @@ public:
    }
 
    bool IsInitialized() const { return m_initialized; }
+
+   void PollOutcomes(const int maximumEvents=8)
+   {
+      if(!m_initialized || !m_outcomeLabeler.IsInitialized()) return;
+      m_outcomeLabeler.Poll(maximumEvents);
+   }
 
    void PollClosedBars(const GoldScoutObserverContext &context)
    {

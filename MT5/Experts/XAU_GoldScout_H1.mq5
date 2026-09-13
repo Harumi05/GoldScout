@@ -161,6 +161,7 @@ input bool   WriteDashboard           = true;
 input group "=== Market Observer (read-only) ==="
 input bool   EnableMarketObserver     = true;
 input string MarketObserverFile       = "market_observations.jsonl"; // MT5 Common/Files; dashboard maps this dataset to dashboard/data
+input string MarketOutcomeFile        = "market_outcomes.jsonl"; // MT5 Common/Files; append-only labels linked by event_id
 
 int hEmaFast = INVALID_HANDLE;
 int hEmaSlow = INVALID_HANDLE;
@@ -335,6 +336,7 @@ void PollMarketObserverClosedBars()
    GoldScoutObserverContext context;
    BuildMarketObserverContext(context);
    g_marketObserver.PollClosedBars(context);
+   g_marketObserver.PollOutcomes();
 }
 
 void CaptureMarketObserverState()
@@ -2565,7 +2567,7 @@ int OnInit()
    {
       GoldScoutPivotConfig observerPivotConfig;
       ConfigurePivotEngine(observerPivotConfig);
-      if(!g_marketObserver.Initialize(_Symbol,MarketObserverFile,RSIPeriod,
+      if(!g_marketObserver.Initialize(_Symbol,MarketObserverFile,MarketOutcomeFile,RSIPeriod,
          ADXPeriod,ATRPeriod,PivotLookbackBars,observerPivotConfig))
          Print("[GoldScout][MARKET_OBSERVER] no disponible; trading y scoring continúan sin cambios");
       else
