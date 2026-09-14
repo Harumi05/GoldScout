@@ -77,6 +77,76 @@ Outputs append-only:
 - `output/historical_outcomes.jsonl`
 - `output/processed_inputs.json`
 
+## Enriquecimiento diagnóstico de decisiones
+
+El replay puede anexar un sidecar por `event_id` sin reescribir las
+observaciones ni outcomes originales:
+
+```powershell
+python -m research.enrich_historical_decisions `
+  --input-dir research/output `
+  --point-size 0.01
+```
+
+`historical_decisions.jsonl` añade scores LONG/SHORT, candidato, estado de
+decisión, contexto H4, estructura H1, timing M15, thresholds y el diagnóstico
+H1 de 30/10/5/3 velas. Todo registro conserva `observer_only=true`,
+`score_effect=0` y declara `PARTIAL_EXACT_CLOSED_BAR_CORE`: se replica el núcleo
+cerrado de EMA/RSI/ADX/ATR, volumen, pivots, bucket estructural y M15, pero no se
+simulan silenciosamente patrones, noticias históricas, intrabar ni controles de
+cuenta/ejecución. La paridad de inicialización de indicadores aún debe
+contrastarse con MT5.
+
+El tiempo de los CSV es hora de pared del servidor. Las sesiones solo se
+calculan al proporcionar explícitamente `--server-utc-offset-hours`; sin ese
+dato quedan `null`, en vez de inferir una zona horaria. Para analizar el sidecar
+con división temporal 60/20/20:
+
+```powershell
+python -m research.analyze_historical_dataset `
+  --input-dir research/output `
+  --output-dir research/analysis
+```
+
+Los diagnósticos históricos de decisiones y calidad de stop se ejecutan por
+separado y no alimentan el score ni la ejecución:
+
+```powershell
+python -m research.analyze_stop_loss_quality `
+  --input-dir research/output `
+  --tick-input-dir "C:\Users\Juliana\Desktop\Trading bot\Datos historicos" `
+  --output-dir research/analysis
+
+python -m research.analyze_adaptive_stop_v2 `
+  --input-dir research/output `
+  --tick-input-dir "C:\Users\Juliana\Desktop\Trading bot\Datos historicos" `
+  --output-dir research/analysis
+
+python -m research.analyze_adaptive_stop_final_ab `
+  --input-dir research/output `
+  --tick-input-dir "C:\Users\Juliana\Desktop\Trading bot\Datos historicos" `
+  --output-dir research/analysis
+```
+
+El segundo comando compara `CURRENT`, `STRUCTURE`, `ATR_1_0`, `ATR_1_5`,
+`ATR_2_0` y `HYBRID`. Un stop prematuro significa que BID/ASK toca el SL y el
+mid avanza después al menos 1 ATR en la dirección original dentro del
+horizonte. Un stop excesivamente amplio supera 1,5 veces el P90 TRAIN del MAE
+previo al primer avance favorable de 1 ATR para el mismo setup/dirección. El
+lotaje mostrado es solo una relación conceptual inversa a la distancia para
+mantener constante el riesgo monetario; no modifica `RiskPercent`.
+
+Se generan, bajo `analysis/`, `stop_loss_analysis.md`, `stop_loss_by_setup.csv` y
+`stop_loss_candidates.csv`. Adaptive Stop v2 genera además
+`adaptive_stop_v2.md/.csv` y `adaptive_stop_by_setup.csv`; sus objetivos R solo
+cuentan si el tick ejecutable los alcanza antes del SL, y todas las variantes
+se comparan con CURRENT conservando el riesgo mediante lotaje inverso a la
+distancia. La validación final conservadora genera
+`adaptive_stop_final_ab.md/.csv`; el criterio de conservación de +1R/+2R
+tolera como máximo 1 punto porcentual de deterioro OOS y nunca sustituye una
+prueba PAPER. Esta carpeta contiene artefactos regenerables y se
+mantiene fuera de Git.
+
 El manifest pasa a `PROCESSING` antes de abrir los lectores y a `SUCCESS` solo
 después del cierre correcto. Un `PROCESSING` encontrado tras reinicio pasa a
 `FAILED` y puede reintentarse; el manifest se sustituye atómicamente. Si un
