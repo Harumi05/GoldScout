@@ -126,6 +126,21 @@ python -m research.analyze_adaptive_stop_final_ab `
   --input-dir research/output `
   --tick-input-dir "C:\Users\Juliana\Desktop\Trading bot\Datos historicos" `
   --output-dir research/analysis
+
+python -m research.analyze_take_profit_and_account_size `
+  --input-dir research/output `
+  --tick-input-dir "C:\Users\Juliana\Desktop\Trading bot\Datos historicos" `
+  --output-dir research/analysis
+
+python -m research.analyze_structure_aware_tp `
+  --input-dir research/output `
+  --tick-input-dir "C:\Users\Juliana\Desktop\Trading bot\Datos historicos" `
+  --output-dir research/analysis
+
+python -m research.analyze_structure_aware_tp_v2 `
+  --input-dir research/output `
+  --tick-input-dir "C:\Users\Juliana\Desktop\Trading bot\Datos historicos" `
+  --output-dir research/analysis
 ```
 
 El segundo comando compara `CURRENT`, `STRUCTURE`, `ATR_1_0`, `ATR_1_5`,
@@ -144,8 +159,30 @@ se comparan con CURRENT conservando el riesgo mediante lotaje inverso a la
 distancia. La validación final conservadora genera
 `adaptive_stop_final_ab.md/.csv`; el criterio de conservación de +1R/+2R
 tolera como máximo 1 punto porcentual de deterioro OOS y nunca sustituye una
-prueba PAPER. Esta carpeta contiene artefactos regenerables y se
-mantiene fuera de Git.
+prueba PAPER. El análisis conjunto de TP/capital genera
+`take_profit_analysis.md`, `take_profit_by_setup.csv`,
+`minimum_account_size.md` y `minimum_account_size.csv`. Compara solo los R
+solicitados con el TP CURRENT (CHILL 1,25R / GOD 2R), resuelve TP contra SL por
+orden BID/ASK y deja censurados los casos sin toque; para Capital.com usa el
+contrato XAUUSD reproducible de 100 oz, volumen mínimo/step 0,01 y el peor fill
+permitido de 30 puntos. No estrecha el SL para hacer viable una cuenta. El
+análisis `structure_aware_tp` conserva ese SL CURRENT y compara los TP
+CURRENT, el fijo anterior (CHILL 0,75R / GOD 1,25R) y una política
+`STRUCTURE FIRST, R:R SECOND`. Sus niveles proceden únicamente de pivots y
+barras H4/H1/M15 ya cerradas al timestamp de la observación. Un soporte o
+resistencia mayor anterior impide seleccionar un TP posterior; si el objetivo
+estructural ofrece menos de 1,25R, el caso se registra `POOR_REWARD` sin mover
+artificialmente el TP. Genera `structure_aware_tp.md/.csv` y
+`structure_aware_tp_examples.csv`, siempre con `score_effect=0`.
+
+`structure_aware_tp_v2` parte del fijo anterior (CHILL 0,75R / GOD 1,25R)
+y solo recorta antes del primer obstáculo H4/H1/M15 de confianza HIGH/MEDIUM.
+Compara buffers 0,10/0,15/0,20 ATR y floors 0,50/0,60/0,70R, aceptando y
+rechazando por separado los casos `LOW_REWARD`. Genera
+`structure_aware_tp_v2.md/.csv` y `structure_aware_tp_v2_examples.csv`; no
+alimenta el EA ni cambia el SL.
+
+Esta carpeta contiene artefactos regenerables y se mantiene fuera de Git.
 
 El manifest pasa a `PROCESSING` antes de abrir los lectores y a `SUCCESS` solo
 después del cierre correcto. Un `PROCESSING` encontrado tras reinicio pasa a
