@@ -25,7 +25,7 @@ input group "=== Risk / Targets ==="
 input double RiskPercent             = 5.0;  // risk as % of current equity per trade
 input double ChillTargetR            = 1.25; // weaker structure: target >= 1.25R
 input double GodTargetR              = 2.0;  // clear trend: target >= 2R
-input double DailyLossLimitUSD       = 20.0; // legacy name: value is in account deposit currency
+input double DailyLossLimitPercent   = 5.0;  // % of equity captured at the start of the broker day
 input double MaxDrawdownPercent      = 15.0; // equity drawdown from peak
 input double MaxSpreadUSD            = 0.60; // max bid/ask spread on gold
 input double RoundTurnCommissionPerLot = 0.0; // optional account-currency cost buffer per lot
@@ -180,6 +180,9 @@ const double HARD_MAX_RISK_PERCENT = 5.0;
 const int    MAX_EXECUTION_DEVIATION_POINTS = 30; // existing execution tolerance; included in planned-risk sizing
 const int    MAX_TERMINAL_GLOBAL_NAME_LENGTH = 63;
 double   g_dailyLossUsed = 0.0;
+double   g_startOfDayEquity = 0.0;
+int      g_safetyStateDay = 0;
+datetime g_lastSafetyStateRefresh = 0;
 string   g_lastDecision = "Inicializando...";
 string   g_lastSetup = "-";
 int      g_lastScore = 0;
@@ -1097,9 +1100,10 @@ bool SafetyInputsValid(string &msg)
       msg=StringFormat("Configuración inválida: RiskPercent debe estar entre 0 y %.2f",HARD_MAX_RISK_PERCENT);
       return false;
    }
-   if(DailyLossLimitUSD<=0.0)
+   if(!MathIsValidNumber(DailyLossLimitPercent) ||
+      DailyLossLimitPercent<=0.0 || DailyLossLimitPercent>100.0)
    {
-      msg="Configuración inválida: DailyLossLimitUSD debe ser mayor que cero (moneda de cuenta)";
+      msg="Configuración inválida: DailyLossLimitPercent debe estar entre 0 y 100";
       return false;
    }
    if(RoundTurnCommissionPerLot<0.0)
@@ -1156,6 +1160,7 @@ bool RefreshPersistentSafetyState()
    string dayKey=AccountSafetyStateKey("day");
    string lossKey=AccountSafetyStateKey("loss");
    string peakKey=AccountSafetyStateKey("peak");
+   string startEquityKey=AccountSafetyStateKey("sde");
    double storedDay=0.0;
    bool hasStoredDay=ReadSafetyStateValue(dayKey,storedDay);
    bool sameDay=hasStoredDay && (int)MathRound(storedDay)==day;
@@ -1163,7 +1168,30 @@ bool RefreshPersistentSafetyState()
    if(!TodayAccountProfit(accountProfit)) return false;
    if(!sameDay)
    {
-      if(!SetSafetyStateValue(dayKey,(double)day) || !SetSafetyStateValue(lossKey,0.0)) return false;
+      // Store the immutable daily base before publishing the new day marker.
+      // The budget therefore cannot grow merely because equity rises later.
+      if(!SetSafetyStateValue(startEquityKey,equity) ||
+         !SetSafetyStateValue(lossKey,0.0) ||
+         !SetSafetyStateValue(dayKey,(double)day)) return false;
+      g_startOfDayEquity=equity;
+   }
+   else
+   {
+      if(GlobalVariableCheck(startEquityKey))
+      {
+         if(!ReadSafetyStateValue(startEquityKey,g_startOfDayEquity) ||
+            g_startOfDayEquity<=0.0) return false;
+      }
+      else
+      {
+         // One-time conservative migration from the former fixed-USD state.
+         // Remove realized gains from today's equity and never choose a base
+         // above current equity; persist it immediately so it cannot drift.
+         double inferredStart=equity-MathMax(0.0,accountProfit);
+         g_startOfDayEquity=MathMax(0.0,MathMin(equity,inferredStart));
+         if(g_startOfDayEquity<=0.0 ||
+            !SetSafetyStateValue(startEquityKey,g_startOfDayEquity)) return false;
+      }
    }
 
    double storedLoss=0.0;
@@ -1176,12 +1204,21 @@ bool RefreshPersistentSafetyState()
    if(GlobalVariableCheck(peakKey) && !ReadSafetyStateValue(peakKey,storedPeak)) return false;
    g_peakEquity=MathMax(equity,MathMax(g_peakEquity,storedPeak));
    if(!SetSafetyStateValue(peakKey,g_peakEquity)) return false;
-   return FlushSafetyState();
+   if(!FlushSafetyState()) return false;
+   g_safetyStateDay=day;
+   g_lastSafetyStateRefresh=TimeTradeServer();
+   return true;
+}
+
+double DailyLossBudgetAmount()
+{
+   double effectivePercent=MathMax(0.0,MathMin(DailyLossLimitPercent,100.0));
+   return MathMax(0.0,g_startOfDayEquity*effectivePercent/100.0);
 }
 
 double RemainingDailyLossBudget()
 {
-   return MathMax(0.0,DailyLossLimitUSD-g_dailyLossUsed);
+   return MathMax(0.0,DailyLossBudgetAmount()-g_dailyLossUsed);
 }
 
 double EncodeEntryReservation(const datetime bar,const EntryReservationPhase phase)
@@ -2238,7 +2275,8 @@ void TryTrade()
       g_lastDecision="Bloqueado: presupuesto de pérdida diaria agotado";
       g_diagBlockReason=g_lastDecision; UpdateDashboard(); return;
    }
-   double plannedRisk=MathMin(PlannedRiskAmount(),remainingDailyBudget),lots=0.0;
+   double targetRisk=PlannedRiskAmount();
+   double plannedRisk=MathMax(0.0,MathMin(targetRisk,remainingDailyBudget)),lots=0.0;
    if(plannedRisk<=0.0)
    {
       g_lastDecision="Bloqueado: riesgo planificado no válido";
@@ -2474,6 +2512,10 @@ void UpdateDashboard()
    double balance=AccountInfoDouble(ACCOUNT_BALANCE), equity=AccountInfoDouble(ACCOUNT_EQUITY);
    string accountCurrency=AccountInfoString(ACCOUNT_CURRENCY);
    if(accountCurrency=="") accountCurrency="UNKNOWN";
+   double targetRisk=PlannedRiskAmount();
+   double dailyLossBudget=DailyLossBudgetAmount();
+   double remainingDailyBudget=RemainingDailyLossBudget();
+   double effectivePlannedRisk=MathMax(0.0,MathMin(targetRisk,remainingDailyBudget));
    string active=ActiveTradeJson();
 
    int h=FileOpen(DashboardFile,FILE_COMMON|FILE_WRITE|FILE_TXT|FILE_ANSI);
@@ -2483,7 +2525,7 @@ void UpdateDashboard()
    json += StringFormat("\"updated_at\":\"%s\",",JsonEscape(TimeToString(TimeTradeServer(),TIME_DATE|TIME_SECONDS)));
    json += StringFormat("\"symbol\":\"%s\",\"timeframe\":\"H1\",",JsonEscape(_Symbol));
    json += StringFormat("\"live_trading\":%s,",EnableLiveTrading?"true":"false");
-   json += StringFormat("\"account_currency\":\"%s\",\"balance\":%.2f,\"equity\":%.2f,\"daily_pnl\":%.2f,\"risk_amount\":%.2f,\"risk_percent\":%.2f,",JsonEscape(accountCurrency),balance,equity,TodayClosedProfit(),PlannedRiskAmount(),RiskPercent);
+   json += StringFormat("\"account_currency\":\"%s\",\"balance\":%.2f,\"equity\":%.2f,\"start_of_day_equity\":%.2f,\"daily_pnl\":%.2f,\"risk_amount\":%.2f,\"target_risk\":%.2f,\"daily_loss_limit_percent\":%.2f,\"daily_loss_budget\":%.2f,\"daily_loss_used\":%.2f,\"remaining_daily_budget\":%.2f,\"effective_planned_risk\":%.2f,\"risk_percent\":%.2f,",JsonEscape(accountCurrency),balance,equity,g_startOfDayEquity,TodayClosedProfit(),effectivePlannedRisk,targetRisk,DailyLossLimitPercent,dailyLossBudget,g_dailyLossUsed,remainingDailyBudget,effectivePlannedRisk,RiskPercent);
    json += StringFormat("\"stop_mode\":\"ATR+STRUCTURE\",\"chill_r\":%.2f,\"god_r\":%.2f,\"min_rr\":%.2f,\"last_score\":%d,\"last_setup\":\"%s\",\"last_direction\":\"%s\",",ChillTargetR,GodTargetR,MinRewardRisk,g_lastScore,JsonEscape(g_lastSetup),JsonEscape(g_lastDirection));
    json += StringFormat("\"last_decision\":\"%s\",",JsonEscape(g_lastDecision));
    json += StringFormat("\"analysis\":{\"bar\":\"%s\",\"h4_trend\":\"%s\",\"h1_trend\":\"%s\",\"ema_fast\":%.2f,\"ema_slow\":%.2f,\"h4_ema_fast\":%.2f,\"h4_ema_slow\":%.2f,\"rsi\":%.2f,\"adx\":%.2f,\"atr\":%.2f,\"volume_current\":%.0f,\"volume_avg\":%.0f,\"volume_state\":\"%s\",\"structure\":\"%s\",\"long_tech\":%d,\"short_tech\":%d,\"long_news_points\":%d,\"short_news_points\":%d,\"long_final\":%d,\"short_final\":%d,\"candidate\":\"%s\",\"block_reason\":\"%s\",\"technical_reason\":\"%s\",\"news_reason\":\"%s\",",
@@ -2557,6 +2599,8 @@ int OnInit()
       Print("[GoldScout] BLOQUEADO: no se pudo inicializar la reserva H1 persistente");
       return(INIT_FAILED);
    }
+   if(!RefreshPersistentSafetyState())
+      Print("[GoldScout] AVISO: estado diario no disponible al iniciar; cualquier entrada permanecerá bloqueada hasta recuperarlo");
    g_peakEquity=AccountInfoDouble(ACCOUNT_EQUITY);
    g_lastH1Bar=iTime(_Symbol,PERIOD_H1,0);
    g_diagBar=g_lastH1Bar;
@@ -2606,6 +2650,10 @@ void OnDeinit(const int reason)
 void OnTimer()
 {
    if(!IsGoldSymbol()) return;
+   datetime safetyNow=TimeTradeServer();
+   if(ServerDayId()!=g_safetyStateDay || g_lastSafetyStateRefresh<=0 ||
+      safetyNow-g_lastSafetyStateRefresh>=30)
+      RefreshPersistentSafetyState();
    LoadWorldNews();
    PollMarketObserverClosedBars();
    datetime bar=iTime(_Symbol,PERIOD_H1,0);

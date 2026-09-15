@@ -27,6 +27,7 @@ class SafetyStateUnavailable(RuntimeError):
 @dataclass
 class AccountSafetyState:
     day: int | None = None
+    start_of_day_equity: float = 0.0
     daily_loss_used: float = 0.0
     peak_equity: float = 0.0
 
@@ -44,6 +45,7 @@ def refresh_account_state(
         raise SafetyStateUnavailable
     if state.day != server_day:
         state.day = server_day
+        state.start_of_day_equity = equity
         state.daily_loss_used = 0.0
     state.daily_loss_used = max(
         state.daily_loss_used,
@@ -53,8 +55,12 @@ def refresh_account_state(
     return state
 
 
-def remaining_daily_budget(limit: float, used: float) -> float:
-    return max(0.0, limit - used)
+def daily_loss_budget(start_of_day_equity: float, limit_percent: float) -> float:
+    return max(0.0, start_of_day_equity * limit_percent / 100.0)
+
+
+def remaining_daily_budget(start_of_day_equity: float, limit_percent: float, used: float) -> float:
+    return max(0.0, daily_loss_budget(start_of_day_equity, limit_percent) - used)
 
 
 def inputs_are_safe(risk_percent: float) -> bool:
@@ -122,7 +128,7 @@ class SafetyInvariantTests(unittest.TestCase):
             account_profit=0.0,
         )
         self.assertEqual(state.daily_loss_used, 0.0)
-        self.assertEqual(remaining_daily_budget(20.0, state.daily_loss_used), 20.0)
+        self.assertEqual(remaining_daily_budget(state.start_of_day_equity, 5.0, state.daily_loss_used), 50.0)
 
     def test_account_drawdown_uses_shared_account_peak(self):
         state = refresh_account_state(
@@ -153,13 +159,100 @@ class SafetyInvariantTests(unittest.TestCase):
             server_day=20260908,
             equity=980.0,
             history_available=True,
-            account_profit=-20.0,
+            account_profit=-50.0,
         )
-        self.assertEqual(state.daily_loss_used, 20.0)
-        self.assertEqual(remaining_daily_budget(20.0, state.daily_loss_used), 0.0)
+        self.assertEqual(state.daily_loss_used, 50.0)
+        self.assertEqual(remaining_daily_budget(state.start_of_day_equity, 5.0, state.daily_loss_used), 0.0)
         self.assertIn(
-            "return MathMax(0.0,DailyLossLimitUSD-g_dailyLossUsed);", self.source
+            "return MathMax(0.0,DailyLossBudgetAmount()-g_dailyLossUsed);", self.source
         )
+
+    def test_daily_budget_is_five_percent_of_start_equity(self):
+        self.assertEqual(daily_loss_budget(1_000.0, 5.0), 50.0)
+        self.assertEqual(daily_loss_budget(200.0, 5.0), 10.0)
+        self.assertEqual(daily_loss_budget(500.0, 5.0), 25.0)
+        self.assertIn("input double DailyLossLimitPercent   = 5.0;", self.source)
+        self.assertNotIn("DailyLossLimitUSD", self.source)
+
+    def test_intraday_gains_do_not_increase_daily_budget(self):
+        state = refresh_account_state(
+            AccountSafetyState(), server_day=20260908, equity=200.0,
+            history_available=True, account_profit=0.0,
+        )
+        refresh_account_state(
+            state, server_day=20260908, equity=250.0,
+            history_available=True, account_profit=50.0,
+        )
+        self.assertEqual(state.start_of_day_equity, 200.0)
+        self.assertEqual(daily_loss_budget(state.start_of_day_equity, 5.0), 10.0)
+
+    def test_partial_loss_reduces_remaining_and_minimum_lot_can_block(self):
+        state = refresh_account_state(
+            AccountSafetyState(), server_day=20260908, equity=200.0,
+            history_available=True, account_profit=0.0,
+        )
+        refresh_account_state(
+            state, server_day=20260908, equity=194.0,
+            history_available=True, account_profit=-6.0,
+        )
+        remaining = remaining_daily_budget(state.start_of_day_equity, 5.0, state.daily_loss_used)
+        target = 194.0 * 0.05
+        planned = max(0.0, min(target, remaining))
+        risk_at_minimum_lot = 6.0
+        self.assertEqual(remaining, 4.0)
+        self.assertEqual(planned, 4.0)
+        self.assertGreater(risk_at_minimum_lot, planned)
+        self.assertIn("actualRisk>plannedRisk+1e-6", self.source)
+
+    def test_restart_preserves_same_day_equity_base_and_loss(self):
+        state = refresh_account_state(
+            AccountSafetyState(), server_day=20260908, equity=200.0,
+            history_available=True, account_profit=0.0,
+        )
+        refresh_account_state(
+            state, server_day=20260908, equity=194.0,
+            history_available=True, account_profit=-6.0,
+        )
+        restarted = AccountSafetyState(
+            day=state.day,
+            start_of_day_equity=state.start_of_day_equity,
+            daily_loss_used=state.daily_loss_used,
+            peak_equity=state.peak_equity,
+        )
+        refresh_account_state(
+            restarted, server_day=20260908, equity=205.0,
+            history_available=True, account_profit=5.0,
+        )
+        self.assertEqual(restarted.start_of_day_equity, 200.0)
+        self.assertEqual(restarted.daily_loss_used, 6.0)
+        self.assertEqual(remaining_daily_budget(200.0, 5.0, restarted.daily_loss_used), 4.0)
+        self.assertIn('AccountSafetyStateKey("sde")', self.source)
+
+    def test_new_server_day_resets_base_and_used_loss(self):
+        state = refresh_account_state(
+            AccountSafetyState(), server_day=20260908, equity=200.0,
+            history_available=True, account_profit=-6.0,
+        )
+        refresh_account_state(
+            state, server_day=20260909, equity=225.0,
+            history_available=True, account_profit=0.0,
+        )
+        self.assertEqual(state.start_of_day_equity, 225.0)
+        self.assertEqual(state.daily_loss_used, 0.0)
+        self.assertEqual(remaining_daily_budget(225.0, 5.0, 0.0), 11.25)
+
+    def test_dashboard_exposes_target_remaining_and_effective_risk(self):
+        for field in (
+            r'\"start_of_day_equity\":', r'\"target_risk\":',
+            r'\"daily_loss_limit_percent\":', r'\"daily_loss_budget\":',
+            r'\"daily_loss_used\":', r'\"remaining_daily_budget\":',
+            r'\"effective_planned_risk\":',
+        ):
+            self.assertIn(field, self.source)
+        dashboard = EA.parents[2] / "dashboard" / "index.html"
+        text = dashboard.read_text(encoding="utf-8")
+        self.assertIn("data.effective_planned_risk??Math.min(targetRisk,remainingDailyBudget)", text)
+        self.assertIn("Riesgo efectivo permitido", text)
 
     def test_h1_reservation_transitions_pending_to_confirmed(self):
         reservation = H1Reservation()

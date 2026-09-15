@@ -150,7 +150,8 @@ class BrokerContractTests(unittest.TestCase):
         self.assertIn('\\"risk_amount\\":', self.ea)
         self.assertIn("data.risk_amount??data.risk_usd", self.dashboard)
         self.assertIn('"account_currency":"USD"', self.server)
-        self.assertIn('"risk_amount":10.0', self.server)
+        self.assertIn('"risk_amount":0.0', self.server)
+        self.assertIn('"daily_loss_limit_percent":5.0', self.server)
 
     def test_live_trading_and_risk_defaults_are_unchanged(self):
         self.assertIn("input bool   EnableLiveTrading      = false;", self.ea)

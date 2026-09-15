@@ -55,7 +55,9 @@ for p in CANDIDATES:
 CANDIDATES=_u
 
 OFFLINE={"updated_at":None,"symbol":"XAUUSD","timeframe":"H1","live_trading":False,"connected":False,
-"account_currency":"USD","balance":None,"equity":None,"daily_pnl":None,"risk_amount":10.0,"risk_percent":5.0,"last_score":None,
+"account_currency":"USD","balance":None,"equity":None,"start_of_day_equity":None,"daily_pnl":None,
+"risk_amount":0.0,"target_risk":0.0,"daily_loss_limit_percent":5.0,"daily_loss_budget":0.0,
+"daily_loss_used":0.0,"remaining_daily_budget":0.0,"effective_planned_risk":0.0,"risk_percent":5.0,"last_score":None,
 "last_setup":"-","last_direction":"-","last_decision":"Esperando datos MT5...","analysis":{"bar":None},
 "active_trade":None,"closed_trades":[],"news":{"available":False,"bias":0,"confidence":0,"risk":"UNKNOWN",
 "data_risk":"HIGH","direction":"NEUTRO","summary":"Esperando análisis de noticias...","article_count":0,"top_headlines":[],"source_health":{}},
