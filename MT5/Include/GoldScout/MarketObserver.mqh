@@ -18,6 +18,7 @@ struct GoldScoutObserverContext
    string monitorState;
    string direction;
    bool   liveTrading;
+   bool   tpEvaluated;
    double currentTP;
    double currentRR;
    double v2TP;
@@ -28,6 +29,8 @@ struct GoldScoutObserverContext
    double tpStructureLevel;
    string tpStructureConfidence;
    string executionState;
+   string executionReason;
+   uint   executionRetcode;
    string signalEventId;
 };
 
@@ -56,6 +59,19 @@ string GSMO_Number(const double value,const int digits=8)
 {
    if(!MathIsValidNumber(value)) return "null";
    return DoubleToString(value,digits);
+}
+
+string GSMO_OptionalNumber(const bool available,const double value,const int digits=8)
+{
+   return available?GSMO_Number(value,digits):"null";
+}
+
+string GSMO_CanonicalLifecycleState(const string value)
+{
+   // Read compatibility for records emitted before POSITION_CLOSED became the
+   // canonical lifecycle event. New records never emit the legacy alias.
+   if(value=="POSITION_CLOSE") return "POSITION_CLOSED";
+   return value;
 }
 
 string GSMO_TimeframeName(const ENUM_TIMEFRAMES timeframe)
@@ -343,13 +359,16 @@ private:
       json+="\"decision\":\""+GSMO_JsonEscape(GSMO_DecisionOutcome(context))+"\",";
       json+="\"decision_reason\":\""+GSMO_JsonEscape(context.decisionReason)+"\",";
       json+="\"goldscout_state\":\""+GSMO_JsonEscape(context.monitorState)+"\",";
-      json+="\"current_tp\":"+GSMO_Number(context.currentTP)+",\"current_rr\":"+GSMO_Number(context.currentRR,4)+",";
-      json+="\"v2_tp\":"+GSMO_Number(context.v2TP)+",\"v2_rr\":"+GSMO_Number(context.v2RR,4)+",";
-      json+="\"selected_tp\":"+GSMO_Number(context.selectedTP)+",\"selected_rr\":"+GSMO_Number(context.selectedRR,4)+",";
+      json+="\"tp_evaluated\":"+(context.tpEvaluated?"true":"false")+",";
+      json+="\"current_tp\":"+GSMO_OptionalNumber(context.tpEvaluated,context.currentTP)+",\"current_rr\":"+GSMO_OptionalNumber(context.tpEvaluated,context.currentRR,4)+",";
+      json+="\"v2_tp\":"+GSMO_OptionalNumber(context.tpEvaluated,context.v2TP)+",\"v2_rr\":"+GSMO_OptionalNumber(context.tpEvaluated,context.v2RR,4)+",";
+      json+="\"selected_tp\":"+GSMO_OptionalNumber(context.tpEvaluated,context.selectedTP)+",\"selected_rr\":"+GSMO_OptionalNumber(context.tpEvaluated,context.selectedRR,4)+",";
       json+="\"tp_mode\":\""+GSMO_JsonEscape(context.tpMode)+"\",";
-      json+="\"tp_structure_level\":"+GSMO_Number(context.tpStructureLevel)+",";
+      json+="\"tp_structure_level\":"+GSMO_OptionalNumber(context.tpEvaluated && context.tpStructureLevel>0.0,context.tpStructureLevel)+",";
       json+="\"tp_structure_confidence\":\""+GSMO_JsonEscape(context.tpStructureConfidence)+"\",";
-      json+="\"execution_state\":\""+GSMO_JsonEscape(context.executionState)+"\",";
+      json+="\"execution_state\":\""+GSMO_JsonEscape(GSMO_CanonicalLifecycleState(context.executionState))+"\",";
+      json+="\"execution_reason\":\""+GSMO_JsonEscape(context.executionReason)+"\",";
+      json+=StringFormat("\"execution_retcode\":%u,",context.executionRetcode);
       json+="\"signal_event_id\":\""+GSMO_JsonEscape(context.signalEventId)+"\",";
       json+="\"future_return_15m\":null,\"future_return_1h\":null,\"future_return_4h\":null,";
       json+="\"mfe_15m\":null,\"mae_15m\":null,\"mfe_1h\":null,\"mae_1h\":null,";
@@ -467,7 +486,12 @@ public:
       if(!m_initialized) return;
       string decision=GSMO_Lower(context.decision);
       string snapshotType="";
-      if(StringFind(decision,"armado")>=0)
+      string lifecycleState=GSMO_CanonicalLifecycleState(context.executionState);
+      if(context.signalEventId!="" &&
+         (lifecycleState=="ORDER_REJECTED" || lifecycleState=="ORDER_FILLED" ||
+          lifecycleState=="POSITION_OPEN" || lifecycleState=="POSITION_CLOSED"))
+         snapshotType=lifecycleState;
+      else if(StringFind(decision,"armado")>=0)
          snapshotType="SIGNAL_ARMED";
       else if(context.liveTrading &&
          (StringFind(decision,"orden enviada")>=0 || StringFind(decision,"orden confirmada")>=0 ||
@@ -481,7 +505,9 @@ public:
       if(snapshotType=="") return;
 
       string outcome=GSMO_DecisionOutcome(context);
-      string identity=snapshotType+"|"+outcome+"|"+context.monitorState+"|"+context.direction;
+      string identity=snapshotType+"|"+outcome+"|"+context.monitorState+"|"+
+         context.direction+"|"+context.signalEventId+"|"+
+         IntegerToString((long)context.executionRetcode);
       if(identity==m_lastStateIdentity) return;
       if(Capture(1,0,snapshotType,identity,context))
          m_lastStateIdentity=identity;

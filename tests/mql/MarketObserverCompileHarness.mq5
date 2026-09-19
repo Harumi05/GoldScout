@@ -18,16 +18,19 @@ void OnStart()
    context.monitorState="SIN SETUP";
    context.direction="NONE";
    context.liveTrading=false;
+   context.tpEvaluated=false;
    context.currentTP=0.0;
    context.currentRR=0.0;
    context.v2TP=0.0;
    context.v2RR=0.0;
    context.selectedTP=0.0;
    context.selectedRR=0.0;
-   context.tpMode="CURRENT";
+   context.tpMode="NOT_EVALUATED";
    context.tpStructureLevel=0.0;
    context.tpStructureConfidence="NONE";
    context.executionState="PAPER";
+   context.executionReason="DEMO_EXECUTION_DISABLED";
+   context.executionRetcode=0;
    context.signalEventId="";
 
    GoldScoutMarketObserver observer;

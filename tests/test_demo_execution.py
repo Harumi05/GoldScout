@@ -6,6 +6,8 @@ import re
 import unittest
 from pathlib import Path
 
+from dashboard.server import canonical_lifecycle_value
+
 
 ROOT = Path(__file__).resolve().parents[1]
 EA_PATH = ROOT / "MT5" / "Experts" / "XAU_GoldScout_H1.mq5"
@@ -31,7 +33,61 @@ def execution_price(direction: str, bid: float, ask: float) -> float:
     return ask if direction == "LONG" else bid
 
 
+def lifecycle_for_result(confirmed: bool) -> tuple[str, ...]:
+    if not confirmed:
+        return ("SIGNAL", "ORDER_REQUEST", "ORDER_REJECTED")
+    return ("SIGNAL", "ORDER_REQUEST", "ORDER_FILLED", "POSITION_OPEN", "POSITION_CLOSED")
+
+
+def refresh_execution_diagnostic(
+    state: str,
+    outcome_reason: str,
+    *,
+    enabled: bool,
+    allowed: bool,
+    authorization_reason: str,
+) -> tuple[str, str]:
+    if not enabled:
+        return "PAPER", authorization_reason
+    if not allowed:
+        return "BLOCKED", authorization_reason
+    if state in {"ORDER_FILLED", "ORDER_REJECTED", "POSITION_OPEN", "POSITION_CLOSED"}:
+        return state, outcome_reason
+    return "DEMO_READY", authorization_reason
+
+
 class DemoExecutionPolicyTests(unittest.TestCase):
+    def test_successful_lifecycle_uses_canonical_closed_event(self):
+        self.assertEqual(
+            lifecycle_for_result(True),
+            ("SIGNAL", "ORDER_REQUEST", "ORDER_FILLED", "POSITION_OPEN", "POSITION_CLOSED"),
+        )
+
+    def test_rejected_lifecycle_never_creates_open_position(self):
+        events = lifecycle_for_result(False)
+        self.assertEqual(events, ("SIGNAL", "ORDER_REQUEST", "ORDER_REJECTED"))
+        self.assertNotIn("POSITION_OPEN", events)
+
+    def test_rejected_result_survives_authorization_refresh(self):
+        state, reason = refresh_execution_diagnostic(
+            "ORDER_REJECTED",
+            "Invalid stops",
+            enabled=True,
+            allowed=True,
+            authorization_reason="DEMO_ACCOUNT_CONFIRMED",
+        )
+        self.assertEqual(state, "ORDER_REJECTED")
+        self.assertEqual(reason, "Invalid stops")
+
+    def test_legacy_position_close_alias_is_read_as_canonical(self):
+        payload = {
+            "demo_execution": {"state": "POSITION_CLOSE"},
+            "closed_trades": [{"status": "POSITION_CLOSE"}],
+        }
+        canonical = canonical_lifecycle_value(payload)
+        self.assertEqual(canonical["demo_execution"]["state"], "POSITION_CLOSED")
+        self.assertEqual(canonical["closed_trades"][0]["status"], "POSITION_CLOSED")
+
     def test_demo_account_allows_execution_when_requested(self):
         self.assertEqual(demo_execution_allowed(True, "DEMO"), (True, "DEMO_ACCOUNT_CONFIRMED"))
 
@@ -135,8 +191,9 @@ class DemoExecutionSourceContracts(unittest.TestCase):
         self.assertIn("SignalEventId(entryBar,direction,setup,score)", self.ea)
 
     def test_execution_lifecycle_is_append_only_and_linked(self):
-        for event in ("SIGNAL", "ORDER_REQUEST", "ORDER_FILLED", "ORDER_REJECTED", "POSITION_OPEN", "POSITION_CLOSE"):
+        for event in ("SIGNAL", "ORDER_REQUEST", "ORDER_FILLED", "ORDER_REJECTED", "POSITION_OPEN", "POSITION_CLOSED"):
             self.assertIn(f'"{event}"', self.ea)
+        self.assertNotIn('"POSITION_CLOSE"', self.ea)
         self.assertIn('\\"signal_event_id\\"', self.ea)
         self.assertIn("FileSeek(handle,0,SEEK_END)", self.ea)
         self.assertNotIn("FILE_WRITE|FILE_TXT|FILE_ANSI);\n   FileWriteString(handle", self.ea)
@@ -146,6 +203,24 @@ class DemoExecutionSourceContracts(unittest.TestCase):
             self.assertIn(label, self.dashboard)
         for field in ("open_positions", "session_stats", "demo_execution", "open_risk"):
             self.assertIn(field, self.ea)
+
+    def test_rejection_state_and_broker_reason_are_not_overwritten(self):
+        refresh = self.ea[
+            self.ea.index("void RefreshExecutionAuthorizationDiagnostic") : self.ea.index("string SetupCode")
+        ]
+        self.assertIn('g_executionState!="ORDER_REJECTED"', refresh)
+        self.assertIn("g_executionAuthorizationReason=reason;", refresh)
+        dashboard = self.ea[self.ea.index("void UpdateDashboard()") : self.ea.index("void InitIndicators()")]
+        self.assertNotIn("g_executionReason=dashboardAuthorization", dashboard)
+        self.assertIn("authorization_reason", dashboard)
+        self.assertIn('id="execAuthorization"', self.dashboard)
+
+    def test_observer_reports_rejection_retcode_and_canonical_lifecycle(self):
+        observer = (ROOT / "MT5" / "Include" / "GoldScout" / "MarketObserver.mqh").read_text(encoding="utf-8")
+        self.assertIn('lifecycleState=="ORDER_REJECTED"', observer)
+        self.assertIn("execution_reason", observer)
+        self.assertIn("execution_retcode", observer)
+        self.assertIn('if(value=="POSITION_CLOSE") return "POSITION_CLOSED";', observer)
 
     def test_observer_links_execution_without_score_effect(self):
         observer = (ROOT / "MT5" / "Include" / "GoldScout" / "MarketObserver.mqh").read_text(encoding="utf-8")

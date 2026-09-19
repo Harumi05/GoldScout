@@ -227,7 +227,8 @@ datetime g_diagBar=0;
 // explicit input is enabled while the EA is in PAPER mode.
 double g_tpCurrent=0.0, g_tpCurrentRR=0.0, g_tpV2=0.0, g_tpV2RR=0.0;
 double g_tpSelected=0.0, g_tpSelectedRR=0.0, g_tpStructureLevel=0.0;
-string g_tpMode="CURRENT", g_tpClass="NONE", g_tpStructureConfidence="NONE";
+bool   g_tpEvaluated=false;
+string g_tpMode="NOT_EVALUATED", g_tpClass="NONE", g_tpStructureConfidence="NONE";
 string g_tpSelectionReason="NOT_EVALUATED";
 
 // Demo execution diagnostics. The account-mode hard block is re-evaluated
@@ -235,7 +236,9 @@ string g_tpSelectionReason="NOT_EVALUATED";
 string g_executionAccountMode="UNKNOWN";
 string g_executionState="PAPER";
 string g_executionReason="DEMO_EXECUTION_DISABLED";
+string g_executionAuthorizationReason="DEMO_EXECUTION_DISABLED";
 string g_activeSignalEventId="";
+string g_observerSignalEventId="";
 ulong  g_lastExecutionOrder=0;
 ulong  g_lastExecutionDeal=0;
 ulong  g_lastExecutionPosition=0;
@@ -366,6 +369,12 @@ string JsonEscape(string s)
    return s;
 }
 
+string JsonNumberOrNull(const bool available,const double value,const int digits=8)
+{
+   if(!available || !MathIsValidNumber(value)) return "null";
+   return DoubleToString(value,digits);
+}
+
 bool ReadAccountTradeMode(long &accountMode)
 {
    accountMode=-1;
@@ -404,12 +413,24 @@ void RefreshExecutionAuthorizationDiagnostic()
 {
    string reason="";
    bool allowed=DemoExecutionAllowedNow(reason);
-   g_executionReason=reason;
-   if(!EnableDemoExecution) g_executionState="PAPER";
-   else if(!allowed) g_executionState="BLOCKED";
+   g_executionAuthorizationReason=reason;
+   if(!EnableDemoExecution)
+   {
+      g_executionState="PAPER";
+      g_executionReason=reason;
+   }
+   else if(!allowed)
+   {
+      g_executionState="BLOCKED";
+      g_executionReason=reason;
+   }
    else if(g_executionState!="ORDER_FILLED" &&
+      g_executionState!="ORDER_REJECTED" &&
       g_executionState!="POSITION_OPEN" && g_executionState!="POSITION_CLOSED")
+   {
       g_executionState="DEMO_READY";
+      g_executionReason=reason;
+   }
 }
 
 string SetupCode(const string setup)
@@ -626,8 +647,26 @@ bool BuildTakeProfitStructuralZones(GoldScoutTPZone &zones[],const double atr,
    return AddTakeProfitRecentH1Evidence(zones,atr,contract.point);
 }
 
+void ResetTakeProfitDiagnostics()
+{
+   g_tpEvaluated=false;
+   g_tpCurrent=0.0;
+   g_tpCurrentRR=0.0;
+   g_tpV2=0.0;
+   g_tpV2RR=0.0;
+   g_tpSelected=0.0;
+   g_tpSelectedRR=0.0;
+   g_tpStructureLevel=0.0;
+   g_tpMode="NOT_EVALUATED";
+   g_tpClass="NONE";
+   g_tpStructureConfidence="NONE";
+   g_tpSelectionReason="NOT_EVALUATED";
+   g_observerSignalEventId="";
+}
+
 void StoreTakeProfitDiagnostics(const GoldScoutTakeProfitDecision &decision)
 {
+   g_tpEvaluated=true;
    g_tpCurrent=decision.currentTP;
    g_tpCurrentRR=decision.currentRR;
    g_tpV2=decision.v2TP;
@@ -653,6 +692,7 @@ void BuildMarketObserverContext(GoldScoutObserverContext &context)
    context.monitorState=g_monitorState;
    context.direction=g_lastDirection;
    context.liveTrading=EnableDemoExecution && g_executionAccountMode=="DEMO";
+   context.tpEvaluated=g_tpEvaluated;
    context.currentTP=g_tpCurrent;
    context.currentRR=g_tpCurrentRR;
    context.v2TP=g_tpV2;
@@ -663,7 +703,9 @@ void BuildMarketObserverContext(GoldScoutObserverContext &context)
    context.tpStructureLevel=g_tpStructureLevel;
    context.tpStructureConfidence=g_tpStructureConfidence;
    context.executionState=g_executionState;
-   context.signalEventId=g_activeSignalEventId;
+   context.executionReason=g_executionReason;
+   context.executionRetcode=g_lastExecutionRetcode;
+   context.signalEventId=g_observerSignalEventId;
 }
 
 void PollMarketObserverClosedBars()
@@ -2585,6 +2627,8 @@ void AppendDealLog(string direction, int score, string setup, double targetAmoun
 void TryTrade()
 {
    // Always build the technical/news diagnostic first, even when a guard later blocks execution.
+   // TP telemetry belongs only to the decision evaluated by this invocation.
+   ResetTakeProfitDiagnostics();
    LoadWorldNews();
    int direction,score; string setup,reason; double targetR;
    bool signal=BuildSignal(direction,score,setup,reason,targetR);
@@ -2821,6 +2865,7 @@ void TryTrade()
 
    datetime entryBar=iTime(_Symbol,PERIOD_H1,0);
    g_activeSignalEventId=SignalEventId(entryBar,direction,setup,score);
+   g_observerSignalEventId=g_activeSignalEventId;
    RefreshExecutionAuthorizationDiagnostic();
    bool executeDemo=false;
    if(EnableDemoExecution)
@@ -3229,7 +3274,7 @@ bool BuildClosedTradeSummary(const ulong positionId,GoldScoutClosedTrade &tradeS
 
 void AppendClosedTradeRecord(const GoldScoutClosedTrade &item,const uint retcode)
 {
-   string identity=StringFormat("%s|POSITION_CLOSE|%I64u|%I64u",
+   string identity=StringFormat("%s|POSITION_CLOSED|%I64u|%I64u",
       item.signalEventId,item.positionId,item.dealId);
    string eventId=StringFormat("GSE-%u",GSMO_Hash(identity));
    int handle=FileOpen(ExecutionEventsFile,
@@ -3244,7 +3289,7 @@ void AppendClosedTradeRecord(const GoldScoutClosedTrade &item,const uint retcode
    string json="{";
    json+="\"event_id\":\""+JsonEscape(eventId)+"\",";
    json+="\"signal_event_id\":\""+JsonEscape(item.signalEventId)+"\",";
-   json+="\"source\":\"MT5\",\"score_effect\":0,\"event\":\"POSITION_CLOSE\",";
+   json+="\"source\":\"MT5\",\"score_effect\":0,\"event\":\"POSITION_CLOSED\",";
    json+="\"trade_id\":\""+IntegerToString((long)item.positionId)+"\",";
    json+=StringFormat("\"position_id\":%I64u,\"deal_id\":%I64u,\"retcode\":%u,",
       item.positionId,item.dealId,retcode);
@@ -3354,7 +3399,10 @@ void RecoverDemoPositionState()
       g_lastExecutionPosition=(ulong)PositionGetInteger(POSITION_IDENTIFIER);
       GoldScoutTradeMetadata metadata;
       if(LoadTradeMetadata(g_lastExecutionPosition,metadata))
+      {
          g_activeSignalEventId=metadata.signalEventId;
+         g_observerSignalEventId=metadata.signalEventId;
+      }
    }
    if(found>0)
    {
@@ -3373,9 +3421,7 @@ void UpdateDashboard()
    string accountCurrency=AccountInfoString(ACCOUNT_CURRENCY);
    if(accountCurrency=="") accountCurrency="UNKNOWN";
    RefreshExecutionAuthorizationDiagnostic();
-   string dashboardAuthorization="";
-   bool executionAllowed=DemoExecutionAllowedNow(dashboardAuthorization);
-   g_executionReason=dashboardAuthorization;
+   bool executionAllowed=g_executionAuthorizationReason=="DEMO_ACCOUNT_CONFIRMED";
    double targetRisk=PlannedRiskAmount();
    double dailyLossBudget=DailyLossBudgetAmount();
    double openRisk=0.0,remainingDailyBudget=0.0;
@@ -3397,20 +3443,28 @@ void UpdateDashboard()
    json += StringFormat("\"symbol\":\"%s\",\"timeframe\":\"H1\",",JsonEscape(_Symbol));
    json += StringFormat("\"live_trading\":%s,",EnableLiveTrading?"true":"false");
    json += StringFormat("\"account_currency\":\"%s\",\"balance\":%.2f,\"equity\":%.2f,\"start_of_day_equity\":%.2f,\"daily_pnl\":%.2f,\"risk_amount\":%.2f,\"target_risk\":%.2f,\"daily_loss_limit_percent\":%.2f,\"daily_loss_budget\":%.2f,\"daily_loss_used\":%.2f,\"open_risk\":%.2f,\"remaining_daily_budget\":%.2f,\"effective_planned_risk\":%.2f,\"risk_percent\":%.2f,",JsonEscape(accountCurrency),balance,equity,g_startOfDayEquity,TodayClosedProfit(),effectivePlannedRisk,targetRisk,DailyLossLimitPercent,dailyLossBudget,g_dailyLossUsed,openRisk,remainingDailyBudget,effectivePlannedRisk,RiskPercent);
-   json += StringFormat("\"demo_execution\":{\"account_mode\":\"%s\",\"enabled\":%s,\"execution_allowed\":%s,\"broker_connected\":%s,\"state\":\"%s\",\"reason\":\"%s\",\"retcode\":%u,\"order_id\":%I64u,\"deal_id\":%I64u,\"position_id\":%I64u,\"requested_price\":%.8f,\"executed_price\":%.8f,\"requested_volume\":%.8f,\"filled_volume\":%.8f,\"spread\":%.8f,\"slippage\":%.8f},",
+   json += StringFormat("\"demo_execution\":{\"account_mode\":\"%s\",\"enabled\":%s,\"execution_allowed\":%s,\"broker_connected\":%s,\"state\":\"%s\",\"reason\":\"%s\",\"authorization_reason\":\"%s\",\"retcode\":%u,\"order_id\":%I64u,\"deal_id\":%I64u,\"position_id\":%I64u,\"requested_price\":%.8f,\"executed_price\":%.8f,\"requested_volume\":%.8f,\"filled_volume\":%.8f,\"spread\":%.8f,\"slippage\":%.8f},",
       JsonEscape(g_executionAccountMode),EnableDemoExecution?"true":"false",
       executionAllowed?"true":"false",TerminalInfoInteger(TERMINAL_CONNECTED)?"true":"false",
-      JsonEscape(g_executionState),JsonEscape(g_executionReason),g_lastExecutionRetcode,
+      JsonEscape(g_executionState),JsonEscape(g_executionReason),
+      JsonEscape(g_executionAuthorizationReason),g_lastExecutionRetcode,
       g_lastExecutionOrder,g_lastExecutionDeal,g_lastExecutionPosition,
       g_lastRequestedPrice,g_lastExecutedPrice,g_lastRequestedVolume,
       g_lastFilledVolume,g_lastExecutionSpread,g_lastExecutionSlippage);
    json += StringFormat("\"stop_mode\":\"ATR+STRUCTURE\",\"chill_r\":%.2f,\"god_r\":%.2f,\"min_rr\":%.2f,\"last_score\":%d,\"last_setup\":\"%s\",\"last_direction\":\"%s\",",ChillTargetR,GodTargetR,MinRewardRisk,g_lastScore,JsonEscape(g_lastSetup),JsonEscape(g_lastDirection));
    json += StringFormat("\"last_decision\":\"%s\",",JsonEscape(g_lastDecision));
-   json += StringFormat("\"take_profit\":{\"mode\":\"%s\",\"class\":\"%s\",\"setup\":\"%s\",\"direction\":\"%s\",\"current_tp\":%.8f,\"current_rr\":%.4f,\"v2_tp\":%.8f,\"v2_rr\":%.4f,\"selected_tp\":%.8f,\"selected_rr\":%.4f,\"structure_level\":%.8f,\"structure_confidence\":\"%s\",\"selection_reason\":\"%s\",\"paper_only\":true},",
-      JsonEscape(g_tpMode),JsonEscape(g_tpClass),JsonEscape(g_lastSetup),
-      JsonEscape(g_lastDirection),g_tpCurrent,g_tpCurrentRR,g_tpV2,g_tpV2RR,
-      g_tpSelected,g_tpSelectedRR,g_tpStructureLevel,
-      JsonEscape(g_tpStructureConfidence),JsonEscape(g_tpSelectionReason));
+   json += "\"take_profit\":{\"evaluated\":"+(g_tpEvaluated?"true":"false")+",";
+   json += "\"mode\":\""+JsonEscape(g_tpMode)+"\",\"class\":\""+JsonEscape(g_tpClass)+"\",";
+   json += "\"setup\":\""+JsonEscape(g_lastSetup)+"\",\"direction\":\""+JsonEscape(g_lastDirection)+"\",";
+   json += "\"current_tp\":"+JsonNumberOrNull(g_tpEvaluated,g_tpCurrent)+",";
+   json += "\"current_rr\":"+JsonNumberOrNull(g_tpEvaluated,g_tpCurrentRR,4)+",";
+   json += "\"v2_tp\":"+JsonNumberOrNull(g_tpEvaluated,g_tpV2)+",";
+   json += "\"v2_rr\":"+JsonNumberOrNull(g_tpEvaluated,g_tpV2RR,4)+",";
+   json += "\"selected_tp\":"+JsonNumberOrNull(g_tpEvaluated,g_tpSelected)+",";
+   json += "\"selected_rr\":"+JsonNumberOrNull(g_tpEvaluated,g_tpSelectedRR,4)+",";
+   json += "\"structure_level\":"+JsonNumberOrNull(g_tpEvaluated && g_tpStructureLevel>0.0,g_tpStructureLevel)+",";
+   json += "\"structure_confidence\":\""+JsonEscape(g_tpStructureConfidence)+"\",";
+   json += "\"selection_reason\":\""+JsonEscape(g_tpSelectionReason)+"\",\"paper_only\":true},";
    json += StringFormat("\"analysis\":{\"bar\":\"%s\",\"h4_trend\":\"%s\",\"h1_trend\":\"%s\",\"ema_fast\":%.2f,\"ema_slow\":%.2f,\"h4_ema_fast\":%.2f,\"h4_ema_slow\":%.2f,\"rsi\":%.2f,\"adx\":%.2f,\"atr\":%.2f,\"volume_current\":%.0f,\"volume_avg\":%.0f,\"volume_state\":\"%s\",\"structure\":\"%s\",\"long_tech\":%d,\"short_tech\":%d,\"long_news_points\":%d,\"short_news_points\":%d,\"long_final\":%d,\"short_final\":%d,\"candidate\":\"%s\",\"block_reason\":\"%s\",\"technical_reason\":\"%s\",\"news_reason\":\"%s\",",
       TimeToString(g_diagBar,TIME_DATE|TIME_MINUTES),JsonEscape(g_diagH4Trend),JsonEscape(g_diagH1Trend),g_diagEmaFast,g_diagEmaSlow,g_diagH4Fast,g_diagH4Slow,g_diagRSI,g_diagADX,g_diagATR,g_diagCurVol,g_diagAvgVol,JsonEscape(g_diagVolume),JsonEscape(g_diagStructure),g_diagLongTech,g_diagShortTech,g_diagLongNewsPts,g_diagShortNewsPts,g_diagLongFinal,g_diagShortFinal,JsonEscape(g_lastDirection),JsonEscape(g_diagBlockReason),JsonEscape(g_diagTechnicalReason),JsonEscape(g_diagNewsReason));
    json += StringFormat("\"session\":\"%s\",\"session_phase\":\"%s\",\"session_volatility\":\"%s\",\"session_open_impulse_atr\":%.3f,\"session_long_points\":%d,\"session_short_points\":%d,\"context_long_points\":%d,\"context_short_points\":%d,\"session_context\":\"%s\",\"active_market_centers\":\"%s\"},",
@@ -3614,6 +3668,7 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
    if(metadata.signalEventId=="" && positionId>0)
       LoadTradeMetadata(positionId,metadata);
    if(metadata.signalEventId=="") metadata.signalEventId=g_activeSignalEventId;
+   g_observerSignalEventId=metadata.signalEventId;
    string direction=(dealType==DEAL_TYPE_BUY?"LONG":"SHORT");
 
    if(entry==DEAL_ENTRY_IN || entry==DEAL_ENTRY_INOUT)
@@ -3647,7 +3702,7 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
          if(BuildClosedTradeSummary(positionId,closedTrade))
             AppendClosedTradeRecord(closedTrade,result.retcode);
          else
-            AppendExecutionEvent("POSITION_CLOSE",metadata.signalEventId,direction,
+            AppendExecutionEvent("POSITION_CLOSED",metadata.signalEventId,direction,
                metadata.setup,metadata.tradeClass,metadata.score,result.retcode,
                trans.order,trans.deal,positionId,trans.price,price,trans.volume,volume,
                sl,tp,0.0,MathAbs(price-trans.price),eventReason);

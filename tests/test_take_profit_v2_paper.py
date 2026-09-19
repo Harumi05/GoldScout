@@ -77,7 +77,44 @@ def tp_decision(
     }
 
 
+def tp_telemetry(evaluated: bool, **values) -> dict:
+    """Projection used by EA/dashboard/observer at a decision boundary."""
+    fields = ("current_tp", "current_rr", "v2_tp", "v2_rr", "selected_tp", "selected_rr")
+    if not evaluated:
+        return {
+            "evaluated": False,
+            "mode": "NOT_EVALUATED",
+            "selection_reason": "NOT_EVALUATED",
+            **{field: None for field in fields},
+        }
+    return {
+        "evaluated": True,
+        "mode": values.get("mode", "CURRENT"),
+        "selection_reason": values.get("selection_reason", "EVALUATED"),
+        **{field: values.get(field) for field in fields},
+    }
+
+
 class TakeProfitV2PolicyTests(unittest.TestCase):
+    def test_consecutive_decision_does_not_reuse_previous_tp(self):
+        first = tp_telemetry(
+            True,
+            mode="V2",
+            current_tp=102.5,
+            current_rr=1.25,
+            v2_tp=101.5,
+            v2_rr=0.75,
+            selected_tp=101.5,
+            selected_rr=0.75,
+        )
+        second = tp_telemetry(False, **{key: value for key, value in first.items() if key != "evaluated"})
+        self.assertEqual(first["selected_tp"], 101.5)
+        self.assertFalse(second["evaluated"])
+        self.assertEqual(second["mode"], "NOT_EVALUATED")
+        self.assertTrue(all(second[field] is None for field in (
+            "current_tp", "current_rr", "v2_tp", "v2_rr", "selected_tp", "selected_rr"
+        )))
+
     def test_chill_long_is_fixed_075r(self):
         result = tp_decision(
             direction="LONG", trade_class="CHILL", entry=100, stop=98,
@@ -243,7 +280,22 @@ class TakeProfitV2SourceContracts(unittest.TestCase):
             'id="tpReason"',
         ):
             self.assertIn(identifier, self.dashboard)
-        self.assertIn('"take_profit":{"mode":"CURRENT"', self.server)
+        self.assertIn('"take_profit":{"evaluated":False,"mode":"NOT_EVALUATED"', self.server)
+
+    def test_ea_resets_tp_before_each_decision_and_marks_evaluated_only_after_build(self):
+        try_trade = self.ea[self.ea.index("void TryTrade()") : self.ea.index("string ExtractTag")]
+        self.assertLess(try_trade.index("ResetTakeProfitDiagnostics();"), try_trade.index("BuildSignal("))
+        reset = self.ea[self.ea.index("void ResetTakeProfitDiagnostics()") : self.ea.index("void StoreTakeProfitDiagnostics")]
+        self.assertIn("g_tpEvaluated=false;", reset)
+        self.assertIn('g_tpMode="NOT_EVALUATED";', reset)
+        store = self.ea[self.ea.index("void StoreTakeProfitDiagnostics") : self.ea.index("void BuildMarketObserverContext")]
+        self.assertIn("g_tpEvaluated=true;", store)
+
+    def test_not_evaluated_tp_is_serialized_as_null(self):
+        self.assertIn('"take_profit":{"evaluated":False,"mode":"NOT_EVALUATED"', self.server)
+        self.assertIn("JsonNumberOrNull(g_tpEvaluated,g_tpCurrent)", self.ea)
+        self.assertIn("GSMO_OptionalNumber(context.tpEvaluated,context.currentTP)", self.observer)
+        self.assertIn('context.tpMode="NOT_EVALUATED";', (ROOT / "tests" / "mql" / "MarketObserverCompileHarness.mq5").read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

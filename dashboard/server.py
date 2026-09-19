@@ -60,10 +60,10 @@ OFFLINE={"updated_at":None,"symbol":"XAUUSD","timeframe":"H1","live_trading":Fal
 "daily_loss_used":0.0,"open_risk":0.0,"remaining_daily_budget":0.0,"effective_planned_risk":0.0,"risk_percent":5.0,"last_score":None,
 "last_setup":"-","last_direction":"-","last_decision":"Esperando datos MT5...","analysis":{"bar":None},
 "demo_execution":{"account_mode":"UNKNOWN","enabled":False,"execution_allowed":False,
-"broker_connected":False,"state":"PAPER","reason":"NO_DATA","retcode":0,"order_id":0,
+"broker_connected":False,"state":"PAPER","reason":"NO_DATA","authorization_reason":"NO_DATA","retcode":0,"order_id":0,
 "deal_id":0,"position_id":0,"requested_price":0.0,"executed_price":0.0,
 "requested_volume":0.0,"filled_volume":0.0,"spread":0.0,"slippage":0.0},
-"take_profit":{"mode":"CURRENT","class":"NONE","setup":"-","direction":"-","current_tp":None,
+"take_profit":{"evaluated":False,"mode":"NOT_EVALUATED","class":"NONE","setup":"-","direction":"-","current_tp":None,
 "current_rr":None,"v2_tp":None,"v2_rr":None,"selected_tp":None,"selected_rr":None,
 "structure_level":None,"structure_confidence":"NONE","selection_reason":"NOT_EVALUATED","paper_only":True},
 "active_trade":None,"open_positions_count":0,"open_positions":[],"closed_trades":[],
@@ -82,6 +82,16 @@ OFFLINE={"updated_at":None,"symbol":"XAUUSD","timeframe":"H1","live_trading":Fal
 
 def gold(s):
     return (s or '').upper().strip().startswith('XAUUSD')
+
+def canonical_lifecycle_value(value):
+    """Accept legacy lifecycle aliases while exposing one public contract."""
+    if isinstance(value,str) and value.upper()=='POSITION_CLOSE':
+        return 'POSITION_CLOSED'
+    if isinstance(value,dict):
+        return {key:canonical_lifecycle_value(item) for key,item in value.items()}
+    if isinstance(value,list):
+        return [canonical_lifecycle_value(item) for item in value]
+    return value
 
 def read_json(name):
     for p in CANDIDATES:
@@ -221,6 +231,7 @@ class H(BaseHTTPRequestHandler):
             d['external_signal']=read_external()
             d['tradingview']=read_tradingview()
             d['market_observer']=read_market_observer()
+            d=canonical_lifecycle_value(d)
             self.send_payload(200,'application/json; charset=utf-8',json.dumps(d,ensure_ascii=False).encode()); return
         if self.path.startswith('/api/health'):
             payload={'ok':True,'candidates':[str(p) for p in CANDIDATES],
