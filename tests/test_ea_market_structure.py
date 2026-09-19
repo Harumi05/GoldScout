@@ -429,8 +429,15 @@ class ConfirmedPivotEngineTests(unittest.TestCase):
 
     def test_ea_uses_engine_only_as_the_source_of_structure_flags(self):
         self.assertIn("#include <GoldScout/MarketStructure.mqh>", self.ea)
-        self.assertEqual(self.ea.count("GS_LoadConfirmedPivots"), 2)
+        # BuildSignal + M15 timing still own the only two structure
+        # classifications. TP shadow may read the same confirmed pivots, but it
+        # does not create or mutate HH/HL/LH/LL score flags.
+        self.assertEqual(self.ea.count("GS_LoadConfirmedPivots"), 3)
         self.assertEqual(self.ea.count("GS_ClassifyConfirmedStructure"), 2)
+        self.assertIn(
+            "GS_LoadConfirmedPivots(_Symbol,timeframe,atrHandle,barsToLoad,config,pivots)",
+            self.ea,
+        )
         self.assertIn(
             "GS_LoadConfirmedPivots(_Symbol,PERIOD_M15,hM15ATR,", self.ea
         )

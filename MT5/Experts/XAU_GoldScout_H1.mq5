@@ -4,6 +4,7 @@
 
 #include <Trade/Trade.mqh>
 #include <GoldScout/MarketStructure.mqh>
+#include <GoldScout/TakeProfitPolicy.mqh>
 #include <GoldScout/ContextScoring.mqh>
 #include <GoldScout/MarketObserver.mqh>
 
@@ -35,6 +36,7 @@ input double MaxStopATR              = 2.00; // maximum stop distance in ATR
 input double StructureBufferATR      = 0.25; // buffer beyond recent swing
 input int    StructureLookback       = 20;   // H1 swing lookback for stop placement
 input double MinRewardRisk           = 1.25; // minimum R:R allowed
+input bool   UseTakeProfitV2         = false; // PAPER only; false preserves CURRENT exactly
 
 input group "=== Indicators ==="
 input int    FastEMA                 = 20;
@@ -171,6 +173,7 @@ int hRSI = INVALID_HANDLE;
 int hADX = INVALID_HANDLE;
 int hATR = INVALID_HANDLE;
 int hM15ATR = INVALID_HANDLE;
+int hTPH4ATR = INVALID_HANDLE;
 GoldScoutMarketObserver g_marketObserver;
 
 datetime g_lastH1Bar = 0;
@@ -216,6 +219,13 @@ string g_diagTechnicalReason="";
 string g_diagNewsReason="";
 string g_diagBlockReason="";
 datetime g_diagBar=0;
+
+// TP v2 is always calculated in shadow. Selection remains CURRENT unless the
+// explicit input is enabled while the EA is in PAPER mode.
+double g_tpCurrent=0.0, g_tpCurrentRR=0.0, g_tpV2=0.0, g_tpV2RR=0.0;
+double g_tpSelected=0.0, g_tpSelectedRR=0.0, g_tpStructureLevel=0.0;
+string g_tpMode="CURRENT", g_tpClass="NONE", g_tpStructureConfidence="NONE";
+string g_tpSelectionReason="NOT_EVALUATED";
 
 // Intrabar monitoring state
 bool     g_armed=false;
@@ -319,6 +329,108 @@ void ConfigurePivotEngine(GoldScoutPivotConfig &config)
    config.toleranceAtr=PivotEqualityToleranceATR;
 }
 
+int AddTakeProfitPivotEvidence(const ENUM_TIMEFRAMES timeframe,const int atrHandle,
+                               const int barsToLoad,const int weight,
+                               GoldScoutTPZone &zones[],const double referenceAtr,
+                               const double point)
+{
+   GoldScoutPivotConfig config;
+   ConfigurePivotEngine(config);
+   GoldScoutPivot pivots[];
+   if(!GS_LoadConfirmedPivots(_Symbol,timeframe,atrHandle,barsToLoad,config,pivots))
+      return 0;
+   int added=0;
+   for(int i=0;i<ArraySize(pivots);i++)
+   {
+      if(!pivots[i].confirmed) continue;
+      bool h1=timeframe==PERIOD_H1;
+      bool h4=timeframe==PERIOD_H4;
+      bool m15=timeframe==PERIOD_M15;
+      if(!GSTP_AddEvidence(zones,pivots[i].type,pivots[i].price,pivots[i].time,
+                           weight,h1,h4,m15,false,false,false,
+                           referenceAtr,point))
+         return -1;
+      added++;
+   }
+   return added;
+}
+
+bool AddTakeProfitRecentH1Evidence(GoldScoutTPZone &zones[],const double atr,
+                                   const double point)
+{
+   // The recent structural window excludes the latest closed H1 bar, matching
+   // the causal research index and preventing that bar from defining its own
+   // obstacle.
+   int highShift=iHighest(_Symbol,PERIOD_H1,MODE_HIGH,10,2);
+   int lowShift=iLowest(_Symbol,PERIOD_H1,MODE_LOW,10,2);
+   if(highShift>=2)
+   {
+      if(!GSTP_AddEvidence(zones,GOLDSCOUT_PIVOT_HIGH,
+                           iHigh(_Symbol,PERIOD_H1,highShift),
+                           iTime(_Symbol,PERIOD_H1,highShift),2,
+                           false,false,false,true,false,true,atr,point))
+         return false;
+   }
+   if(lowShift>=2)
+   {
+      if(!GSTP_AddEvidence(zones,GOLDSCOUT_PIVOT_LOW,
+                           iLow(_Symbol,PERIOD_H1,lowShift),
+                           iTime(_Symbol,PERIOD_H1,lowShift),2,
+                           false,false,false,true,false,true,atr,point))
+         return false;
+   }
+
+   int consolidationHighShift=iHighest(_Symbol,PERIOD_H1,MODE_HIGH,5,1);
+   int consolidationLowShift=iLowest(_Symbol,PERIOD_H1,MODE_LOW,5,1);
+   if(consolidationHighShift>=1 && consolidationLowShift>=1)
+   {
+      double high=iHigh(_Symbol,PERIOD_H1,consolidationHighShift);
+      double low=iLow(_Symbol,PERIOD_H1,consolidationLowShift);
+      double range=high-low;
+      datetime closedTime=iTime(_Symbol,PERIOD_H1,1);
+      if(range>=0.50*atr && range<=2.00*atr && closedTime>0)
+      {
+         if(!GSTP_AddEvidence(zones,GOLDSCOUT_PIVOT_HIGH,high,closedTime,2,
+                              false,false,false,false,true,false,atr,point) ||
+            !GSTP_AddEvidence(zones,GOLDSCOUT_PIVOT_LOW,low,closedTime,2,
+                              false,false,false,false,true,false,atr,point))
+            return false;
+      }
+   }
+   return true;
+}
+
+bool BuildTakeProfitStructuralZones(GoldScoutTPZone &zones[],const double atr,
+                                    const BrokerContractSpec &contract)
+{
+   GSTP_ClearZones(zones);
+   if(atr<=0.0 || contract.point<=0.0) return false;
+   // All terminal adapters start at shift=1. No open H1/M15/H4 candle can
+   // create a pivot, recent extreme, consolidation or breakout level here.
+   if(AddTakeProfitPivotEvidence(PERIOD_H1,hATR,30,3,zones,atr,contract.point)<0)
+      return false;
+   if(AddTakeProfitPivotEvidence(PERIOD_H4,hTPH4ATR,12,4,zones,atr,contract.point)<0)
+      return false;
+   if(AddTakeProfitPivotEvidence(PERIOD_M15,hM15ATR,40,1,zones,atr,contract.point)<0)
+      return false;
+   return AddTakeProfitRecentH1Evidence(zones,atr,contract.point);
+}
+
+void StoreTakeProfitDiagnostics(const GoldScoutTakeProfitDecision &decision)
+{
+   g_tpCurrent=decision.currentTP;
+   g_tpCurrentRR=decision.currentRR;
+   g_tpV2=decision.v2TP;
+   g_tpV2RR=decision.v2RR;
+   g_tpSelected=decision.selectedTP;
+   g_tpSelectedRR=decision.selectedRR;
+   g_tpStructureLevel=decision.structureLevel;
+   g_tpMode=decision.selectedMode;
+   g_tpClass=decision.tradeClass;
+   g_tpStructureConfidence=GSTP_ConfidenceName(decision.structureConfidence);
+   g_tpSelectionReason=decision.selectionReason;
+}
+
 void BuildMarketObserverContext(GoldScoutObserverContext &context)
 {
    context.session=g_sessionContext.name;
@@ -331,6 +443,15 @@ void BuildMarketObserverContext(GoldScoutObserverContext &context)
    context.monitorState=g_monitorState;
    context.direction=g_lastDirection;
    context.liveTrading=EnableLiveTrading;
+   context.currentTP=g_tpCurrent;
+   context.currentRR=g_tpCurrentRR;
+   context.v2TP=g_tpV2;
+   context.v2RR=g_tpV2RR;
+   context.selectedTP=g_tpSelected;
+   context.selectedRR=g_tpSelectedRR;
+   context.tpMode=g_tpMode;
+   context.tpStructureLevel=g_tpStructureLevel;
+   context.tpStructureConfidence=g_tpStructureConfidence;
 }
 
 void PollMarketObserverClosedBars()
@@ -2315,6 +2436,7 @@ void TryTrade()
       g_diagBlockReason=g_lastDecision; UpdateDashboard(); return;
    }
 
+   string tradeClass=(targetR>=GodTargetR-1e-9?"GOD":"CHILL");
    double targetAmount=actualRisk*targetR;
    double tp=0.0;
    if(!TPPriceForMoney(type,price,lots,targetAmount,contract,tp))
@@ -2330,10 +2452,40 @@ void TryTrade()
       g_lastDecision="Bloqueado: no se pudo alinear el TP al tick/stops_level del broker";
       g_diagBlockReason=g_lastDecision; UpdateDashboard(); return;
    }
+   double currentTP=tp;
+
+   GoldScoutTPZone tpZones[];
+   bool tpStructureAvailable=BuildTakeProfitStructuralZones(tpZones,atr,contract);
+   if(!tpStructureAvailable) GSTP_ClearZones(tpZones);
+   GoldScoutTakeProfitDecision tpDecision;
+   if(!GSTP_BuildDecision(direction,tradeClass,price,sl,atr,contract.tickSize,
+                          contract.priceDigits,currentTP,tpZones,
+                          UseTakeProfitV2,EnableLiveTrading,tpDecision))
+   {
+      g_lastDecision="Bloqueado: no se pudo calcular comparación CURRENT/V2 de TP";
+      g_diagBlockReason=g_lastDecision; UpdateDashboard(); return;
+   }
+   StoreTakeProfitDiagnostics(tpDecision);
+   tp=tpDecision.selectedTP;
+   bool applyPaperV2=GSTP_PaperV2Enabled(UseTakeProfitV2,EnableLiveTrading);
+   // V2 never pushes a structural target farther to manufacture R:R. If the
+   // selected target is not broker-valid, fail closed instead.
+   if(tp<=0.0 || (direction>0 && tp-tick.bid+1e-9<minDist) ||
+      (direction<0 && tick.ask-tp+1e-9<minDist))
+   {
+      g_lastDecision="Bloqueado: TP seleccionado no cumple stops_level del broker";
+      g_diagBlockReason=g_lastDecision; UpdateDashboard(); return;
+   }
 
    double slDist=MathAbs(price-sl),tpDist=MathAbs(tp-price);
    double rr=slDist>0.0?tpDist/slDist:0.0;
-   if(rr+1e-9<MinRewardRisk)
+   PrintFormat("[GoldScout][TP][SHADOW] class=%s | setup=%s | direction=%s | currentTP=%.5f | currentRR=%.3f | v2TP=%.5f | v2RR=%.3f | structureLevel=%.5f | structureConfidence=%s | bufferATR=0.20 | selectedTP=%.5f | selectedRR=%.3f | mode=%s | reason=%s",
+      tradeClass,setup,direction>0?"LONG":"SHORT",tpDecision.currentTP,
+      tpDecision.currentRR,tpDecision.v2TP,tpDecision.v2RR,
+      tpDecision.structureLevel,GSTP_ConfidenceName(tpDecision.structureConfidence),
+      tpDecision.selectedTP,tpDecision.selectedRR,tpDecision.selectedMode,
+      tpDecision.selectionReason);
+   if(!applyPaperV2 && rr+1e-9<MinRewardRisk)
    {
       g_lastDecision=StringFormat("Bloqueado: R:R %.2f < minimo %.2f",rr,MinRewardRisk);
       g_diagBlockReason=g_lastDecision; UpdateDashboard(); return;
@@ -2528,6 +2680,11 @@ void UpdateDashboard()
    json += StringFormat("\"account_currency\":\"%s\",\"balance\":%.2f,\"equity\":%.2f,\"start_of_day_equity\":%.2f,\"daily_pnl\":%.2f,\"risk_amount\":%.2f,\"target_risk\":%.2f,\"daily_loss_limit_percent\":%.2f,\"daily_loss_budget\":%.2f,\"daily_loss_used\":%.2f,\"remaining_daily_budget\":%.2f,\"effective_planned_risk\":%.2f,\"risk_percent\":%.2f,",JsonEscape(accountCurrency),balance,equity,g_startOfDayEquity,TodayClosedProfit(),effectivePlannedRisk,targetRisk,DailyLossLimitPercent,dailyLossBudget,g_dailyLossUsed,remainingDailyBudget,effectivePlannedRisk,RiskPercent);
    json += StringFormat("\"stop_mode\":\"ATR+STRUCTURE\",\"chill_r\":%.2f,\"god_r\":%.2f,\"min_rr\":%.2f,\"last_score\":%d,\"last_setup\":\"%s\",\"last_direction\":\"%s\",",ChillTargetR,GodTargetR,MinRewardRisk,g_lastScore,JsonEscape(g_lastSetup),JsonEscape(g_lastDirection));
    json += StringFormat("\"last_decision\":\"%s\",",JsonEscape(g_lastDecision));
+   json += StringFormat("\"take_profit\":{\"mode\":\"%s\",\"class\":\"%s\",\"setup\":\"%s\",\"direction\":\"%s\",\"current_tp\":%.8f,\"current_rr\":%.4f,\"v2_tp\":%.8f,\"v2_rr\":%.4f,\"selected_tp\":%.8f,\"selected_rr\":%.4f,\"structure_level\":%.8f,\"structure_confidence\":\"%s\",\"selection_reason\":\"%s\",\"paper_only\":true},",
+      JsonEscape(g_tpMode),JsonEscape(g_tpClass),JsonEscape(g_lastSetup),
+      JsonEscape(g_lastDirection),g_tpCurrent,g_tpCurrentRR,g_tpV2,g_tpV2RR,
+      g_tpSelected,g_tpSelectedRR,g_tpStructureLevel,
+      JsonEscape(g_tpStructureConfidence),JsonEscape(g_tpSelectionReason));
    json += StringFormat("\"analysis\":{\"bar\":\"%s\",\"h4_trend\":\"%s\",\"h1_trend\":\"%s\",\"ema_fast\":%.2f,\"ema_slow\":%.2f,\"h4_ema_fast\":%.2f,\"h4_ema_slow\":%.2f,\"rsi\":%.2f,\"adx\":%.2f,\"atr\":%.2f,\"volume_current\":%.0f,\"volume_avg\":%.0f,\"volume_state\":\"%s\",\"structure\":\"%s\",\"long_tech\":%d,\"short_tech\":%d,\"long_news_points\":%d,\"short_news_points\":%d,\"long_final\":%d,\"short_final\":%d,\"candidate\":\"%s\",\"block_reason\":\"%s\",\"technical_reason\":\"%s\",\"news_reason\":\"%s\",",
       TimeToString(g_diagBar,TIME_DATE|TIME_MINUTES),JsonEscape(g_diagH4Trend),JsonEscape(g_diagH1Trend),g_diagEmaFast,g_diagEmaSlow,g_diagH4Fast,g_diagH4Slow,g_diagRSI,g_diagADX,g_diagATR,g_diagCurVol,g_diagAvgVol,JsonEscape(g_diagVolume),JsonEscape(g_diagStructure),g_diagLongTech,g_diagShortTech,g_diagLongNewsPts,g_diagShortNewsPts,g_diagLongFinal,g_diagShortFinal,JsonEscape(g_lastDirection),JsonEscape(g_diagBlockReason),JsonEscape(g_diagTechnicalReason),JsonEscape(g_diagNewsReason));
    json += StringFormat("\"session\":\"%s\",\"session_phase\":\"%s\",\"session_volatility\":\"%s\",\"session_open_impulse_atr\":%.3f,\"session_long_points\":%d,\"session_short_points\":%d,\"context_long_points\":%d,\"context_short_points\":%d,\"session_context\":\"%s\",\"active_market_centers\":\"%s\"},",
@@ -2557,6 +2714,7 @@ void InitIndicators()
    hADX=iADX(_Symbol,PERIOD_H1,ADXPeriod);
    hATR=iATR(_Symbol,PERIOD_H1,ATRPeriod);
    hM15ATR=iATR(_Symbol,PERIOD_M15,ATRPeriod);
+   hTPH4ATR=iATR(_Symbol,PERIOD_H4,ATRPeriod);
 }
 
 bool IsGoldSymbol()
@@ -2645,6 +2803,7 @@ void OnDeinit(const int reason)
    if(hADX!=INVALID_HANDLE) IndicatorRelease(hADX);
    if(hATR!=INVALID_HANDLE) IndicatorRelease(hATR);
    if(hM15ATR!=INVALID_HANDLE) IndicatorRelease(hM15ATR);
+   if(hTPH4ATR!=INVALID_HANDLE) IndicatorRelease(hTPH4ATR);
 }
 
 void OnTimer()

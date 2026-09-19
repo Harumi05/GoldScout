@@ -18,6 +18,15 @@ struct GoldScoutObserverContext
    string monitorState;
    string direction;
    bool   liveTrading;
+   double currentTP;
+   double currentRR;
+   double v2TP;
+   double v2RR;
+   double selectedTP;
+   double selectedRR;
+   string tpMode;
+   double tpStructureLevel;
+   string tpStructureConfidence;
 };
 
 string GSMO_JsonEscape(string value)
@@ -330,6 +339,12 @@ private:
       json+="\"decision\":\""+GSMO_JsonEscape(GSMO_DecisionOutcome(context))+"\",";
       json+="\"decision_reason\":\""+GSMO_JsonEscape(context.decisionReason)+"\",";
       json+="\"goldscout_state\":\""+GSMO_JsonEscape(context.monitorState)+"\",";
+      json+="\"current_tp\":"+GSMO_Number(context.currentTP)+",\"current_rr\":"+GSMO_Number(context.currentRR,4)+",";
+      json+="\"v2_tp\":"+GSMO_Number(context.v2TP)+",\"v2_rr\":"+GSMO_Number(context.v2RR,4)+",";
+      json+="\"selected_tp\":"+GSMO_Number(context.selectedTP)+",\"selected_rr\":"+GSMO_Number(context.selectedRR,4)+",";
+      json+="\"tp_mode\":\""+GSMO_JsonEscape(context.tpMode)+"\",";
+      json+="\"tp_structure_level\":"+GSMO_Number(context.tpStructureLevel)+",";
+      json+="\"tp_structure_confidence\":\""+GSMO_JsonEscape(context.tpStructureConfidence)+"\",";
       json+="\"future_return_15m\":null,\"future_return_1h\":null,\"future_return_4h\":null,";
       json+="\"mfe_15m\":null,\"mae_15m\":null,\"mfe_1h\":null,\"mae_1h\":null,";
       json+="\"mfe_4h\":null,\"mae_4h\":null";
