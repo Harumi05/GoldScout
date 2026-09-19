@@ -13,7 +13,10 @@ public:
                      const double tp,const string comment="") { return false; }
    uint ResultRetcode() const { return 0; }
    ulong ResultDeal() const { return 0; }
+   ulong ResultOrder() const { return 0; }
    double ResultPrice() const { return 0.0; }
+   double ResultVolume() const { return 0.0; }
+   string ResultRetcodeDescription() const { return ""; }
 };
 
 #endif

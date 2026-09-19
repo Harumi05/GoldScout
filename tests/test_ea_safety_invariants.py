@@ -116,7 +116,8 @@ class SafetyInvariantTests(unittest.TestCase):
                 history_available=False,
                 account_profit=0.0,
             )
-        self.assertIn("if(!TodayAccountProfit(accountProfit)) return false;", self.source)
+        self.assertIn("!TodayAccountProfit(accountProfit) ||", self.source)
+        self.assertIn("!TodayAccountRealizedLoss(accountRealizedLoss)", self.source)
         self.assertIn("if(!HistorySelect(start,now)) return false;", self.source)
 
     def test_history_without_losses_keeps_daily_budget_available(self):
@@ -164,7 +165,8 @@ class SafetyInvariantTests(unittest.TestCase):
         self.assertEqual(state.daily_loss_used, 50.0)
         self.assertEqual(remaining_daily_budget(state.start_of_day_equity, 5.0, state.daily_loss_used), 0.0)
         self.assertIn(
-            "return MathMax(0.0,DailyLossBudgetAmount()-g_dailyLossUsed);", self.source
+            "GSDE_RemainingDailyBudget(DailyLossBudgetAmount(),g_dailyLossUsed,openRisk)",
+            self.source,
         )
 
     def test_daily_budget_is_five_percent_of_start_equity(self):

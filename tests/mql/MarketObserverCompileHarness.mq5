@@ -27,6 +27,8 @@ void OnStart()
    context.tpMode="CURRENT";
    context.tpStructureLevel=0.0;
    context.tpStructureConfidence="NONE";
+   context.executionState="PAPER";
+   context.signalEventId="";
 
    GoldScoutMarketObserver observer;
    string outcome=GSMO_DecisionOutcome(context);

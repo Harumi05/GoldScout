@@ -27,6 +27,8 @@ struct GoldScoutObserverContext
    string tpMode;
    double tpStructureLevel;
    string tpStructureConfidence;
+   string executionState;
+   string signalEventId;
 };
 
 string GSMO_JsonEscape(string value)
@@ -75,7 +77,8 @@ string GSMO_DecisionOutcome(const GoldScoutObserverContext &context)
 {
    string text=GSMO_Lower(context.decision+" "+context.decisionReason);
    if(context.liveTrading &&
-      (StringFind(text,"orden enviada")>=0 || StringFind(text,"orden confirmada")>=0))
+      (StringFind(text,"orden enviada")>=0 || StringFind(text,"orden confirmada")>=0 ||
+       StringFind(text,"order_filled")>=0 || StringFind(text,"position_open")>=0))
       return "TRADE_TAKEN";
    if(StringFind(text,"señal simulada")>=0 || StringFind(text,"senal simulada")>=0)
       return "NO_TRADE";
@@ -321,6 +324,7 @@ private:
       json+="\"event_id\":\""+GSMO_JsonEscape(eventId)+"\",";
       json+="\"source\":\"MT5\",\"observer_only\":true,\"score_effect\":0,";
       json+="\"snapshot_type\":\""+GSMO_JsonEscape(snapshotType)+"\",";
+      json+="\"event\":\""+GSMO_JsonEscape(snapshotType)+"\",";
       json+=StringFormat("\"captured_at\":%I64d,\"timestamp\":%I64d,\"outcome_anchor_at\":%I64d,",
          (long)capturedAt,(long)rates[0].time,(long)outcomeAnchorAt);
       json+="\"symbol\":\""+GSMO_JsonEscape(m_symbol)+"\",\"timeframe\":\""+timeframe+"\",";
@@ -345,6 +349,8 @@ private:
       json+="\"tp_mode\":\""+GSMO_JsonEscape(context.tpMode)+"\",";
       json+="\"tp_structure_level\":"+GSMO_Number(context.tpStructureLevel)+",";
       json+="\"tp_structure_confidence\":\""+GSMO_JsonEscape(context.tpStructureConfidence)+"\",";
+      json+="\"execution_state\":\""+GSMO_JsonEscape(context.executionState)+"\",";
+      json+="\"signal_event_id\":\""+GSMO_JsonEscape(context.signalEventId)+"\",";
       json+="\"future_return_15m\":null,\"future_return_1h\":null,\"future_return_4h\":null,";
       json+="\"mfe_15m\":null,\"mae_15m\":null,\"mfe_1h\":null,\"mae_1h\":null,";
       json+="\"mfe_4h\":null,\"mae_4h\":null";
@@ -464,7 +470,8 @@ public:
       if(StringFind(decision,"armado")>=0)
          snapshotType="SIGNAL_ARMED";
       else if(context.liveTrading &&
-         (StringFind(decision,"orden enviada")>=0 || StringFind(decision,"orden confirmada")>=0))
+         (StringFind(decision,"orden enviada")>=0 || StringFind(decision,"orden confirmada")>=0 ||
+          StringFind(decision,"order_filled")>=0 || StringFind(decision,"position_open")>=0))
          snapshotType="TRADE_EXECUTED";
       else if(StringFind(decision,"bloqueado")>=0 || StringFind(decision,"orden rechazada")>=0 ||
               StringFind(decision,"resultado de orden ambiguo")>=0)

@@ -135,9 +135,10 @@ class PositionManagementPolicyTests(unittest.TestCase):
         self.assertIn("POSITION_MAGIC", source)
         self.assertIn("ORDER_MAGIC", source)
         self.assertIn("ACCOUNT_MARGIN_MODE_RETAIL_HEDGING", source)
-        self.assertEqual(source.count("PositionStateAllowsEntry(positionBlock)"), 2)
+        guarded_call = "PositionStateAllowsEntry(positionBlock,DemoMultiplePositionsAllowed())"
+        self.assertEqual(source.count(guarded_call), 2)
         self.assertLess(
-            source.rfind("PositionStateAllowsEntry(positionBlock)"),
+            source.rfind(guarded_call),
             source.index("ReserveH1EntryPending(entryBar)"),
         )
 
