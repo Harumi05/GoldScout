@@ -18,6 +18,15 @@ struct GoldScoutObserverContext
    string monitorState;
    string direction;
    bool   liveTrading;
+   string armedInvalidationStatus;
+   string previousArmedDirection;
+   string previousArmedSetup;
+   int    previousArmedScore;
+   string armedInvalidationReason;
+   string armedInvalidationBreakoutDirection;
+   double armedInvalidationRsi;
+   double armedInvalidationImpulseAtr;
+   string armedInvalidationStructure;
 };
 
 string GSMO_JsonEscape(string value)
@@ -330,6 +339,15 @@ private:
       json+="\"decision\":\""+GSMO_JsonEscape(GSMO_DecisionOutcome(context))+"\",";
       json+="\"decision_reason\":\""+GSMO_JsonEscape(context.decisionReason)+"\",";
       json+="\"goldscout_state\":\""+GSMO_JsonEscape(context.monitorState)+"\",";
+      json+="\"armed_invalidation_status\":\""+GSMO_JsonEscape(context.armedInvalidationStatus)+"\",";
+      json+="\"previous_direction\":\""+GSMO_JsonEscape(context.previousArmedDirection)+"\",";
+      json+="\"previous_setup\":\""+GSMO_JsonEscape(context.previousArmedSetup)+"\",";
+      json+=StringFormat("\"previous_score\":%d,",context.previousArmedScore);
+      json+="\"armed_invalidation_reason\":\""+GSMO_JsonEscape(context.armedInvalidationReason)+"\",";
+      json+="\"breakout_direction\":\""+GSMO_JsonEscape(context.armedInvalidationBreakoutDirection)+"\",";
+      json+="\"armed_invalidation_rsi\":"+GSMO_Number(context.armedInvalidationRsi,4)+",";
+      json+="\"impulse_atr\":"+GSMO_Number(context.armedInvalidationImpulseAtr,4)+",";
+      json+="\"structure_state\":\""+GSMO_JsonEscape(context.armedInvalidationStructure)+"\",";
       json+="\"future_return_15m\":null,\"future_return_1h\":null,\"future_return_4h\":null,";
       json+="\"mfe_15m\":null,\"mae_15m\":null,\"mfe_1h\":null,\"mae_1h\":null,";
       json+="\"mfe_4h\":null,\"mae_4h\":null";
@@ -446,7 +464,9 @@ public:
       if(!m_initialized) return;
       string decision=GSMO_Lower(context.decision);
       string snapshotType="";
-      if(StringFind(decision,"armado")>=0)
+      if(StringFind(decision,"armed cancelled")>=0)
+         snapshotType="ARMED_CANCELLED";
+      else if(StringFind(decision,"armado")>=0)
          snapshotType="SIGNAL_ARMED";
       else if(context.liveTrading &&
          (StringFind(decision,"orden enviada")>=0 || StringFind(decision,"orden confirmada")>=0))
@@ -459,7 +479,9 @@ public:
       if(snapshotType=="") return;
 
       string outcome=GSMO_DecisionOutcome(context);
-      string identity=snapshotType+"|"+outcome+"|"+context.monitorState+"|"+context.direction;
+      string identity=snapshotType+"|"+outcome+"|"+context.monitorState+"|"+
+         context.direction+"|"+context.previousArmedDirection+"|"+
+         context.previousArmedSetup+"|"+context.armedInvalidationReason;
       if(identity==m_lastStateIdentity) return;
       if(Capture(1,0,snapshotType,identity,context))
          m_lastStateIdentity=identity;
