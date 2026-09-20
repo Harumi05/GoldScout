@@ -132,8 +132,8 @@ class BrokerContractTests(unittest.TestCase):
             "ACCOUNT_MARGIN_FREE",
         ):
             self.assertIn(token, self.ea)
-        self.assertIn("AlignPriceToTick(sl,contract,direction<0)", self.ea)
-        self.assertIn("double stopReference=(direction>0?tick.bid:tick.ask)", self.ea)
+        self.assertIn("alignedSL=AlignPriceToTick(alignedSL,contract,direction<0)", self.ea)
+        self.assertIn("double stopReference=(direction>0?bid:ask)", self.ea)
         self.assertIn("tp=AlignPriceToTick(tp,contract,direction>0)", self.ea)
         self.assertIn("RoundTurnCommissionPerLot*lots", self.ea)
         self.assertLess(

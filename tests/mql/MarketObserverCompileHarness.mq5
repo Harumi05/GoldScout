@@ -37,6 +37,11 @@ void OnStart()
    context.tpMode="NOT_EVALUATED";
    context.tpStructureLevel=0.0;
    context.tpStructureConfidence="NONE";
+   context.stopEvaluated=false;
+   context.currentStopDistance=0.0;
+   context.adaptiveStopDistance=0.0;
+   context.selectedStopDistance=0.0;
+   context.stopMode="NOT_EVALUATED";
    context.executionState="PAPER";
    context.executionReason="DEMO_EXECUTION_DISABLED";
    context.executionRetcode=0;
