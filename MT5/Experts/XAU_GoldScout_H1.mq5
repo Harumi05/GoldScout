@@ -40,6 +40,7 @@ input double MaxStopATR              = 2.00; // maximum stop distance in ATR
 input double StructureBufferATR      = 0.25; // buffer beyond recent swing
 input int    StructureLookback       = 20;   // H1 swing lookback for stop placement
 input double MinRewardRisk           = 1.25; // minimum R:R allowed
+input bool   UseAdaptiveStopV2       = false; // explicit PAPER/verified-DEMO candidate; false preserves CURRENT
 input bool   UseTakeProfitV2         = false; // PAPER only; false preserves CURRENT exactly
 
 input group "=== Indicators ==="
@@ -232,6 +233,19 @@ double g_tpSelected=0.0, g_tpSelectedRR=0.0, g_tpStructureLevel=0.0;
 bool   g_tpEvaluated=false;
 string g_tpMode="NOT_EVALUATED", g_tpClass="NONE", g_tpStructureConfidence="NONE";
 string g_tpSelectionReason="NOT_EVALUATED";
+
+// Adaptive Stop v2 is calculated in shadow after CURRENT is built. Selection
+// requires the explicit flag and is never authorized for a REAL execution.
+bool   g_stopEvaluated=false;
+double g_stopCurrentSL=0.0, g_stopAdaptiveSL=0.0, g_stopSelectedSL=0.0;
+double g_stopCurrentDistance=0.0, g_stopAdaptiveDistance=0.0, g_stopSelectedDistance=0.0;
+double g_stopCurrentATR=0.0, g_stopAdaptiveATR=0.0;
+double g_stopCurrentLot=0.0, g_stopAdaptiveLot=0.0, g_stopSelectedLot=0.0;
+double g_stopSelectedRisk=0.0;
+string g_stopMode="NOT_EVALUATED", g_stopSetup="-", g_stopDirection="-";
+string g_stopSelectionReason="NOT_EVALUATED";
+datetime g_lastSizingDiagnosticLogTime=0;
+string   g_lastSizingDiagnosticSignature="";
 
 // Demo execution diagnostics. The account-mode hard block is re-evaluated
 // immediately before every CTrade call and cannot be bypassed by an input.
@@ -729,6 +743,11 @@ void BuildMarketObserverContext(GoldScoutObserverContext &context)
    context.tpMode=g_tpMode;
    context.tpStructureLevel=g_tpStructureLevel;
    context.tpStructureConfidence=g_tpStructureConfidence;
+   context.stopEvaluated=g_stopEvaluated;
+   context.currentStopDistance=g_stopCurrentDistance;
+   context.adaptiveStopDistance=g_stopAdaptiveDistance;
+   context.selectedStopDistance=g_stopSelectedDistance;
+   context.stopMode=g_stopMode;
    context.executionState=g_executionState;
    context.executionReason=g_executionReason;
    context.executionRetcode=g_lastExecutionRetcode;
@@ -1978,6 +1997,55 @@ bool RiskAtSL(ENUM_ORDER_TYPE type,double priceOpen,double slPrice,double lots,d
    return riskAmount>0.0;
 }
 
+string SizingDiagnosticValue(const bool available,const double value,const int digits)
+{
+   return available?DoubleToString(value,digits):"NA";
+}
+
+string DiagnoseSizingBlockReason(const ENUM_ORDER_TYPE type,const double priceOpen,const double slPrice,
+                                 const double plannedRisk,const BrokerContractSpec &spec)
+{
+   double riskAtMinimum=0.0;
+   if(RiskAtSL(type,priceOpen,slPrice,spec.volumeMin,riskAtMinimum) &&
+      riskAtMinimum>plannedRisk+1e-6)
+      return "MIN_VOLUME_RISK_EXCEEDS_PLANNED_RISK";
+   return "POSITION_SIZE_OR_VOLUME_GRID_FAILED";
+}
+
+void LogSizingDiagnostic(const ENUM_ORDER_TYPE type,const double marketEntry,const double sizingEntry,
+                         const double slPrice,const double targetRisk,const double remainingDailyBudget,
+                         const double plannedRisk,const BrokerContractSpec &spec,
+                         const double roundedVolume,const double finalRisk,const string blockReason)
+{
+   double riskAtMinimum=0.0,riskAt001=0.0,riskAtRaw=0.0;
+   bool minimumKnown=RiskAtSL(type,sizingEntry,slPrice,spec.volumeMin,riskAtMinimum);
+   bool probe001Known=RiskAtSL(type,sizingEntry,slPrice,0.01,riskAt001);
+   double rawVolume=(minimumKnown && riskAtMinimum>0.0)
+      ? plannedRisk*spec.volumeMin/riskAtMinimum
+      : 0.0;
+   bool rawVolumeKnown=minimumKnown && rawVolume>0.0;
+   bool rawRiskKnown=rawVolumeKnown && RiskAtSL(type,sizingEntry,slPrice,rawVolume,riskAtRaw);
+   double distance=MathAbs(sizingEntry-slPrice);
+   string signature=StringFormat("%d|%.8f|%.8f|%.8f|%.8f|%.8f|%s",
+      (int)type,sizingEntry,slPrice,plannedRisk,rawVolume,roundedVolume,blockReason);
+   datetime now=TimeTradeServer();
+   if(now<=0) now=TimeCurrent();
+   if(signature==g_lastSizingDiagnosticSignature &&
+      g_lastSizingDiagnosticLogTime>0 && now-g_lastSizingDiagnosticLogTime<30)
+      return;
+   g_lastSizingDiagnosticSignature=signature;
+   g_lastSizingDiagnosticLogTime=now;
+   PrintFormat("[GoldScout][SIZING] targetRisk=%.2f %s | remainingDailyBudget=%.2f | plannedRisk=%.2f | entry=%.5f | sizingEntry=%.5f | sl=%.5f | distance=%.5f | volumeMin=%.8f | volumeMax=%.8f | volumeStep=%.8f | tickSize=%.8f | tickValue=%.8f | tickValueProfit=%.8f | tickValueLoss=%.8f | contractSize=%.4f | riskAtMinVolume=%s | riskAt0.01=%s | rawVolume=%s | riskAtRaw=%s | roundedVolume=%.8f | finalRisk=%.2f | blockReason=%s",
+      targetRisk,spec.accountCurrency,remainingDailyBudget,plannedRisk,marketEntry,sizingEntry,slPrice,distance,
+      spec.volumeMin,spec.volumeMax,spec.volumeStep,spec.tickSize,spec.tickValue,
+      spec.tickValueProfit,spec.tickValueLoss,spec.contractSize,
+      SizingDiagnosticValue(minimumKnown,riskAtMinimum,2),
+      SizingDiagnosticValue(probe001Known,riskAt001,2),
+      SizingDiagnosticValue(rawVolumeKnown,rawVolume,8),
+      SizingDiagnosticValue(rawRiskKnown,riskAtRaw,2),
+      roundedVolume,finalRisk,blockReason);
+}
+
 bool MarginAllowsOrder(ENUM_ORDER_TYPE type,double price,double lots,
                        const BrokerContractSpec &spec,string &msg)
 {
@@ -2038,6 +2106,106 @@ bool BuildDynamicStop(int direction,double price,double atr,double &slPrice)
    }
    slPrice=NormalizeDouble(slPrice,_Digits);
    return true;
+}
+
+bool AdaptiveStopV2Allowed(string &reason)
+{
+   reason="FEATURE_DISABLED";
+   if(!UseAdaptiveStopV2) return false;
+   long accountMode=-1;
+   if(!ReadAccountTradeMode(accountMode))
+   {
+      reason="ACCOUNT_MODE_UNAVAILABLE";
+      return false;
+   }
+   string accountModeName=GSDE_AccountModeName(accountMode);
+   if(accountModeName=="UNKNOWN")
+   {
+      reason="ACCOUNT_MODE_UNKNOWN";
+      return false;
+   }
+   if(accountMode==ACCOUNT_TRADE_MODE_REAL)
+   {
+      reason="REAL_ACCOUNT_NO_EFFECT";
+      return false;
+   }
+   if(EnableLiveTrading)
+   {
+      reason="REAL_EXECUTION_HARD_BLOCK";
+      return false;
+   }
+   if(!EnableDemoExecution)
+   {
+      reason="PAPER_"+accountModeName+"_ACCOUNT_CONFIRMED";
+      return true;
+   }
+   string demoReason="";
+   if(!DemoExecutionAllowedNow(demoReason))
+   {
+      reason="DEMO_NOT_AUTHORIZED_"+demoReason;
+      return false;
+   }
+   reason="DEMO_ACCOUNT_CONFIRMED";
+   return true;
+}
+
+void ResetAdaptiveStopDiagnostics()
+{
+   g_stopEvaluated=false;
+   g_stopCurrentSL=0.0;
+   g_stopAdaptiveSL=0.0;
+   g_stopSelectedSL=0.0;
+   g_stopCurrentDistance=0.0;
+   g_stopAdaptiveDistance=0.0;
+   g_stopSelectedDistance=0.0;
+   g_stopCurrentATR=0.0;
+   g_stopAdaptiveATR=0.0;
+   g_stopCurrentLot=0.0;
+   g_stopAdaptiveLot=0.0;
+   g_stopSelectedLot=0.0;
+   g_stopSelectedRisk=0.0;
+   g_stopMode="NOT_EVALUATED";
+   g_stopSetup="-";
+   g_stopDirection="-";
+   g_stopSelectionReason="NOT_EVALUATED";
+}
+
+double AdaptiveStopFloorATR(const int direction,const string setup)
+{
+   if(setup=="MOMENTUM" && direction>0) return 2.0;
+   if(setup=="PULLBACK" || setup=="CONTINUATION LONG" || setup=="CONTINUATION SHORT")
+      return 1.5;
+   // BREAKOUT, MOMENTUM SHORT, RECOVERY and unknown setups preserve CURRENT.
+   return 0.0;
+}
+
+bool BuildAdaptiveStopV2(const int direction,const double price,const double atr,
+                         const string setup,const double currentSL,double &adaptiveSL)
+{
+   if(direction==0 || price<=0.0 || atr<=0.0 || currentSL<=0.0) return false;
+   double currentDistance=MathAbs(price-currentSL);
+   if(currentDistance<=0.0 || !MathIsValidNumber(currentDistance)) return false;
+   double floorATR=AdaptiveStopFloorATR(direction,setup);
+   double adaptiveDistance=MathMax(currentDistance,MathMax(0.0,floorATR)*atr);
+   adaptiveSL=direction>0 ? price-adaptiveDistance : price+adaptiveDistance;
+   adaptiveSL=NormalizeDouble(adaptiveSL,_Digits);
+   return adaptiveSL>0.0 &&
+      ((direction>0 && adaptiveSL<price) || (direction<0 && adaptiveSL>price));
+}
+
+bool ApplyInitialStopConstraints(const int direction,const double bid,const double ask,
+                                 const BrokerContractSpec &contract,const double requestedSL,
+                                 double &alignedSL)
+{
+   double minDist=contract.stopsLevel*contract.point;
+   double stopReference=(direction>0?bid:ask);
+   alignedSL=requestedSL;
+   if(direction>0) alignedSL=MathMin(alignedSL,stopReference-minDist);
+   else alignedSL=MathMax(alignedSL,stopReference+minDist);
+   alignedSL=AlignPriceToTick(alignedSL,contract,direction<0);
+   return alignedSL>0.0 &&
+      !((direction>0 && stopReference-alignedSL+1e-9<minDist) ||
+        (direction<0 && alignedSL-stopReference+1e-9<minDist));
 }
 
 bool TPPriceForMoney(ENUM_ORDER_TYPE type,double priceOpen,double lots,double targetAmount,
@@ -2794,8 +2962,9 @@ void AppendDealLog(string direction, int score, string setup, double targetAmoun
 void TryTrade()
 {
    // Always build the technical/news diagnostic first, even when a guard later blocks execution.
-   // TP telemetry belongs only to the decision evaluated by this invocation.
+   // TP/SL telemetry belongs only to the decision evaluated by this invocation.
    ResetTakeProfitDiagnostics();
+   ResetAdaptiveStopDiagnostics();
    LoadWorldNews();
    int direction,score; string setup,reason; double targetR;
    bool signal=BuildSignal(direction,score,setup,reason,targetR);
@@ -2894,27 +3063,49 @@ void TryTrade()
       g_diagBlockReason=g_lastDecision;
       UpdateDashboard(); return;
    }
-   double atr=0.0;
-   if(!GetValue(hATR,0,1,atr) || !BuildDynamicStop(direction,price,atr,g_tempSL))
+   double atr=0.0,currentRequestedSL=0.0;
+   if(!GetValue(hATR,0,1,atr) || !BuildDynamicStop(direction,price,atr,currentRequestedSL))
    {
       g_lastDecision="Bloqueado: no se pudo construir SL dinamico";
       g_diagBlockReason=g_lastDecision;
       UpdateDashboard(); return;
    }
-   double sl=g_tempSL;
+   double adaptiveRequestedSL=0.0;
+   bool adaptiveReady=BuildAdaptiveStopV2(direction,price,atr,setup,currentRequestedSL,adaptiveRequestedSL);
+   double currentSL=0.0,adaptiveSL=0.0;
    // stops_level governs initial protection. freeze_level is validated and
    // reported, but applies to later trade modifications rather than widening
    // the strategy stop before a market entry.
    double minDist=contract.stopsLevel*contract.point;
-   double stopReference=(direction>0?tick.bid:tick.ask);
-   if(direction>0) sl=MathMin(sl,stopReference-minDist); else sl=MathMax(sl,stopReference+minDist);
-   sl=AlignPriceToTick(sl,contract,direction<0);
-   if(sl<=0.0 || (direction>0 && stopReference-sl+1e-9<minDist) ||
-      (direction<0 && sl-stopReference+1e-9<minDist))
+   if(!ApplyInitialStopConstraints(direction,tick.bid,tick.ask,contract,currentRequestedSL,currentSL))
    {
       g_lastDecision="Bloqueado: no se pudo alinear el SL al tick/stops_level del broker";
       g_diagBlockReason=g_lastDecision; UpdateDashboard(); return;
    }
+   adaptiveReady=adaptiveReady &&
+      ApplyInitialStopConstraints(direction,tick.bid,tick.ask,contract,adaptiveRequestedSL,adaptiveSL);
+   string adaptiveSelectionReason="";
+   bool useAdaptive=AdaptiveStopV2Allowed(adaptiveSelectionReason);
+   if(useAdaptive && !adaptiveReady)
+   {
+      g_lastDecision="Bloqueado: no se pudo construir/alinear Adaptive Stop v2";
+      g_diagBlockReason=g_lastDecision; UpdateDashboard(); return;
+   }
+   g_tempSL=useAdaptive?adaptiveSL:currentSL;
+   double sl=g_tempSL;
+   g_stopEvaluated=true;
+   g_stopMode=useAdaptive?"ADAPTIVE_V2":"CURRENT";
+   g_stopSetup=setup;
+   g_stopDirection=direction>0?"LONG":"SHORT";
+   g_stopSelectionReason=adaptiveSelectionReason;
+   g_stopCurrentSL=currentSL;
+   g_stopAdaptiveSL=adaptiveReady?adaptiveSL:0.0;
+   g_stopSelectedSL=sl;
+   g_stopCurrentDistance=MathAbs(price-currentSL);
+   g_stopAdaptiveDistance=adaptiveReady?MathAbs(price-adaptiveSL):0.0;
+   g_stopSelectedDistance=MathAbs(price-sl);
+   g_stopCurrentATR=g_stopCurrentDistance/atr;
+   g_stopAdaptiveATR=adaptiveReady?g_stopAdaptiveDistance/atr:0.0;
 
    double remainingDailyBudget=RemainingDailyLossBudget();
    if(remainingDailyBudget<=0.0)
@@ -2939,6 +3130,9 @@ void TryTrade()
    }
    if(!PositionSizeForRisk(type,worstCasePrice,sl,plannedRisk,contract,lots))
    {
+      string sizingBlockReason=DiagnoseSizingBlockReason(type,worstCasePrice,sl,plannedRisk,contract);
+      LogSizingDiagnostic(type,price,worstCasePrice,sl,targetRisk,remainingDailyBudget,
+         plannedRisk,contract,0.0,0.0,sizingBlockReason);
       g_lastDecision=StringFormat("Bloqueado: lote mínimo/step del broker impide arriesgar %.2f %s",plannedRisk,contract.accountCurrency);
       g_diagBlockReason=g_lastDecision; UpdateDashboard(); return;
    }
@@ -2946,14 +3140,44 @@ void TryTrade()
    double actualRisk=0.0;
    if(!RiskAtSL(type,worstCasePrice,sl,lots,actualRisk))
    {
+      LogSizingDiagnostic(type,price,worstCasePrice,sl,targetRisk,remainingDailyBudget,
+         plannedRisk,contract,lots,0.0,"FINAL_RISK_UNAVAILABLE");
       g_lastDecision="Bloqueado: no se pudo calcular riesgo al SL";
       g_diagBlockReason=g_lastDecision; UpdateDashboard(); return;
    }
    if(actualRisk>plannedRisk+1e-6 || actualRisk>remainingDailyBudget+1e-6)
    {
+      LogSizingDiagnostic(type,price,worstCasePrice,sl,targetRisk,remainingDailyBudget,
+         plannedRisk,contract,lots,actualRisk,"FINAL_RISK_EXCEEDS_BUDGET");
       g_lastDecision="Bloqueado: riesgo real al SL excede el presupuesto de seguridad";
       g_diagBlockReason=g_lastDecision; UpdateDashboard(); return;
    }
+   LogSizingDiagnostic(type,price,worstCasePrice,sl,targetRisk,remainingDailyBudget,
+      plannedRisk,contract,lots,actualRisk,"NONE");
+
+   bool currentLotReady=false,adaptiveLotReady=false;
+   double currentLot=0.0,adaptiveLot=0.0;
+   if(useAdaptive)
+   {
+      adaptiveLot=lots;
+      adaptiveLotReady=true;
+      currentLotReady=PositionSizeForRisk(type,worstCasePrice,currentSL,plannedRisk,contract,currentLot);
+   }
+   else
+   {
+      currentLot=lots;
+      currentLotReady=true;
+      if(adaptiveReady)
+         adaptiveLotReady=PositionSizeForRisk(type,worstCasePrice,adaptiveSL,plannedRisk,contract,adaptiveLot);
+   }
+   g_stopCurrentLot=currentLotReady?currentLot:0.0;
+   g_stopAdaptiveLot=adaptiveLotReady?adaptiveLot:0.0;
+   g_stopSelectedLot=lots;
+   g_stopSelectedRisk=actualRisk;
+   PrintFormat("[GoldScout][STOP][SHADOW] STOP MODE=%s | reason=%s | setup=%s | direction=%s | CURRENT_SL=%.5f CURRENT_SL_ATR=%.3f CURRENT_LOT=%.4f | ADAPTIVE_SL=%.5f ADAPTIVE_SL_ATR=%.3f ADAPTIVE_LOT=%.4f | SELECTED_SL=%.5f risk=%.2f %s lots=%.4f",
+      g_stopMode,g_stopSelectionReason,setup,g_stopDirection,currentSL,g_stopCurrentATR,
+      g_stopCurrentLot,g_stopAdaptiveSL,g_stopAdaptiveATR,g_stopAdaptiveLot,sl,
+      actualRisk,contract.accountCurrency,lots);
 
    string marginMsg="";
    if(!MarginAllowsOrder(type,price,lots,contract,marginMsg))
@@ -3618,8 +3842,23 @@ void UpdateDashboard()
       g_lastExecutionOrder,g_lastExecutionDeal,g_lastExecutionPosition,
       g_lastRequestedPrice,g_lastExecutedPrice,g_lastRequestedVolume,
       g_lastFilledVolume,g_lastExecutionSpread,g_lastExecutionSlippage);
-   json += StringFormat("\"stop_mode\":\"ATR+STRUCTURE\",\"chill_r\":%.2f,\"god_r\":%.2f,\"min_rr\":%.2f,\"last_score\":%d,\"last_setup\":\"%s\",\"last_direction\":\"%s\",",ChillTargetR,GodTargetR,MinRewardRisk,g_lastScore,JsonEscape(g_lastSetup),JsonEscape(g_lastDirection));
+   json += StringFormat("\"stop_mode\":\"%s\",\"stop_strategy\":\"ATR+STRUCTURE\",\"chill_r\":%.2f,\"god_r\":%.2f,\"min_rr\":%.2f,\"last_score\":%d,\"last_setup\":\"%s\",\"last_direction\":\"%s\",",JsonEscape(g_stopMode),ChillTargetR,GodTargetR,MinRewardRisk,g_lastScore,JsonEscape(g_lastSetup),JsonEscape(g_lastDirection));
    json += StringFormat("\"last_decision\":\"%s\",",JsonEscape(g_lastDecision));
+   json += "\"stop_diagnostics\":{\"evaluated\":"+(g_stopEvaluated?"true":"false")+",";
+   json += "\"mode\":\""+JsonEscape(g_stopMode)+"\",\"setup\":\""+JsonEscape(g_stopSetup)+"\",\"direction\":\""+JsonEscape(g_stopDirection)+"\",";
+   json += "\"current_sl\":"+JsonNumberOrNull(g_stopEvaluated,g_stopCurrentSL)+",";
+   json += "\"adaptive_sl\":"+JsonNumberOrNull(g_stopEvaluated && g_stopAdaptiveSL>0.0,g_stopAdaptiveSL)+",";
+   json += "\"selected_sl\":"+JsonNumberOrNull(g_stopEvaluated,g_stopSelectedSL)+",";
+   json += "\"current_stop_distance\":"+JsonNumberOrNull(g_stopEvaluated,g_stopCurrentDistance)+",";
+   json += "\"adaptive_stop_distance\":"+JsonNumberOrNull(g_stopEvaluated && g_stopAdaptiveDistance>0.0,g_stopAdaptiveDistance)+",";
+   json += "\"selected_stop_distance\":"+JsonNumberOrNull(g_stopEvaluated,g_stopSelectedDistance)+",";
+   json += "\"current_sl_atr\":"+JsonNumberOrNull(g_stopEvaluated,g_stopCurrentATR,4)+",";
+   json += "\"adaptive_sl_atr\":"+JsonNumberOrNull(g_stopEvaluated && g_stopAdaptiveDistance>0.0,g_stopAdaptiveATR,4)+",";
+   json += "\"current_lot\":"+JsonNumberOrNull(g_stopEvaluated && g_stopCurrentLot>0.0,g_stopCurrentLot)+",";
+   json += "\"adaptive_lot\":"+JsonNumberOrNull(g_stopEvaluated && g_stopAdaptiveLot>0.0,g_stopAdaptiveLot)+",";
+   json += "\"selected_lot\":"+JsonNumberOrNull(g_stopEvaluated && g_stopSelectedLot>0.0,g_stopSelectedLot)+",";
+   json += "\"risk_amount\":"+JsonNumberOrNull(g_stopEvaluated && g_stopSelectedRisk>0.0,g_stopSelectedRisk,2)+",";
+   json += "\"account_currency\":\""+JsonEscape(accountCurrency)+"\",\"selection_reason\":\""+JsonEscape(g_stopSelectionReason)+"\",\"paper_demo_only\":true},";
    json += "\"take_profit\":{\"evaluated\":"+(g_tpEvaluated?"true":"false")+",";
    json += "\"mode\":\""+JsonEscape(g_tpMode)+"\",\"class\":\""+JsonEscape(g_tpClass)+"\",";
    json += "\"setup\":\""+JsonEscape(g_lastSetup)+"\",\"direction\":\""+JsonEscape(g_lastDirection)+"\",";
@@ -3741,11 +3980,14 @@ int OnInit()
    }
    EventSetTimer(MathMax(1,TimerSeconds));
    LoadWorldNews();
+   ResetAdaptiveStopDiagnostics();
+   if(UseAdaptiveStopV2 && EnableLiveTrading)
+      Print("[GoldScout][STOP] UseAdaptiveStopV2 bloqueado: REAL execution no está permitida");
    g_lastDecision=startupExecutionAllowed
       ? "DEMO EXECUTION habilitado — iniciando análisis inmediato"
       : "PAPER MODE — iniciando análisis inmediato";
    string accountCurrency=AccountInfoString(ACCOUNT_CURRENCY);
-   PrintFormat("[GoldScout] Iniciado en %s H1 | risk=%.2f%% | riskAmount=%.2f %s | stop=ATR+estructura | minRR=%.2f | mode=%s | intrabar=%s | timer=%ds | arm=%d | startup=IMMEDIATE",_Symbol,RiskPercent,PlannedRiskAmount(),accountCurrency,MinRewardRisk,startupExecutionAllowed?"DEMO_EXECUTION":"PAPER",UseIntrabarMonitoring?"ON":"OFF",TimerSeconds,ArmScoreThreshold);
+   PrintFormat("[GoldScout] Iniciado en %s H1 | risk=%.2f%% | riskAmount=%.2f %s | stop=ATR+estructura | adaptiveStopFlag=%s | minRR=%.2f | mode=%s | intrabar=%s | timer=%ds | arm=%d | startup=IMMEDIATE",_Symbol,RiskPercent,PlannedRiskAmount(),accountCurrency,UseAdaptiveStopV2?"ON":"OFF",MinRewardRisk,startupExecutionAllowed?"DEMO_EXECUTION":"PAPER",UseIntrabarMonitoring?"ON":"OFF",TimerSeconds,ArmScoreThreshold);
 
    // Start the current H1 cycle immediately. Do not wait for the next H1 candle.
    // If indicator history is still loading, OnTimer() retries the same bar until it succeeds.

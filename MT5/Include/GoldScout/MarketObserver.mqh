@@ -37,6 +37,11 @@ struct GoldScoutObserverContext
    string tpMode;
    double tpStructureLevel;
    string tpStructureConfidence;
+   bool   stopEvaluated;
+   double currentStopDistance;
+   double adaptiveStopDistance;
+   double selectedStopDistance;
+   string stopMode;
    string executionState;
    string executionReason;
    uint   executionRetcode;
@@ -384,6 +389,11 @@ private:
       json+="\"tp_mode\":\""+GSMO_JsonEscape(context.tpMode)+"\",";
       json+="\"tp_structure_level\":"+GSMO_OptionalNumber(context.tpEvaluated && context.tpStructureLevel>0.0,context.tpStructureLevel)+",";
       json+="\"tp_structure_confidence\":\""+GSMO_JsonEscape(context.tpStructureConfidence)+"\",";
+      json+="\"stop_evaluated\":"+(context.stopEvaluated?"true":"false")+",";
+      json+="\"current_stop_distance\":"+GSMO_OptionalNumber(context.stopEvaluated,context.currentStopDistance)+",";
+      json+="\"adaptive_stop_distance\":"+GSMO_OptionalNumber(context.stopEvaluated && context.adaptiveStopDistance>0.0,context.adaptiveStopDistance)+",";
+      json+="\"selected_stop_distance\":"+GSMO_OptionalNumber(context.stopEvaluated,context.selectedStopDistance)+",";
+      json+="\"stop_mode\":\""+GSMO_JsonEscape(context.stopMode)+"\",";
       json+="\"execution_state\":\""+GSMO_JsonEscape(GSMO_CanonicalLifecycleState(context.executionState))+"\",";
       json+="\"execution_reason\":\""+GSMO_JsonEscape(context.executionReason)+"\",";
       json+=StringFormat("\"execution_retcode\":%u,",context.executionRetcode);
