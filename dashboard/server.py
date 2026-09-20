@@ -57,9 +57,18 @@ CANDIDATES=_u
 OFFLINE={"updated_at":None,"symbol":"XAUUSD","timeframe":"H1","live_trading":False,"connected":False,
 "account_currency":"USD","balance":None,"equity":None,"start_of_day_equity":None,"daily_pnl":None,
 "risk_amount":0.0,"target_risk":0.0,"daily_loss_limit_percent":5.0,"daily_loss_budget":0.0,
-"daily_loss_used":0.0,"remaining_daily_budget":0.0,"effective_planned_risk":0.0,"risk_percent":5.0,"last_score":None,
+"daily_loss_used":0.0,"open_risk":0.0,"remaining_daily_budget":0.0,"effective_planned_risk":0.0,"risk_percent":5.0,"last_score":None,
 "last_setup":"-","last_direction":"-","last_decision":"Esperando datos MT5...","analysis":{"bar":None},
-"active_trade":None,"closed_trades":[],"news":{"available":False,"bias":0,"confidence":0,"risk":"UNKNOWN",
+"demo_execution":{"account_mode":"UNKNOWN","enabled":False,"execution_allowed":False,
+"broker_connected":False,"state":"PAPER","reason":"NO_DATA","authorization_reason":"NO_DATA","retcode":0,"order_id":0,
+"deal_id":0,"position_id":0,"requested_price":0.0,"executed_price":0.0,
+"requested_volume":0.0,"filled_volume":0.0,"spread":0.0,"slippage":0.0},
+"take_profit":{"evaluated":False,"mode":"NOT_EVALUATED","class":"NONE","setup":"-","direction":"-","current_tp":None,
+"current_rr":None,"v2_tp":None,"v2_rr":None,"selected_tp":None,"selected_rr":None,
+"structure_level":None,"structure_confidence":"NONE","selection_reason":"NOT_EVALUATED","paper_only":True},
+"active_trade":None,"open_positions_count":0,"open_positions":[],"closed_trades":[],
+"session_stats":{"trades":0,"wins":0,"losses":0,"win_rate":0.0,"net_pnl":0.0,"expectancy_r":0.0,"profit_factor":0.0},
+"news":{"available":False,"bias":0,"confidence":0,"risk":"UNKNOWN",
 "data_risk":"HIGH","direction":"NEUTRO","summary":"Esperando análisis de noticias...","article_count":0,"top_headlines":[],"source_health":{}},
 "external_signal":{"source":"etoro","symbol":"XAUUSD","available":False,"api_status":"NO_DATA",
 "long_weight":0.0,"short_weight":0.0,"neutral_weight":0.0,"valid_traders":0,"quality":0,
@@ -73,6 +82,16 @@ OFFLINE={"updated_at":None,"symbol":"XAUUSD","timeframe":"H1","live_trading":Fal
 
 def gold(s):
     return (s or '').upper().strip().startswith('XAUUSD')
+
+def canonical_lifecycle_value(value):
+    """Accept legacy lifecycle aliases while exposing one public contract."""
+    if isinstance(value,str) and value.upper()=='POSITION_CLOSE':
+        return 'POSITION_CLOSED'
+    if isinstance(value,dict):
+        return {key:canonical_lifecycle_value(item) for key,item in value.items()}
+    if isinstance(value,list):
+        return [canonical_lifecycle_value(item) for item in value]
+    return value
 
 def read_json(name):
     for p in CANDIDATES:
@@ -212,6 +231,7 @@ class H(BaseHTTPRequestHandler):
             d['external_signal']=read_external()
             d['tradingview']=read_tradingview()
             d['market_observer']=read_market_observer()
+            d=canonical_lifecycle_value(d)
             self.send_payload(200,'application/json; charset=utf-8',json.dumps(d,ensure_ascii=False).encode()); return
         if self.path.startswith('/api/health'):
             payload={'ok':True,'candidates':[str(p) for p in CANDIDATES],
