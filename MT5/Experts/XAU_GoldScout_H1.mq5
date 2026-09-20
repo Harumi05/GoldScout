@@ -4,6 +4,7 @@
 
 #include <Trade/Trade.mqh>
 #include <GoldScout/MarketStructure.mqh>
+#include <GoldScout/ArmedInvalidation.mqh>
 #include <GoldScout/TakeProfitPolicy.mqh>
 #include <GoldScout/DemoExecution.mqh>
 #include <GoldScout/ContextScoring.mqh>
@@ -14,6 +15,7 @@ CTrade trade;
 input group "=== Execution ==="
 input bool   EnableLiveTrading      = false; // FALSE = analysis only / paper mode
 input bool   EnableDemoExecution    = false; // real MT5 orders only on ACCOUNT_TRADE_MODE_DEMO
+input bool   UseArmedInvalidationV1 = false; // PAPER/DEMO only; false preserves current behavior
 input long   MagicNumber             = 8202609;
 input int    TimerSeconds            = 5;
 input int    MinScoreToTrade         = 74;
@@ -267,6 +269,22 @@ int      g_intrabarLongBoost=0;
 int      g_intrabarShortBoost=0;
 datetime g_lastIntrabarHeartbeat=0;
 const int INTRABAR_DIAGNOSTIC_INTERVAL_SECONDS=30;
+
+// Armed invalidation is diagnostic/optional by default. The last cancellation
+// remains visible while the active armed fields themselves are cleared.
+string   g_armedInvalidationStatus="DISABLED";
+string   g_armedInvalidationReason="FEATURE_DISABLED";
+int      g_armedInvalidationBreakoutDirection=0;
+double   g_armedInvalidationRSI=0.0;
+double   g_armedInvalidationImpulseATR=0.0;
+string   g_armedInvalidationStructure="-";
+int      g_cancelledArmedDirection=0;
+int      g_cancelledArmedScore=0;
+string   g_cancelledArmedSetup="-";
+datetime g_cancelledEvidenceM15=0;
+datetime g_cancelledPlanH1=0;
+datetime g_lastArmedInvalidationLogTime=0;
+string   g_lastArmedInvalidationLogSignature="";
 
 // W/M diagnostics never participate in scoring or execution.
 GoldScoutPatternDiagnostic g_patternDiagnostic;
@@ -692,6 +710,15 @@ void BuildMarketObserverContext(GoldScoutObserverContext &context)
    context.monitorState=g_monitorState;
    context.direction=g_lastDirection;
    context.liveTrading=EnableDemoExecution && g_executionAccountMode=="DEMO";
+   context.armedInvalidationStatus=g_armedInvalidationStatus;
+   context.previousArmedDirection=GSAR_DirectionName(g_cancelledArmedDirection);
+   context.previousArmedSetup=g_cancelledArmedSetup;
+   context.previousArmedScore=g_cancelledArmedScore;
+   context.armedInvalidationReason=g_armedInvalidationReason;
+   context.armedInvalidationBreakoutDirection=GSAR_DirectionName(g_armedInvalidationBreakoutDirection);
+   context.armedInvalidationRsi=g_armedInvalidationRSI;
+   context.armedInvalidationImpulseAtr=g_armedInvalidationImpulseATR;
+   context.armedInvalidationStructure=g_armedInvalidationStructure;
    context.tpEvaluated=g_tpEvaluated;
    context.currentTP=g_tpCurrent;
    context.currentRR=g_tpCurrentRR;
@@ -2466,6 +2493,16 @@ void ResetIntrabarPlan(const datetime bar)
    g_monitorAgeSec=0;
    g_intrabarLongBoost=0;
    g_intrabarShortBoost=0;
+   if(!UseArmedInvalidationV1)
+   {
+      g_armedInvalidationStatus="DISABLED";
+      g_armedInvalidationReason="FEATURE_DISABLED";
+   }
+   else if(g_armedInvalidationStatus!="CANCELLED")
+   {
+      g_armedInvalidationStatus="NONE";
+      g_armedInvalidationReason="NO_ARMED_SETUP";
+   }
 }
 
 void ArmIntrabarPlan(const int direction,const int score,const string setup,const string reason)
@@ -2477,6 +2514,115 @@ void ArmIntrabarPlan(const int direction,const int score,const string setup,cons
    g_monitorState="ARMADO";
    g_monitorReason=reason;
    g_monitorAgeSec=0;
+   if(UseArmedInvalidationV1)
+   {
+      g_armedInvalidationStatus="VALID";
+      g_armedInvalidationReason="ARMED_SETUP_ACTIVE";
+   }
+}
+
+bool ArmedInvalidationRuntimeEnabled()
+{
+   if(!UseArmedInvalidationV1 || EnableLiveTrading) return false;
+   ENUM_ACCOUNT_TRADE_MODE mode=(ENUM_ACCOUNT_TRADE_MODE)AccountInfoInteger(ACCOUNT_TRADE_MODE);
+   return mode!=ACCOUNT_TRADE_MODE_REAL;
+}
+
+double ClosedM15ImpulseATR()
+{
+   // The current H1 open is fixed once the bar begins. The endpoint is the
+   // latest CLOSED M15 close, so an open M15 candle/wick cannot cancel a plan.
+   datetime h1OpenTime=iTime(_Symbol,PERIOD_H1,0);
+   datetime m15ClosedTime=iTime(_Symbol,PERIOD_M15,1);
+   if(h1OpenTime<=0 || m15ClosedTime<h1OpenTime) return 0.0;
+   double atr=0.0;
+   if(!GetValue(hATR,0,1,atr) || atr<=0.0) return 0.0;
+   double h1Open=iOpen(_Symbol,PERIOD_H1,0);
+   double m15Close=iClose(_Symbol,PERIOD_M15,1);
+   if(h1Open<=0.0 || m15Close<=0.0) return 0.0;
+   return (m15Close-h1Open)/atr;
+}
+
+void LogArmedInvalidationDecision(const GoldScoutArmedInvalidationDecision &decision)
+{
+   datetime evidenceTime=g_m15TimingEvidence.closedBarTime;
+   string signature=StringFormat("%I64d|%d|%d|%s",(long)evidenceTime,
+      g_armedDirection,decision.breakoutDirection,decision.reason);
+   datetime now=TimeTradeServer();
+   if(now<=0) now=TimeLocal();
+   if(signature==g_lastArmedInvalidationLogSignature &&
+      g_lastArmedInvalidationLogTime>0 &&
+      (long)(now-g_lastArmedInvalidationLogTime)<INTRABAR_DIAGNOSTIC_INTERVAL_SECONDS)
+      return;
+   g_lastArmedInvalidationLogSignature=signature;
+   g_lastArmedInvalidationLogTime=now;
+   PrintFormat("[GoldScout][ARMED_INVALIDATION] direction=%s | decision=%s | reason=%s | rsi=%.1f | impulseATR=%.2f | breakoutDirection=%s",
+      GSAR_DirectionName(g_armedDirection),
+      decision.action==GOLDSCOUT_CANCEL_ARMED?"CANCEL":"KEEP",
+      decision.reason,decision.rsi,decision.impulseAtr,
+      GSAR_DirectionName(decision.breakoutDirection));
+}
+
+bool EvaluateArmedSetupInvalidation()
+{
+   if(!g_armed || !ArmedInvalidationRuntimeEnabled()) return false;
+   double rsi=0.0;
+   if(!GetValue(hRSI,0,1,rsi)) rsi=0.0;
+   double signedImpulseAtr=ClosedM15ImpulseATR();
+   int breakoutDirection=g_m15TimingEvidence.available
+      ? g_m15TimingEvidence.breakoutDirection : 0;
+   bool breakoutConfirmed=g_m15TimingEvidence.available &&
+      g_m15TimingEvidence.closedBarTime>0 && breakoutDirection!=0;
+   GoldScoutArmedInvalidationDecision decision;
+   ENUM_ACCOUNT_TRADE_MODE mode=(ENUM_ACCOUNT_TRADE_MODE)AccountInfoInteger(ACCOUNT_TRADE_MODE);
+   GSAR_EvaluateArmedSetupInvalidation(UseArmedInvalidationV1,
+      mode==ACCOUNT_TRADE_MODE_REAL,g_armed,g_armedDirection,
+      breakoutConfirmed,breakoutDirection,rsi,signedImpulseAtr,1.5,decision);
+   g_armedInvalidationReason=decision.reason;
+   g_armedInvalidationBreakoutDirection=decision.breakoutDirection;
+   g_armedInvalidationRSI=decision.rsi;
+   g_armedInvalidationImpulseATR=decision.impulseAtr;
+   g_armedInvalidationStructure=g_m15TimingEvidence.available
+      ? GS_StructureStateName(g_m15TimingEvidence.structure) : "INSUFICIENTE";
+   LogArmedInvalidationDecision(decision);
+   if(decision.action!=GOLDSCOUT_CANCEL_ARMED)
+   {
+      g_armedInvalidationStatus="VALID";
+      return false;
+   }
+
+   g_cancelledArmedDirection=g_armedDirection;
+   g_cancelledArmedScore=g_armedScore;
+   g_cancelledArmedSetup=g_armedSetup;
+   g_cancelledEvidenceM15=g_m15TimingEvidence.closedBarTime;
+   g_cancelledPlanH1=iTime(_Symbol,PERIOD_H1,0);
+   string previousDirection=GSAR_DirectionName(g_armedDirection);
+   string previousSetup=g_armedSetup;
+   g_armed=false;
+   g_armedDirection=0;
+   g_armedScore=0;
+   g_armedSetup="-";
+   g_intrabarLongBoost=0;
+   g_intrabarShortBoost=0;
+   g_monitorState="ARMED CANCELLED";
+   g_monitorReason="COUNTER_BREAKOUT_CONFIRMED";
+   g_lastDecision=StringFormat("ARMED CANCELLED | previous=%s %s | reason=COUNTER_BREAKOUT_CONFIRMED",
+      previousDirection,previousSetup);
+   g_lastDirection="-";
+   g_lastSetup="-";
+   g_lastScore=0;
+   g_armedInvalidationStatus="CANCELLED";
+   PrintFormat("[GoldScout] ARMED CANCELLED | previous=%s %s | reason=COUNTER_BREAKOUT_CONFIRMED",
+      previousDirection,previousSetup);
+   return true;
+}
+
+bool CancelledCandidateSuppressed(const int direction,const string setup)
+{
+   if(!ArmedInvalidationRuntimeEnabled() || g_cancelledEvidenceM15<=0 ||
+      g_cancelledPlanH1<=0) return false;
+   return direction==g_cancelledArmedDirection && setup==g_cancelledArmedSetup &&
+      iTime(_Symbol,PERIOD_H1,0)==g_cancelledPlanH1;
 }
 
 void LogIntrabarHeartbeat(const bool candidate,const int direction,const int score)
@@ -2512,13 +2658,34 @@ void MonitorIntrabar()
 
    int direction=0,score=0; string setup="-",reason=""; double targetR=ChillTargetR;
    bool candidate=BuildSignal(direction,score,setup,reason,targetR);
+
+   // Evaluate the OLD armed direction before a new BuildSignal candidate can
+   // replace it. Cancellation returns to neutral; it never flips direction.
+   if(g_armed && EvaluateArmedSetupInvalidation())
+   {
+      CaptureMarketObserverState();
+      LogIntrabarHeartbeat(candidate,direction,score);
+      UpdateDashboard();
+      return;
+   }
+
    if(candidate && direction!=0)
    {
-      g_armed=true;
-      g_armedDirection=direction;
-      g_armedScore=score;
-      g_armedSetup=setup;
-      g_monitorReason=reason;
+      if(!ArmedInvalidationRuntimeEnabled())
+      {
+         // Preserve the pre-feature path byte-for-byte in behavior when the
+         // flag is disabled or the account is REAL.
+         g_armed=true;
+         g_armedDirection=direction;
+         g_armedScore=score;
+         g_armedSetup=setup;
+         g_monitorReason=reason;
+      }
+      else if(!g_armed || direction==g_armedDirection)
+      {
+         if(!CancelledCandidateSuppressed(direction,setup))
+            ArmIntrabarPlan(direction,score,setup,reason);
+      }
    }
 
    if(!g_armed)
@@ -3475,6 +3642,14 @@ void UpdateDashboard()
       JsonEscape(g_diagSessionContext),JsonEscape(g_sessionContext.activeCenters));
    json += StringFormat("\"monitor\":{\"state\":\"%s\",\"candidate\":\"%s\",\"score\":%d,\"boost_l\":%d,\"boost_s\":%d,\"age_sec\":%I64d,\"entry_used_this_bar\":%s,\"reason\":\"%s\"},",
       JsonEscape(g_monitorState),JsonEscape(g_armedDirection>0?"LONG":(g_armedDirection<0?"SHORT":"-")),g_lastScore,g_intrabarLongBoost,g_intrabarShortBoost,g_monitorAgeSec,g_entryUsedThisBar?"true":"false",JsonEscape(g_monitorReason));
+   json += StringFormat("\"armed_status\":{\"enabled\":%s,\"status\":\"%s\",\"direction\":\"%s\",\"setup\":\"%s\",\"score\":%d,\"previous_direction\":\"%s\",\"previous_setup\":\"%s\",\"previous_score\":%d,\"reason\":\"%s\",\"breakout_direction\":\"%s\",\"rsi\":%.2f,\"impulse_atr\":%.3f,\"structure_state\":\"%s\"},",
+      UseArmedInvalidationV1?"true":"false",JsonEscape(g_armedInvalidationStatus),
+      JsonEscape(GSAR_DirectionName(g_armedDirection)),JsonEscape(g_armedSetup),g_armedScore,
+      JsonEscape(GSAR_DirectionName(g_cancelledArmedDirection)),JsonEscape(g_cancelledArmedSetup),
+      g_cancelledArmedScore,JsonEscape(g_armedInvalidationReason),
+      JsonEscape(GSAR_DirectionName(g_armedInvalidationBreakoutDirection)),
+      g_armedInvalidationRSI,g_armedInvalidationImpulseATR,
+      JsonEscape(g_armedInvalidationStructure));
    json += StringFormat("\"news\":{\"available\":%s,\"updated_at\":\"%s\",\"bias\":%d,\"confidence\":%d,\"risk\":\"%s\",\"data_risk\":\"%s\",\"direction\":\"%s\",\"summary\":\"%s\",\"article_count\":%d,\"sources_ok\":%d,\"source_count\":%d},",
       (g_newsAvailable && g_newsUpdated!="")?"true":"false",JsonEscape(g_newsUpdated),g_newsBias,g_newsConfidence,JsonEscape(g_newsRisk),JsonEscape(g_newsDataRisk),JsonEscape(g_newsDirection),JsonEscape(g_newsSummary),g_newsCount,g_newsSourcesOk,g_newsSourceCount);
    json += StringFormat("\"active_trade\":%s,",active);

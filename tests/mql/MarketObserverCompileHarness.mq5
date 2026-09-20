@@ -18,6 +18,15 @@ void OnStart()
    context.monitorState="SIN SETUP";
    context.direction="NONE";
    context.liveTrading=false;
+   context.armedInvalidationStatus="DISABLED";
+   context.previousArmedDirection="NONE";
+   context.previousArmedSetup="-";
+   context.previousArmedScore=0;
+   context.armedInvalidationReason="FEATURE_DISABLED";
+   context.armedInvalidationBreakoutDirection="NONE";
+   context.armedInvalidationRsi=0.0;
+   context.armedInvalidationImpulseAtr=0.0;
+   context.armedInvalidationStructure="INSUFICIENTE";
    context.tpEvaluated=false;
    context.currentTP=0.0;
    context.currentRR=0.0;

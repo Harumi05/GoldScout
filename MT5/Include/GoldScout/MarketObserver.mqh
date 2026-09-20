@@ -18,6 +18,15 @@ struct GoldScoutObserverContext
    string monitorState;
    string direction;
    bool   liveTrading;
+   string armedInvalidationStatus;
+   string previousArmedDirection;
+   string previousArmedSetup;
+   int    previousArmedScore;
+   string armedInvalidationReason;
+   string armedInvalidationBreakoutDirection;
+   double armedInvalidationRsi;
+   double armedInvalidationImpulseAtr;
+   string armedInvalidationStructure;
    bool   tpEvaluated;
    double currentTP;
    double currentRR;
@@ -359,6 +368,15 @@ private:
       json+="\"decision\":\""+GSMO_JsonEscape(GSMO_DecisionOutcome(context))+"\",";
       json+="\"decision_reason\":\""+GSMO_JsonEscape(context.decisionReason)+"\",";
       json+="\"goldscout_state\":\""+GSMO_JsonEscape(context.monitorState)+"\",";
+      json+="\"armed_invalidation_status\":\""+GSMO_JsonEscape(context.armedInvalidationStatus)+"\",";
+      json+="\"previous_direction\":\""+GSMO_JsonEscape(context.previousArmedDirection)+"\",";
+      json+="\"previous_setup\":\""+GSMO_JsonEscape(context.previousArmedSetup)+"\",";
+      json+=StringFormat("\"previous_score\":%d,",context.previousArmedScore);
+      json+="\"armed_invalidation_reason\":\""+GSMO_JsonEscape(context.armedInvalidationReason)+"\",";
+      json+="\"breakout_direction\":\""+GSMO_JsonEscape(context.armedInvalidationBreakoutDirection)+"\",";
+      json+="\"armed_invalidation_rsi\":"+GSMO_Number(context.armedInvalidationRsi,4)+",";
+      json+="\"impulse_atr\":"+GSMO_Number(context.armedInvalidationImpulseAtr,4)+",";
+      json+="\"structure_state\":\""+GSMO_JsonEscape(context.armedInvalidationStructure)+"\",";
       json+="\"tp_evaluated\":"+(context.tpEvaluated?"true":"false")+",";
       json+="\"current_tp\":"+GSMO_OptionalNumber(context.tpEvaluated,context.currentTP)+",\"current_rr\":"+GSMO_OptionalNumber(context.tpEvaluated,context.currentRR,4)+",";
       json+="\"v2_tp\":"+GSMO_OptionalNumber(context.tpEvaluated,context.v2TP)+",\"v2_rr\":"+GSMO_OptionalNumber(context.tpEvaluated,context.v2RR,4)+",";
@@ -487,7 +505,9 @@ public:
       string decision=GSMO_Lower(context.decision);
       string snapshotType="";
       string lifecycleState=GSMO_CanonicalLifecycleState(context.executionState);
-      if(context.signalEventId!="" &&
+      if(StringFind(decision,"armed cancelled")>=0)
+         snapshotType="ARMED_CANCELLED";
+      else if(context.signalEventId!="" &&
          (lifecycleState=="ORDER_REJECTED" || lifecycleState=="ORDER_FILLED" ||
           lifecycleState=="POSITION_OPEN" || lifecycleState=="POSITION_CLOSED"))
          snapshotType=lifecycleState;
@@ -507,7 +527,9 @@ public:
       string outcome=GSMO_DecisionOutcome(context);
       string identity=snapshotType+"|"+outcome+"|"+context.monitorState+"|"+
          context.direction+"|"+context.signalEventId+"|"+
-         IntegerToString((long)context.executionRetcode);
+         IntegerToString((long)context.executionRetcode)+"|"+
+         context.previousArmedDirection+"|"+context.previousArmedSetup+"|"+
+         context.armedInvalidationReason;
       if(identity==m_lastStateIdentity) return;
       if(Capture(1,0,snapshotType,identity,context))
          m_lastStateIdentity=identity;
