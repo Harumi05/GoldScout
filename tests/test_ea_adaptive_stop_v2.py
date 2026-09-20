@@ -25,13 +25,17 @@ def conservative_distance(current: float, atr: float, direction: str, setup: str
 
 
 def adaptive_allowed(
-    *, toggle: bool, enable_live: bool, enable_demo: bool, account_mode: str
+    *, toggle: bool, enable_live: bool, enable_demo: bool, account_mode: str | None
 ) -> bool:
-    if not toggle or enable_live:
+    if not toggle or account_mode is None or account_mode in {"REAL", "UNKNOWN"} or enable_live:
         return False
     if not enable_demo:
         return True
     return account_mode == "DEMO"
+
+
+def selected_stop_mode(**kwargs) -> str:
+    return "ADAPTIVE_V2" if adaptive_allowed(**kwargs) else "CURRENT"
 
 
 class AdaptiveStopV2RecoveryTests(unittest.TestCase):
@@ -59,15 +63,27 @@ class AdaptiveStopV2RecoveryTests(unittest.TestCase):
         self.assertIn("double sl=g_tempSL;", EA)
 
     def test_paper_and_verified_demo_gating(self):
-        self.assertTrue(adaptive_allowed(toggle=True, enable_live=False, enable_demo=False, account_mode="REAL"))
+        self.assertTrue(adaptive_allowed(toggle=True, enable_live=False, enable_demo=False, account_mode="DEMO"))
         self.assertTrue(adaptive_allowed(toggle=True, enable_live=False, enable_demo=True, account_mode="DEMO"))
+        self.assertFalse(adaptive_allowed(toggle=True, enable_live=False, enable_demo=False, account_mode="REAL"))
         self.assertFalse(adaptive_allowed(toggle=True, enable_live=False, enable_demo=True, account_mode="REAL"))
         self.assertFalse(adaptive_allowed(toggle=True, enable_live=False, enable_demo=True, account_mode="UNKNOWN"))
+        self.assertFalse(adaptive_allowed(toggle=True, enable_live=False, enable_demo=False, account_mode=None))
+        self.assertIn("if(!ReadAccountTradeMode(accountMode))", EA)
+        self.assertIn('reason="ACCOUNT_MODE_UNAVAILABLE";', EA)
+        self.assertIn('reason="ACCOUNT_MODE_UNKNOWN";', EA)
         self.assertIn("if(!DemoExecutionAllowedNow(demoReason))", EA)
         self.assertIn('reason="DEMO_ACCOUNT_CONFIRMED";', EA)
 
     def test_real_execution_is_always_blocked(self):
         self.assertFalse(adaptive_allowed(toggle=True, enable_live=True, enable_demo=False, account_mode="REAL"))
+        self.assertEqual(
+            selected_stop_mode(toggle=True, enable_live=False, enable_demo=False, account_mode="REAL"),
+            "CURRENT",
+        )
+        self.assertIn("if(accountMode==ACCOUNT_TRADE_MODE_REAL)", EA)
+        self.assertIn('reason="REAL_ACCOUNT_NO_EFFECT";', EA)
+        self.assertIn('g_stopMode=useAdaptive?"ADAPTIVE_V2":"CURRENT";', EA)
         self.assertIn("if(EnableLiveTrading)", EA)
         self.assertIn('reason="REAL_EXECUTION_HARD_BLOCK";', EA)
         self.assertIn("input bool   EnableLiveTrading      = false;", EA)

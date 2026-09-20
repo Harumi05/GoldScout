@@ -2112,6 +2112,23 @@ bool AdaptiveStopV2Allowed(string &reason)
 {
    reason="FEATURE_DISABLED";
    if(!UseAdaptiveStopV2) return false;
+   long accountMode=-1;
+   if(!ReadAccountTradeMode(accountMode))
+   {
+      reason="ACCOUNT_MODE_UNAVAILABLE";
+      return false;
+   }
+   string accountModeName=GSDE_AccountModeName(accountMode);
+   if(accountModeName=="UNKNOWN")
+   {
+      reason="ACCOUNT_MODE_UNKNOWN";
+      return false;
+   }
+   if(accountMode==ACCOUNT_TRADE_MODE_REAL)
+   {
+      reason="REAL_ACCOUNT_NO_EFFECT";
+      return false;
+   }
    if(EnableLiveTrading)
    {
       reason="REAL_EXECUTION_HARD_BLOCK";
@@ -2119,7 +2136,7 @@ bool AdaptiveStopV2Allowed(string &reason)
    }
    if(!EnableDemoExecution)
    {
-      reason="PAPER_FEATURE_FLAG_ENABLED";
+      reason="PAPER_"+accountModeName+"_ACCOUNT_CONFIRMED";
       return true;
    }
    string demoReason="";
