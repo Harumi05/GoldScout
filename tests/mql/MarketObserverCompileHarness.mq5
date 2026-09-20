@@ -27,6 +27,20 @@ void OnStart()
    context.armedInvalidationRsi=0.0;
    context.armedInvalidationImpulseAtr=0.0;
    context.armedInvalidationStructure="INSUFICIENTE";
+   context.tpEvaluated=false;
+   context.currentTP=0.0;
+   context.currentRR=0.0;
+   context.v2TP=0.0;
+   context.v2RR=0.0;
+   context.selectedTP=0.0;
+   context.selectedRR=0.0;
+   context.tpMode="NOT_EVALUATED";
+   context.tpStructureLevel=0.0;
+   context.tpStructureConfidence="NONE";
+   context.executionState="PAPER";
+   context.executionReason="DEMO_EXECUTION_DISABLED";
+   context.executionRetcode=0;
+   context.signalEventId="";
 
    GoldScoutMarketObserver observer;
    string outcome=GSMO_DecisionOutcome(context);
