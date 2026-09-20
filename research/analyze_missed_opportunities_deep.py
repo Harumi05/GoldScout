@@ -2,8 +2,9 @@
 
 The universe intentionally preserves the existing diagnostic definition:
 ``decision == NO_TRADE`` plus an absolute one-hour close move of at least
-``0.75 ATR``.  Opportunity direction is hindsight metadata used only to select
-the relevant LONG/SHORT score and directionally normalize outcomes.
+``0.75 ATR``. Opportunity direction is resolved only from causal fields already
+persisted in the observation; future returns and excursions are used solely to
+label and evaluate the resulting case.
 
 This module never imports, writes, or executes the live EA.  It consumes only
 append-only historical observations, decision enrichment, outcomes, and the
@@ -77,6 +78,39 @@ def relevant_score(observation: Mapping[str, object], direction: str) -> float |
     key = "long_score" if direction == "LONG" else "short_score" if direction == "SHORT" else ""
     value = observation.get(key) if key else None
     return float(value) if _is_number(value) else None
+
+
+def resolve_causal_direction(observation: Mapping[str, object]) -> tuple[str | None, str]:
+    """Resolve LONG/SHORT without consulting any future outcome.
+
+    An explicit persisted direction wins. Otherwise the larger persisted score
+    decides. Score ties may use an armed direction or unambiguous persisted
+    structure; unresolved ties remain AMBIGUOUS and are excluded by callers.
+    """
+
+    persisted = str(observation.get("direction") or "").strip().upper()
+    if persisted in {"LONG", "SHORT"}:
+        return persisted, "PERSISTED_DIRECTION"
+
+    long_value = observation.get("long_score")
+    short_value = observation.get("short_score")
+    if _is_number(long_value) and _is_number(short_value):
+        long_score, short_score = float(long_value), float(short_value)
+        if long_score > short_score:
+            return "LONG", "DOMINANT_SCORE"
+        if short_score > long_score:
+            return "SHORT", "DOMINANT_SCORE"
+
+    armed = str(observation.get("armed_direction") or "").strip().upper()
+    if armed in {"LONG", "SHORT"}:
+        return armed, "PERSISTED_ARMED_DIRECTION"
+
+    structure = str(observation.get("structure") or "").strip().upper()
+    if structure == "BULLISH":
+        return "LONG", "PERSISTED_STRUCTURE"
+    if structure == "BEARISH":
+        return "SHORT", "PERSISTED_STRUCTURE"
+    return None, "AMBIGUOUS"
 
 
 def distance_to_threshold(score: float, threshold: int) -> float:
@@ -326,7 +360,9 @@ def build_missed_universe(
         atr_multiple = abs(raw_move) / atr
         if atr_multiple < threshold_atr:
             continue
-        direction = "LONG" if raw_move > 0.0 else "SHORT"
+        direction, direction_source = resolve_causal_direction(observation)
+        if direction is None:
+            continue
         score = relevant_score(observation, direction)
         if score is None:
             continue
@@ -340,6 +376,7 @@ def build_missed_universe(
             "observed_at": observation.get("observed_at"),
             "timeframe": observation.get("timeframe"),
             "direction": direction,
+            "direction_source": direction_source,
             "long_score": observation.get("long_score"),
             "short_score": observation.get("short_score"),
             "relevant_score": score,

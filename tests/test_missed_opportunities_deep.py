@@ -11,11 +11,13 @@ from research.analyze_missed_opportunities_deep import (
     TRADE_THRESHOLD,
     analysis_score_bucket,
     apply_stale_bias_crossover,
+    build_missed_universe,
     build_no_trade_counterfactual_population,
     classify_dominant_cause,
     counterfactual_rows,
     distance_bucket,
     distance_to_threshold,
+    resolve_causal_direction,
     score_components,
 )
 
@@ -31,6 +33,8 @@ def observation(long_score: int = 40, short_score: int = 30) -> dict:
         "_timestamp_ms": 2000,
         "timestamp": 1000,
         "decision": "NO_TRADE",
+        "close": 100.0,
+        "atr": 1.0,
         "long_score": long_score,
         "short_score": short_score,
         "long_technical_score": long_score,
@@ -76,6 +80,14 @@ def missed_row(score: int, direction: str = "LONG", period: str = "TRAIN", times
 
 
 class MissedOpportunityDeepTests(unittest.TestCase):
+    @staticmethod
+    def outcomes(item: dict, future_return: float) -> dict:
+        return {
+            item["event_id"]: {
+                "1h": {"future_return": future_return, "mfe": 0.02, "mae": -0.005},
+            }
+        }
+
     def test_distance_to_threshold_and_requested_buckets(self):
         self.assertEqual(distance_to_threshold(55, ARM_THRESHOLD), 3)
         self.assertEqual(distance_to_threshold(75, TRADE_THRESHOLD), 0)
@@ -127,6 +139,7 @@ class MissedOpportunityDeepTests(unittest.TestCase):
 
     def test_counterfactual_direction_comes_from_score_not_future_return(self):
         item = observation(long_score=20, short_score=56)
+        item["direction"] = "LONG"
         outcomes = {
             item["event_id"]: {
                 "1h": {"future_return": 0.01, "mfe": 0.02, "mae": -0.005},
@@ -138,6 +151,60 @@ class MissedOpportunityDeepTests(unittest.TestCase):
         self.assertEqual(rows[0]["direction"], "SHORT")
         self.assertEqual(rows[0]["relevant_score"], 56)
         self.assertEqual(rows[0]["future_return_1h"], -0.01)
+
+    def test_missed_long_direction_is_stable_across_opposite_future_returns(self):
+        positive = observation(long_score=60, short_score=40)
+        negative = {**positive, "event_id": "HISTORICAL_MT5_TICKS-XAUUSD-H1-2000"}
+        observations = [positive, negative]
+        outcomes = {
+            **self.outcomes(positive, 0.01),
+            **self.outcomes(negative, -0.01),
+        }
+        assignments = {positive["event_id"]: "TRAIN", negative["event_id"]: "OOS"}
+
+        rows = build_missed_universe(observations, outcomes, assignments)
+
+        self.assertEqual([row["direction"] for row in rows], ["LONG", "LONG"])
+        self.assertEqual([row["direction_source"] for row in rows], ["DOMINANT_SCORE", "DOMINANT_SCORE"])
+        self.assertEqual([row["future_return_1h"] for row in rows], [0.01, -0.01])
+
+    def test_missed_short_direction_is_stable_across_opposite_future_returns(self):
+        positive = observation(long_score=40, short_score=60)
+        negative = {**positive, "event_id": "HISTORICAL_MT5_TICKS-XAUUSD-H1-2000"}
+        observations = [positive, negative]
+        outcomes = {
+            **self.outcomes(positive, 0.01),
+            **self.outcomes(negative, -0.01),
+        }
+        assignments = {positive["event_id"]: "VALIDATION", negative["event_id"]: "OOS"}
+
+        rows = build_missed_universe(observations, outcomes, assignments)
+
+        self.assertEqual([row["direction"] for row in rows], ["SHORT", "SHORT"])
+        self.assertEqual([row["future_return_1h"] for row in rows], [-0.01, 0.01])
+        self.assertEqual([row["mfe_1h"] for row in rows], [0.005, 0.005])
+        self.assertEqual([row["mae_1h"] for row in rows], [-0.02, -0.02])
+
+    def test_persisted_direction_has_priority_over_dominant_score(self):
+        item = observation(long_score=60, short_score=40)
+        item["direction"] = "SHORT"
+
+        direction, source = resolve_causal_direction(item)
+
+        self.assertEqual(direction, "SHORT")
+        self.assertEqual(source, "PERSISTED_DIRECTION")
+
+    def test_tied_scores_use_only_causal_tie_breakers(self):
+        structured = observation(long_score=50, short_score=50)
+        structured["structure"] = "BEARISH"
+        ambiguous = observation(long_score=50, short_score=50)
+
+        self.assertEqual(resolve_causal_direction(structured), ("SHORT", "PERSISTED_STRUCTURE"))
+        self.assertEqual(resolve_causal_direction(ambiguous), (None, "AMBIGUOUS"))
+
+        outcomes = self.outcomes(ambiguous, 0.01)
+        rows = build_missed_universe([ambiguous], outcomes, {ambiguous["event_id"]: "TRAIN"})
+        self.assertEqual(rows, [])
 
     def test_long_and_short_are_evaluated_independently(self):
         rows = [missed_row(56, "LONG"), missed_row(56, "SHORT", timestamp=2000)]
@@ -175,6 +242,7 @@ class MissedOpportunityDeepTests(unittest.TestCase):
         self.assertIn("input double RiskPercent             = 5.0;", EA)
         self.assertIn("input int    ArmScoreThreshold       = 58;", EA)
         self.assertIn("input int    MinScoreToTrade         = 74;", EA)
+        self.assertIn('"score_effect": 0', MODULE)
 
 
 if __name__ == "__main__":
