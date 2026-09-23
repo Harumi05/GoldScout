@@ -1,0 +1,81 @@
+{
+  "bars_existing": {
+    "H1": 7789,
+    "H4": 2116,
+    "M1": 466433,
+    "M15": 31126
+  },
+  "d1_session_status": "UNVERIFIED",
+  "dataset_id": "XAUUSD_MT5_TICKS_cb0b58f3ac94acb0",
+  "date_end": "2026-09-11T20:58:57.490",
+  "date_start": "2025-05-15T07:12:07.545",
+  "derived_capability_estimates": {
+    "D1": {
+      "closed_buckets": 414,
+      "complete_buckets": 0,
+      "materialized": false,
+      "sparse_buckets": 414,
+      "unclosed_final_bucket": 1
+    },
+    "M5": {
+      "closed_buckets": 93369,
+      "complete_buckets": 93012,
+      "materialized": false,
+      "sparse_buckets": 357,
+      "unclosed_final_bucket": 1
+    }
+  },
+  "fingerprint": "sha256:cb0b58f3ac94acb06cd99b2b904c57b38fd007a8ec03f2be3639d28a27b874c8",
+  "gaps_m1": {
+    "intervals_gt_1_day": 72,
+    "intervals_gt_1_hour": 345,
+    "intervals_gt_1_minute": 389,
+    "market_closure_confirmed": false,
+    "maximum_elapsed_minutes": 4382,
+    "reason": "UNKNOWN_REASON"
+  },
+  "provenance": {
+    "input_path_policy": "filename_and_hash_only; local normalized_path excluded",
+    "no_tick_csv_reread": true,
+    "processed_inputs_schema_version": 1,
+    "replay_output_version": "historical-replay-v1",
+    "source_bar_timeframe": "M1"
+  },
+  "schema_version": 1,
+  "session_attribution_allowed": false,
+  "source": "HISTORICAL_MT5_TICKS",
+  "source_files": [
+    {
+      "adopted_existing_output": true,
+      "filename": "XAUUSD_202505150712_202609112058.csv",
+      "fingerprint": "sha256:cb0b58f3ac94acb06cd99b2b904c57b38fd007a8ec03f2be3639d28a27b874c8",
+      "modified_time": "2026-09-13T04:26:44.045Z",
+      "size_bytes": 5955642667,
+      "status": "SUCCESS"
+    }
+  ],
+  "spread_m1_average_price_units": {
+    "maximum_observed_tick_spread_from_m1": 5.0,
+    "median": 0.3000000000000236,
+    "methodology": "unweighted percentiles of per-M1 avg_spread; linear interpolation at (n-1)*p; maximum of per-M1 max_spread",
+    "p95": 0.5968468468468469,
+    "p99": 1.1465739383215456
+  },
+  "tick_activity_m1": {
+    "low_activity_bars": 39,
+    "low_activity_threshold_ticks": 5,
+    "median_tick_count": 241.0,
+    "methodology": "one observation per persisted M1 bar; tick_count is quote activity, not traded volume",
+    "p95_tick_count": 631.0
+  },
+  "ticks": {
+    "discarded": null,
+    "duplicates": null,
+    "read": null,
+    "valid": 132193488
+  },
+  "timezone": {
+    "broker_server_utc_offset": null,
+    "status": "UNKNOWN"
+  }
+}
