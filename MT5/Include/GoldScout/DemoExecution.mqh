@@ -48,10 +48,13 @@ double GSDE_RemainingDailyBudget(const double dailyBudget,
 
 string GSDE_CloseReason(const long dealReason)
 {
+   if(dealReason<0) return "UNKNOWN";
    if(dealReason==DEAL_REASON_TP) return "TP";
    if(dealReason==DEAL_REASON_SL) return "SL";
    if(dealReason==DEAL_REASON_CLIENT || dealReason==DEAL_REASON_MOBILE ||
       dealReason==DEAL_REASON_WEB) return "MANUAL";
+   if(dealReason==DEAL_REASON_EXPERT) return "EA_CLOSE";
+   if(dealReason==DEAL_REASON_SO) return "BROKER";
    return "OTHER";
 }
 

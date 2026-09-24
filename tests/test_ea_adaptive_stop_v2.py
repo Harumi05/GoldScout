@@ -133,7 +133,8 @@ class AdaptiveStopV2RecoveryTests(unittest.TestCase):
             "UseTakeProfitV2",
             "StoreTakeProfitDiagnostics(tpDecision)",
             'AppendExecutionEvent("ORDER_REJECTED"',
-            'AppendExecutionEvent("POSITION_CLOSED"',
+            'AppendClosedTradeRecord(closedTrade,result.retcode)',
+            'json+="\\\"event\\\":\\\"POSITION_CLOSED\\\",";',
             "UseArmedInvalidationV1 = false;",
         ):
             self.assertIn(token, EA)

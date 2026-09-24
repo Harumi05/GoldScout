@@ -191,12 +191,13 @@ class DemoExecutionSourceContracts(unittest.TestCase):
         self.assertIn("SignalEventId(entryBar,direction,setup,score)", self.ea)
 
     def test_execution_lifecycle_is_append_only_and_linked(self):
-        for event in ("SIGNAL", "ORDER_REQUEST", "ORDER_FILLED", "ORDER_REJECTED", "POSITION_OPEN", "POSITION_CLOSED"):
+        for event in ("SIGNAL", "RESERVED", "ORDER_REQUESTED", "ORDER_FILLED", "ORDER_REJECTED", "POSITION_OPEN", "POSITION_CLOSED"):
             self.assertIn(f'"{event}"', self.ea)
         self.assertNotIn('"POSITION_CLOSE"', self.ea)
         self.assertIn('\\"signal_event_id\\"', self.ea)
-        self.assertIn("FileSeek(handle,0,SEEK_END)", self.ea)
-        self.assertNotIn("FILE_WRITE|FILE_TXT|FILE_ANSI);\n   FileWriteString(handle", self.ea)
+        ledger = (ROOT / "MT5" / "Include" / "GoldScout" / "DemoTradeLedger.mqh").read_text(encoding="utf-8")
+        self.assertIn("FileSeek(handle,0,SEEK_END)", ledger)
+        self.assertIn("FileFlush(handle)", ledger)
 
     def test_dashboard_has_execution_positions_closures_and_stats(self):
         for label in ("DEMO EXECUTION", "OPEN POSITIONS", "SESSION STATS"):
