@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>GoldScout 24/7 — XAUUSD</title>
+<title>HALI — XAUUSD Trading Intelligence</title>
 <style>
 :root{--bg:#efede3;--ink:#111;--muted:#66645f;--card:#f4f1e7;--line:#222;--orange:#f05223;--green:#27864a;--red:#c94633}
 *{box-sizing:border-box} body{margin:0;background:radial-gradient(circle at 50% 10%,#faf8ef 0,#ebe8dc 42%,#dfdccf 100%);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--ink)}
@@ -16,27 +16,155 @@
 @media(max-width:900px){.span4,.span6,.span8{grid-column:span 12}.headline{font-size:40px}.stats{grid-template-columns:repeat(2,1fr)}.trade{grid-template-columns:1fr 1fr}.trade button{grid-column:span 2}.sources{grid-template-columns:1fr}}
 @media(max-width:520px){.analysis-grid{grid-template-columns:1fr}.wrap{padding-left:16px;padding-right:16px}.headline{font-size:34px}.stats{grid-template-columns:1fr}.row{align-items:flex-start;flex-wrap:wrap}.source-box{padding:9px}}
 .session-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-top:12px}.session-box{border:1px solid #aaa;border-radius:8px;padding:12px;background:#efecdf;min-width:0}.session-box .label{font-size:11px;color:var(--muted);text-transform:uppercase}.session-box .big{font-size:22px;font-weight:900;margin-top:5px}.session-note{margin-top:10px;padding:10px;border-left:3px solid var(--orange);background:#efecdf}.session-open{border-color:var(--orange)}.centers{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:12px}.center-card{border:1px solid #aaa;border-radius:8px;padding:9px;background:#efecdf;min-width:0}.center-card strong{font-size:12px;display:flex;justify-content:space-between;gap:8px;align-items:flex-start}.center-open-time{font-size:10px;font-weight:700;color:var(--muted);white-space:nowrap}.center-card .small{margin-top:4px}.center-open{border-color:var(--orange);box-shadow:0 0 0 1px rgba(240,82,35,.15)}.center-active{border-color:var(--green)}@media(max-width:1000px){.centers{grid-template-columns:repeat(3,minmax(0,1fr))}}@media(max-width:700px){.centers{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:460px){.centers{grid-template-columns:1fr}}@media(max-width:900px){.session-grid{grid-template-columns:repeat(3,1fr)}}@media(max-width:620px){.session-grid{grid-template-columns:repeat(2,1fr)}}
+
+/* ===== HALI GOTHIC TRADING UI V1 ===== */
+:root{
+  --bg:#050607;--ink:#f4eee4;--muted:#8d929b;--card:#0b0e11;--card2:#101419;
+  --line:#232831;--orange:#c49a55;--gold:#d7ad63;--gold2:#8b6431;
+  --green:#20c997;--red:#ef3f58;--blood:#8f0f22;--shadow:0 18px 55px rgba(0,0,0,.42)
+}
+html{background:#050607;scroll-behavior:smooth}
+body{
+  color:var(--ink);
+  background:
+    radial-gradient(circle at 86% -8%,rgba(132,8,28,.18),transparent 28rem),
+    radial-gradient(circle at 7% 68%,rgba(129,89,35,.08),transparent 30rem),
+    linear-gradient(180deg,#07090b 0%,#030405 100%);
+  min-height:100vh
+}
+body:before{
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:-1;opacity:.22;
+  background-image:linear-gradient(rgba(255,255,255,.018) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.012) 1px,transparent 1px);
+  background-size:36px 36px
+}
+.hali-topbar{
+  height:72px;position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-content:space-between;
+  padding:0 22px;border-bottom:1px solid #20242b;background:rgba(5,7,9,.92);
+  backdrop-filter:blur(18px);box-shadow:0 8px 30px rgba(0,0,0,.28)
+}
+.hali-brand{display:flex;align-items:center;gap:12px;min-width:0}
+.hali-brand img{width:52px;height:52px;object-fit:cover;border-radius:50%;border:1px solid #7e592f;box-shadow:0 0 24px rgba(207,48,67,.18)}
+.hali-wordmark{font-family:Georgia,'Times New Roman',serif;font-size:25px;letter-spacing:.16em;color:#e7bd75;text-transform:uppercase;line-height:1}
+.hali-tagline{font-size:9px;letter-spacing:.28em;color:#6f747c;margin-top:6px;text-transform:uppercase}
+.hali-topstats{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+.top-chip{border:1px solid #2b3139;background:#0b0e12;border-radius:9px;padding:8px 11px;font-size:11px;color:#b8bec7}
+.top-chip b{color:#f3eee7}.top-chip.online{border-color:rgba(32,201,151,.45);color:#45d9ab}.top-chip.offline{border-color:rgba(239,63,88,.45);color:#ef6375}
+.app-shell{display:grid;grid-template-columns:188px minmax(0,1fr);min-height:calc(100vh - 72px)}
+.hali-sidebar{
+  position:sticky;top:72px;height:calc(100vh - 72px);padding:24px 14px;border-right:1px solid #1c2026;
+  background:linear-gradient(180deg,rgba(8,10,12,.98),rgba(4,5,6,.98));overflow:auto
+}
+.hali-nav{display:grid;gap:8px}.hali-nav a{color:#8e949e;text-decoration:none;padding:11px 12px;border:1px solid transparent;border-radius:9px;font-size:12px;transition:.18s ease}
+.hali-nav a:hover{color:#f3eee7;border-color:#322229;background:linear-gradient(90deg,rgba(143,15,34,.22),transparent)}
+.hali-nav a.active{color:#fff;border-color:#5f1726;background:linear-gradient(90deg,rgba(143,15,34,.5),rgba(143,15,34,.06));box-shadow:inset 3px 0 #dc3049}
+.sidebar-mark{margin-top:28px;padding:14px;border-top:1px solid #20242a;color:#5f646c;font-family:Georgia,serif;font-size:11px;letter-spacing:.18em;line-height:1.8;text-transform:uppercase}
+.main-stage{min-width:0}.wrap{max-width:1550px;padding:22px 22px 54px}
+.hero-brand{
+  min-height:205px;border:1px solid #242932;border-radius:16px;overflow:hidden;position:relative;
+  display:flex;align-items:center;gap:24px;padding:25px 30px;margin-bottom:16px;
+  background:
+   radial-gradient(circle at 15% 50%,rgba(147,15,34,.22),transparent 18rem),
+   linear-gradient(115deg,#0b0d10 0%,#070809 62%,#10070a 100%);
+  box-shadow:var(--shadow)
+}
+.hero-brand:after{content:"";position:absolute;left:0;right:0;bottom:0;height:2px;background:linear-gradient(90deg,transparent,#8d5c2a,#b5152f,#8d5c2a,transparent);opacity:.7}
+.hero-logo{width:150px;height:150px;object-fit:cover;border-radius:18px;filter:drop-shadow(0 8px 30px rgba(0,0,0,.75));flex:0 0 auto}
+.hero-brand h1{font-family:Georgia,'Times New Roman',serif;font-size:56px;letter-spacing:.12em;margin:0;color:#e8c17d;text-transform:uppercase;text-shadow:0 0 24px rgba(202,151,75,.12)}
+.hero-brand p{margin:7px 0 0;color:#989da5;font-size:12px;letter-spacing:.18em;text-transform:uppercase}
+.hero-brand .bloodline{color:#c92c43}
+.kpi-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px;margin:16px 0 8px}
+.kpi{min-width:0;padding:15px 16px;border:1px solid #262c34;border-radius:12px;background:linear-gradient(155deg,#101318,#090b0e);box-shadow:0 10px 28px rgba(0,0,0,.22)}
+.kpi-label{font-size:10px;letter-spacing:.11em;color:#858b94;text-transform:uppercase}.kpi-value{margin-top:7px;font-size:20px;font-weight:800;color:#f3efe9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.kpi-note{font-size:10px;color:#626973;margin-top:5px}
+.grid{gap:12px;margin-top:12px}
+.card{
+  background:linear-gradient(155deg,rgba(15,18,22,.97),rgba(7,9,11,.98));
+  border:1px solid #272d35;border-radius:13px;padding:17px;box-shadow:0 10px 30px rgba(0,0,0,.23);
+  position:relative;overflow:hidden
+}
+.card:before{content:"";position:absolute;left:0;top:0;width:100%;height:1px;background:linear-gradient(90deg,transparent,rgba(214,165,88,.38),transparent)}
+.card h3,.section-title{color:#d5ae6d;letter-spacing:.09em}.section-title{font-family:Georgia,'Times New Roman',serif;font-size:22px}
+.value,.score{color:#f4eee5}.small{color:#858b94}.analysis-box,.session-box,.center-card,.decision-box,.muted-box,.source-box,.notice,.reason{
+  background:#0a0d10;border-color:#2a3038;color:#d6d9dd
+}
+.analysis-row{border-top-color:#252b32}.session-note{background:#0a0d10;border-left-color:#a9162e}
+.pill{border-color:#343b45;background:#0b0e11;color:#b9bec6}.paper{border-color:rgba(32,201,151,.55);color:#39d5a4;background:rgba(32,201,151,.07)}
+.live{border-color:rgba(239,63,88,.58);color:#ef6375;background:rgba(239,63,88,.07)}
+.buy,.ok{color:#28d6a3!important}.sell,.bad{color:#f05269!important}.meter{background:#090b0d;border-color:#303741}.meter i{background:linear-gradient(90deg,#8d5c2a,#d6ad67,#9e1730)}
+button{color:#c9cdd3;border-color:#343b45;background:#0b0e11}button:hover{background:#161a20;border-color:#795530;color:#fff}
+.tag{border-bottom-color:#b0172e;color:#d9b36e}.headline-link{color:#d5d8de}
+hr{border:0;border-top:1px solid #282e36}
+#newsRisk,#aBlock,#stopReason{overflow-wrap:anywhere}
+@media(max-width:1200px){.kpi-grid{grid-template-columns:repeat(3,1fr)}.app-shell{grid-template-columns:150px minmax(0,1fr)}.hali-sidebar{padding-left:8px;padding-right:8px}}
+@media(max-width:900px){
+  .hali-topbar{height:auto;min-height:64px;padding:9px 13px}.hali-brand img{width:42px;height:42px}.hali-wordmark{font-size:20px}.hali-tagline{display:none}
+  .top-chip:nth-child(2),.top-chip:nth-child(3){display:none}.app-shell{display:block}.hali-sidebar{display:none}
+  .wrap{padding:14px 12px 38px}.hero-brand{min-height:150px;padding:18px;gap:15px}.hero-logo{width:94px;height:94px}.hero-brand h1{font-size:39px}
+  .hero-brand p{font-size:9px;letter-spacing:.11em}.kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.kpi{padding:12px}.kpi-value{font-size:17px}
+  .card{padding:14px}.section-title{font-size:19px}.trade{grid-template-columns:1fr}.trade button{grid-column:auto}
+}
+@media(max-width:460px){.hero-brand{min-height:125px}.hero-logo{width:76px;height:76px}.hero-brand h1{font-size:32px}.kpi-grid{grid-template-columns:repeat(2,1fr)}.top-chip{padding:7px 8px}}
+
 </style>
 </head>
-<body><div class="wrap">
-<h1 class="headline">Primero, escanea el<br>mercado 24/7.</h1>
-<div class="sub">+ PRECIO <span class="orange">•</span> NOTICIAS <span class="orange">•</span> VOLUMEN <span class="orange">•</span> SETUPS +</div>
+<body>
+<header class="hali-topbar">
+  <div class="hali-brand">
+    <img src="/assets/hali-logo.webp" alt="Hali" onerror="this.style.display='none'">
+    <div><div class="hali-wordmark">HALI</div><div class="hali-tagline">Autonomous Gold Intelligence</div></div>
+  </div>
+  <div class="hali-topstats">
+    <span id="topStatus" class="top-chip offline">● OFFLINE</span>
+    <span class="top-chip">Cuenta: <b id="topAccount">—</b></span>
+    <span class="top-chip">XAUUSD · H1/H4/M15</span>
+    <span class="top-chip">Actualizado: <b id="topUpdated">—</b></span>
+  </div>
+</header>
+<div class="app-shell">
+<aside class="hali-sidebar">
+  <nav class="hali-nav">
+    <a class="active" href="#overview">◈ Dashboard</a>
+    <a href="#active">↗ Operaciones</a>
+    <a href="#analysisBar">⌁ Señales</a>
+    <a href="#sessionName">◉ Mercado</a>
+    <a href="#dailyMeter">⬡ Riesgo</a>
+    <a href="#newsDir">✦ Noticias</a>
+    <a href="#observerStatus">▣ Registros</a>
+  </nav>
+  <div class="sidebar-mark">Disciplina<br>Datos<br>Resultados</div>
+</aside>
+<main class="main-stage">
+<div class="wrap" id="overview">
+<section class="hero-brand">
+  <img class="hero-logo" src="/assets/hali-logo.webp" alt="Logo Hali" onerror="this.style.display='none'">
+  <div>
+    <h1>HALI</h1>
+    <p>Autonomous <span class="bloodline">XAUUSD</span> Trading Intelligence · Private Terminal</p>
+  </div>
+</section>
+<section class="kpi-grid" aria-label="Resumen">
+  <div class="kpi"><div class="kpi-label">Balance</div><div class="kpi-value" id="heroBalance">—</div><div class="kpi-note">Cuenta actual</div></div>
+  <div class="kpi"><div class="kpi-label">Equity</div><div class="kpi-value" id="heroEquity">—</div><div class="kpi-note">Equity en tiempo real</div></div>
+  <div class="kpi"><div class="kpi-label">PnL hoy</div><div class="kpi-value" id="heroDailyPnl">—</div><div class="kpi-note">Realizado sesión</div></div>
+  <div class="kpi"><div class="kpi-label">PnL flotante</div><div class="kpi-value" id="heroFloating">—</div><div class="kpi-note">Posiciones abiertas</div></div>
+  <div class="kpi"><div class="kpi-label">Win rate</div><div class="kpi-value" id="heroWinRate">—</div><div class="kpi-note">Trades reconciliados</div></div>
+  <div class="kpi"><div class="kpi-label">Score actual</div><div class="kpi-value" id="heroScore">—</div><div class="kpi-note">Señal Hali</div></div>
+</section>
 <div class="grid">
 <section class="card span8"><div class="row"><div><h3>Escáner de mercado</h3><div class="value" id="symbol">XAUUSD · H1</div></div><div class="row"><span id="connection" class="pill offline">SIN DATOS MT5</span><span id="mode" class="pill paper">PAPER MODE</span></div></div><p class="small" id="decision">Cargando...</p><div class="stats"><div class="stat"><span class="small">SCORE</span><div class="score" id="score">--</div></div><div class="stat"><span class="small">SETUP</span><div id="setup">--</div></div><div class="stat"><span class="small">DIRECCIÓN</span><div id="direction">--</div></div><div class="stat"><span class="small">RIESGO EFECTIVO</span><div id="risk">—</div><div class="small" id="riskPct">5.0% equity</div><div class="small" id="riskBudget">Objetivo — · restante diario —</div></div></div></section>
 <section class="card span4"><h3>Sistema de riesgo</h3><div class="row"><div><div class="small">BALANCE</div><div class="value" id="balance">—</div></div><div><div class="small">EQUITY ACTUAL</div><div class="value" id="equity">—</div></div></div><hr><div class="analysis-row"><span>Equity inicio del día</span><strong id="startEquity">—</strong></div><div class="analysis-row"><span>RiskPercent</span><strong id="tradeRiskPercent">5.0%</strong></div><div class="analysis-row"><span>Riesgo objetivo/trade</span><strong id="targetRisk">—</strong></div><div class="analysis-row"><span>DailyLossLimitPercent</span><strong id="dailyLossPercent">5.0%</strong></div><div class="analysis-row"><span>Presupuesto diario inicial</span><strong id="dailyBudget">—</strong></div><div class="analysis-row"><span>Pérdida diaria utilizada</span><strong id="dailyLossUsed">—</strong></div><div class="analysis-row"><span>Riesgo abierto reservado</span><strong id="openRisk">—</strong></div><div class="analysis-row"><span>Presupuesto diario restante</span><strong id="dailyRemaining">—</strong></div><div class="analysis-row"><span>Riesgo efectivo permitido</span><strong id="effectiveRisk">—</strong></div><div class="meter"><i id="dailyMeter" style="width:0%"></i></div><p class="small" id="riskNote">El presupuesto diario se fija con la equity de inicio del día y no aumenta por ganancias intradía. Pérdidas realizadas y riesgo abierto reducen el disponible.</p><div id="mt5Notice" class="notice small">Conecta el EA en MT5 para reemplazar estos datos por balance, equity y operaciones reales de la cuenta.</div></section>
 <section class="card span12"><h2 class="section-title">Análisis de la última vela H1</h2><div class="small" id="analysisBar">Esperando la primera evaluación H1...</div><div class="analysis-grid"><div class="analysis-box"><h4>Tendencia</h4><div class="analysis-row"><span>H4</span><strong id="aH4">—</strong></div><div class="analysis-row"><span>H1</span><strong id="aH1">—</strong></div><div class="analysis-row"><span>EMA H1</span><strong id="aEma">—</strong></div><div class="analysis-row"><span>EMA H4</span><strong id="aH4Ema">—</strong></div></div><div class="analysis-box"><h4>Indicadores</h4><div class="analysis-row"><span>RSI 14</span><strong id="aRsi">—</strong></div><div class="analysis-row"><span>ADX 14</span><strong id="aAdx">—</strong></div><div class="analysis-row"><span>ATR 14</span><strong id="aAtr">—</strong></div><div class="analysis-row"><span>Volumen</span><strong id="aVol">—</strong></div></div><div class="analysis-box"><h4>Scoring</h4><div class="analysis-row"><span>LONG técnico</span><strong id="aLongTech">—</strong></div><div class="analysis-row"><span>SHORT técnico</span><strong id="aShortTech">—</strong></div><div class="analysis-row"><span>Noticias L/S</span><strong id="aNewsPts">—</strong></div><div class="analysis-row"><span>FINAL L/S</span><strong id="aFinal">—</strong></div></div><div class="analysis-box"><h4>Estructura</h4><div class="analysis-row"><span>Setup</span><strong id="aStructure">—</strong></div><div class="analysis-row"><span>Candidato</span><strong id="aCandidate">—</strong></div><div class="analysis-row"><span>R:R mínimo</span><strong id="aMinRR">—</strong></div><div class="analysis-row"><span>Bloqueo</span><strong id="aBlock">—</strong></div></div></div><div class="decision-box"><strong>LECTURA TÉCNICA</strong><div class="small" id="aTechReason">—</div></div><div class="decision-box"><strong>LECTURA DE NOTICIAS</strong><div class="small" id="aNewsReason">—</div></div><div class="muted-box small"><strong>Importante:</strong> el bot arma el setup al comenzar H1 y lo vigila intrabar. Score y sesgo son señales del sistema, no una probabilidad garantizada de acierto.</div></section>
-<section class="card span12"><h2 class="section-title">MONITOREO INTRABAR · H1</h2><div class="analysis-grid"><div class="analysis-box"><h4>Estado</h4><div class="analysis-row"><span>Estado</span><strong id="mState">—</strong></div><div class="analysis-row"><span>Candidato</span><strong id="mCandidate">—</strong></div></div><div class="analysis-box"><h4>Trigger</h4><div class="analysis-row"><span>Score</span><strong id="mScore">—</strong></div><div class="analysis-row"><span>Boost L / S</span><strong id="mBoost">—</strong></div></div><div class="analysis-box"><h4>Tiempo</h4><div class="analysis-row"><span>Vigilando</span><strong id="mAge">—</strong></div><div class="analysis-row"><span>Entrada usada H1</span><strong id="mUsed">—</strong></div></div><div class="analysis-box"><h4>Lectura</h4><div class="analysis-row"><span>Estado</span><strong id="mReason">—</strong></div></div></div><div class="decision-box"><strong>MONITOR</strong><div class="small" id="mReasonLong">—</div></div></section><section class="card span12"><h2 class="section-title">SESIÓN Y CENTROS DE MERCADO · ORO</h2><div class="session-grid"><div class="session-box"><div class="label">Sesión regional</div><div class="big" id="sessionName">—</div></div><div class="session-box"><div class="label">Fase</div><div class="big" id="sessionPhase">—</div></div><div class="session-box"><div class="label">Volatilidad</div><div class="big" id="sessionVol">—</div></div><div class="session-box"><div class="label">Impulso apertura</div><div class="big" id="sessionImpulse">—</div></div><div class="session-box"><div class="label">Puntos L / S</div><div class="big" id="sessionPts">—</div></div></div><div class="session-note small" id="sessionContext">Esperando contexto de mercado...</div><div class="centers" id="marketCenters"></div><div class="small" style="margin-top:10px">Contexto por centros: Tokio, Shanghai/HK, Singapur, Mumbai, Londres, Nueva York/COMEX y ventanas LBMA. GoldScout usa estas ventanas como contexto de liquidez/volatilidad; no asume que cada apertura produzca un pullback.</div></section>
+<section class="card span12"><h2 class="section-title">MONITOREO INTRABAR · H1</h2><div class="analysis-grid"><div class="analysis-box"><h4>Estado</h4><div class="analysis-row"><span>Estado</span><strong id="mState">—</strong></div><div class="analysis-row"><span>Candidato</span><strong id="mCandidate">—</strong></div></div><div class="analysis-box"><h4>Trigger</h4><div class="analysis-row"><span>Score</span><strong id="mScore">—</strong></div><div class="analysis-row"><span>Boost L / S</span><strong id="mBoost">—</strong></div></div><div class="analysis-box"><h4>Tiempo</h4><div class="analysis-row"><span>Vigilando</span><strong id="mAge">—</strong></div><div class="analysis-row"><span>Entrada usada H1</span><strong id="mUsed">—</strong></div></div><div class="analysis-box"><h4>Lectura</h4><div class="analysis-row"><span>Estado</span><strong id="mReason">—</strong></div></div></div><div class="decision-box"><strong>MONITOR</strong><div class="small" id="mReasonLong">—</div></div></section><section class="card span12"><h2 class="section-title">SESIÓN Y CENTROS DE MERCADO · ORO</h2><div class="session-grid"><div class="session-box"><div class="label">Sesión regional</div><div class="big" id="sessionName">—</div></div><div class="session-box"><div class="label">Fase</div><div class="big" id="sessionPhase">—</div></div><div class="session-box"><div class="label">Volatilidad</div><div class="big" id="sessionVol">—</div></div><div class="session-box"><div class="label">Impulso apertura</div><div class="big" id="sessionImpulse">—</div></div><div class="session-box"><div class="label">Puntos L / S</div><div class="big" id="sessionPts">—</div></div></div><div class="session-note small" id="sessionContext">Esperando contexto de mercado...</div><div class="centers" id="marketCenters"></div><div class="small" style="margin-top:10px">Contexto por centros: Tokio, Shanghai/HK, Singapur, Mumbai, Londres, Nueva York/COMEX y ventanas LBMA. Hali usa estas ventanas como contexto de liquidez/volatilidad; no asume que cada apertura produzca un pullback.</div></section>
 <section class="card span12"><h2 class="section-title">Noticias y macro que afectan al oro</h2><div class="stats"><div class="stat"><span class="small">SESGO</span><div class="value" id="newsDir">NEUTRO</div></div><div class="stat"><span class="small">BIAS</span><div class="score" style="font-size:34px" id="newsBias">0</div></div><div class="stat"><span class="small">CONFIANZA</span><div class="value" id="newsConf">0%</div></div><div class="stat"><span class="small">RIESGO</span><div class="value" id="newsRisk">UNKNOWN</div></div></div><p class="small" id="newsDataRisk">Riesgo de datos: UNKNOWN</p><p class="small" id="newsSummary">Esperando análisis de noticias...</p><div id="newsSources" class="sources"></div><h3 style="margin-top:18px">Titulares recientes</h3><div id="newsHeadlines" class="timeline"></div><p class="small" id="newsSource">Motor multi-fuente: GDELT + Google News RSS + Bing News RSS. GDELT es opcional; las fuentes RSS funcionan como respaldo.</p></section>
 <section class="card span12"><h2 class="section-title">CONSENSO EXTERNO — ETORO</h2><div class="stats"><div class="stat"><span class="small">LONG</span><div class="value buy" id="extLong">0%</div></div><div class="stat"><span class="small">SHORT</span><div class="value sell" id="extShort">0%</div></div><div class="stat"><span class="small">NEUTRAL</span><div class="value" id="extNeutral">0%</div></div><div class="stat"><span class="small">TRADERS VÁLIDOS</span><div class="value" id="extTraders">0</div></div></div><div class="statusline small"><span id="extQuality">Calidad: 0</span><span id="extFresh">Frescura: —</span><span id="extApi">API: SIN DATOS</span></div><div class="muted-box small" id="extReadOnly">Solo diagnóstico · score_effect=0 · sin copy trading ni ejecución.</div></section>
 <section class="card span12"><h2 class="section-title">TRADINGVIEW — OBSERVACIÓN</h2><div class="stats"><div class="stat"><span class="small">DIRECCIÓN</span><div class="value" id="tvDirection">—</div></div><div class="stat"><span class="small">TIMEFRAME</span><div class="value" id="tvTimeframe">—</div></div><div class="stat"><span class="small">EVENTO</span><div class="value" id="tvEvent">—</div></div><div class="stat"><span class="small">PRECIO</span><div class="value" id="tvPrice">—</div></div></div><div class="statusline small"><span id="tvStatus">Estado: NO_DATA</span><span id="tvLast">Última señal: —</span><span id="tvFresh">Frescura: —</span><span id="tvCount">Eventos: 0</span></div><div class="muted-box small">Solo observación · score_effect=0</div></section>
-<section class="card span12"><h2 class="section-title">MARKET OBSERVER — MT5</h2><div class="stats"><div class="stat"><span class="small">ÚLTIMO M15</span><div id="observerM15">—</div></div><div class="stat"><span class="small">ÚLTIMO H1</span><div id="observerH1">—</div></div><div class="stat"><span class="small">ÚLTIMO H4</span><div id="observerH4">—</div></div><div class="stat"><span class="small">OBSERVACIONES</span><div class="value" id="observerCount">0</div></div></div><div class="statusline small"><span id="observerStatus">Estado: NO_DATA</span><span id="observerFresh">Frescura: —</span></div><div class="decision-box"><strong>ÚLTIMA DECISIÓN GOLDSCOUT</strong><div class="small" id="observerDecision">—</div></div><div class="muted-box small">Solo observación · score_effect=0</div></section>
+<section class="card span12"><h2 class="section-title">MARKET OBSERVER — MT5</h2><div class="stats"><div class="stat"><span class="small">ÚLTIMO M15</span><div id="observerM15">—</div></div><div class="stat"><span class="small">ÚLTIMO H1</span><div id="observerH1">—</div></div><div class="stat"><span class="small">ÚLTIMO H4</span><div id="observerH4">—</div></div><div class="stat"><span class="small">OBSERVACIONES</span><div class="value" id="observerCount">0</div></div></div><div class="statusline small"><span id="observerStatus">Estado: NO_DATA</span><span id="observerFresh">Frescura: —</span></div><div class="decision-box"><strong>ÚLTIMA DECISIÓN HALI</strong><div class="small" id="observerDecision">—</div></div><div class="muted-box small">Solo observación · score_effect=0</div></section>
 <section class="card span12"><h2 class="section-title">STOP MODE — PAPER/DEMO A/B</h2><div class="analysis-grid"><div class="analysis-box"><h4>Selección</h4><div class="analysis-row"><span>Modo</span><strong id="stopMode">NOT_EVALUATED</strong></div><div class="analysis-row"><span>Setup</span><strong id="stopSetup">—</strong></div><div class="analysis-row"><span>Dirección</span><strong id="stopDirection">—</strong></div></div><div class="analysis-box"><h4>CURRENT shadow</h4><div class="analysis-row"><span>SL / ATR</span><strong id="stopCurrent">—</strong></div><div class="analysis-row"><span>Lotaje</span><strong id="stopCurrentLot">—</strong></div></div><div class="analysis-box"><h4>ADAPTIVE V2 shadow</h4><div class="analysis-row"><span>SL / ATR</span><strong id="stopAdaptive">—</strong></div><div class="analysis-row"><span>Lotaje</span><strong id="stopAdaptiveLot">—</strong></div></div><div class="analysis-box"><h4>Utilizado</h4><div class="analysis-row"><span>SL / lote</span><strong id="stopSelected">—</strong></div><div class="analysis-row"><span>Riesgo</span><strong id="stopRisk">—</strong></div><div class="analysis-row"><span>Motivo</span><strong id="stopReason">—</strong></div></div></div><div class="muted-box small">Feature flag apagado por defecto. Adaptive V2 solo puede seleccionarse en PAPER o en cuenta DEMO verificada; REAL permanece hard-blocked.</div></section>
 <section class="card span12"><h2 class="section-title">TP MODE — PAPER A/B</h2><div class="analysis-grid"><div class="analysis-box"><h4>Selección</h4><div class="analysis-row"><span>Modo</span><strong id="tpMode">CURRENT</strong></div><div class="analysis-row"><span>Clase</span><strong id="tpClass">—</strong></div><div class="analysis-row"><span>Setup</span><strong id="tpSetup">—</strong></div><div class="analysis-row"><span>Dirección</span><strong id="tpDirection">—</strong></div></div><div class="analysis-box"><h4>CURRENT</h4><div class="analysis-row"><span>TP</span><strong id="tpCurrent">—</strong></div><div class="analysis-row"><span>R:R</span><strong id="tpCurrentRR">—</strong></div></div><div class="analysis-box"><h4>V2 shadow</h4><div class="analysis-row"><span>TP</span><strong id="tpV2">—</strong></div><div class="analysis-row"><span>R:R</span><strong id="tpV2RR">—</strong></div><div class="analysis-row"><span>Nivel</span><strong id="tpLevel">—</strong></div><div class="analysis-row"><span>Confidence</span><strong id="tpConfidence">NONE</strong></div></div><div class="analysis-box"><h4>Utilizado</h4><div class="analysis-row"><span>TP</span><strong id="tpSelected">—</strong></div><div class="analysis-row"><span>R:R</span><strong id="tpSelectedRR">—</strong></div><div class="analysis-row"><span>Motivo</span><strong id="tpReason">—</strong></div></div></div><div class="muted-box small">Comparación PAPER CURRENT vs V2. V2 no modifica score, SL, lotaje ni riesgo y queda bloqueado en LIVE.</div></section>
 <section class="card span12"><h2 class="section-title">DEMO EXECUTION</h2><div class="analysis-grid"><div class="analysis-box"><h4>Cuenta</h4><div class="analysis-row"><span>Modo</span><strong id="execAccountMode">UNKNOWN</strong></div><div class="analysis-row"><span>Broker</span><strong id="execConnected">DESCONECTADO</strong></div></div><div class="analysis-box"><h4>Permiso</h4><div class="analysis-row"><span>Input habilitado</span><strong id="execEnabled">NO</strong></div><div class="analysis-row"><span>Ejecución permitida</span><strong id="execAllowed">NO</strong></div><div class="analysis-row"><span>Autorización</span><strong id="execAuthorization">—</strong></div></div><div class="analysis-box"><h4>Estado</h4><div class="analysis-row"><span>Ciclo</span><strong id="execState">PAPER</strong></div><div class="analysis-row"><span>Resultado</span><strong id="execReason">—</strong></div></div><div class="analysis-box"><h4>Último resultado</h4><div class="analysis-row"><span>Order / Deal</span><strong id="execIds">—</strong></div><div class="analysis-row"><span>Fill</span><strong id="execFill">—</strong></div></div></div><div class="muted-box small">Las órdenes reales solo se permiten en ACCOUNT_TRADE_MODE_DEMO. Una cuenta REAL queda bloqueada sin excepción.</div></section>
-<section class="card span12"><h2 class="section-title">OPEN POSITIONS</h2><div id="active">No hay posiciones abiertas del MagicNumber de GoldScout.</div></section>
+<section class="card span12"><h2 class="section-title">OPEN POSITIONS</h2><div id="active">No hay posiciones abiertas del MagicNumber de Hali.</div></section>
 <section class="card span12"><h2 class="section-title">SESSION STATS</h2><div class="stats"><div class="stat"><span class="small">TRADES</span><div class="value" id="statsTrades">0</div></div><div class="stat"><span class="small">W / L</span><div class="value" id="statsWL">0 / 0</div></div><div class="stat"><span class="small">WIN RATE</span><div class="value" id="statsWinRate">0%</div></div><div class="stat"><span class="small">NET P/L</span><div class="value" id="statsNet">—</div></div></div><div class="statusline small"><span id="statsExpectancy">Expectancy: 0R</span><span id="statsPF">Profit factor: 0</span></div></section>
 <section class="card span12"><h2 class="section-title">Historial / señal</h2><div id="log"><div class="small">Cargando historial...</div></div></section>
-<section class="card span12"><h2 class="section-title">Cómo decide GoldScout</h2><div class="timeline"><div><span class="tag">1. ESCANEA</span> H4 define sesgo; H1 define entrada; RSI, ADX, ATR, tick-volume y contexto de sesión filtran ruido.</div><div><span class="tag">2. DETECTA</span> Busca continuación, pullback, ruptura o momentum y usa la sesión Asia/Europa/EE. UU. como contexto. No asume que toda apertura termina en pullback.</div><div><span class="tag">3. PUNTÚA</span> Un score ≥ 74 habilita la señal. El tamaño se calcula con OrderCalcProfit para mantener el riesgo objetivo del 5% de equity.</div><div><span class="tag">4. REVISA</span> El calendario USD de alto impacto puede bloquear entradas alrededor del evento.</div><div><span class="tag">5. PROTEGE</span> Stop dinámico ATR + estructura, límite de pérdida diaria, drawdown, spread máximo, una entrada por vela H1 y PAPER por defecto.</div></div></section>
+<section class="card span12"><h2 class="section-title">Cómo decide Hali</h2><div class="timeline"><div><span class="tag">1. ESCANEA</span> H4 define sesgo; H1 define entrada; RSI, ADX, ATR, tick-volume y contexto de sesión filtran ruido.</div><div><span class="tag">2. DETECTA</span> Busca continuación, pullback, ruptura o momentum y usa la sesión Asia/Europa/EE. UU. como contexto. No asume que toda apertura termina en pullback.</div><div><span class="tag">3. PUNTÚA</span> Un score ≥ 74 habilita la señal. El tamaño se calcula con OrderCalcProfit para mantener el riesgo objetivo del 5% de equity.</div><div><span class="tag">4. REVISA</span> El calendario USD de alto impacto puede bloquear entradas alrededor del evento.</div><div><span class="tag">5. PROTEGE</span> Stop dinámico ATR + estructura, límite de pérdida diaria, drawdown, spread máximo, una entrada por vela H1 y PAPER por defecto.</div></div></section>
 </div></div>
 <div class="wrap" style="padding-top:0"><section class="card"><h2 class="section-title">ARMED STATUS</h2><div class="statusline"><strong id="armedStatus">DISABLED</strong><span class="small" id="armedDetail">Feature flag apagado.</span></div></section></div>
 <script>
@@ -104,9 +232,22 @@ function render(data){
  const lim=Math.max(1,dailyLossBudget); $('dailyMeter').style.width=Math.min(100,Math.max(0,dailyLossUsed)/lim*100)+'%';
  $('execAccountMode').textContent=esc(de.account_mode||'UNKNOWN'); $('execConnected').textContent=de.broker_connected?'CONECTADO':'DESCONECTADO'; $('execEnabled').textContent=de.enabled?'SÍ':'NO'; $('execAllowed').textContent=de.execution_allowed?'SÍ':'NO'; $('execAuthorization').textContent=esc(de.authorization_reason||'—'); $('execState').textContent=esc(lifecycle(de.state||'PAPER')); $('execReason').textContent=esc(de.reason||'—'); $('execIds').textContent=(de.order_id||de.deal_id)?`${de.order_id||0} / ${de.deal_id||0}`:'—'; $('execFill').textContent=de.executed_price?`${Number(de.filled_volume||0).toFixed(4)} @ ${Number(de.executed_price).toFixed(2)}`:'—';
  const positions=data.open_positions||[];
- if(!positions.length){$('active').innerHTML='<div class="small">No hay posiciones abiertas del MagicNumber de GoldScout. Las señales PAPER no se muestran como posiciones reales.</div>'}
+ if(!positions.length){$('active').innerHTML='<div class="small">No hay posiciones abiertas del MagicNumber de Hali. Las señales PAPER no se muestran como posiciones reales.</div>'}
  else {$('active').innerHTML=positions.map((t,i)=>`<div class="trade"><div><strong class="${t.direction==='LONG'?'buy':'sell'}">${esc(t.direction)}</strong><div class="small"><span class="pill">${esc(t.class||'—')}</span> ${esc(t.setup||'—')} · score ${Number(t.score||0)}</div><div class="small">${esc(t.symbol)} · ${Number(t.volume).toFixed(4)} lot · pos ${esc(t.position_id)}</div></div><div><div class="small">ENTRADA / ACTUAL</div><strong>${Number(t.open_price).toFixed(2)} / ${Number(t.current_price).toFixed(2)}</strong><div class="small">SL ${Number(t.sl).toFixed(2)} · riesgo ${money(t.risk)}</div></div><div><div class="small">OBJETIVO</div><strong>${Number(t.tp).toFixed(2)}</strong><div class="small">P/L flotante ${money(t.floating_pnl)}</div></div><button onclick="toggle('activeReason${i}')">Abrir explicación</button><div id="activeReason${i}" class="reason" style="grid-column:1/-1">Signal ${esc(t.signal_event_id||'—')} · ${esc(t.comment||'')}</div></div>`).join('')}
  const st=data.session_stats||{}; $('statsTrades').textContent=Number(st.trades||0); $('statsWL').textContent=`${Number(st.wins||0)} / ${Number(st.losses||0)}`; $('statsWinRate').textContent=Number(st.win_rate||0).toFixed(1)+'%'; $('statsNet').textContent=displayMoney(st.net_pnl||0); $('statsExpectancy').textContent=`Expectancy: ${Number(st.expectancy_r||0).toFixed(3)}R`; $('statsPF').textContent=`Profit factor: ${Number(st.profit_factor||0).toFixed(3)}`;
+ const floating=positions.reduce((sum,p)=>sum+Number(p.floating_pnl||0),0);
+ $('heroBalance').textContent=displayMoney(data.balance);
+ $('heroEquity').textContent=displayMoney(data.equity);
+ $('heroDailyPnl').textContent=displayMoney(data.daily_pnl);
+ $('heroDailyPnl').className='kpi-value '+(Number(data.daily_pnl||0)>=0?'buy':'sell');
+ $('heroFloating').textContent=displayMoney(floating);
+ $('heroFloating').className='kpi-value '+(floating>=0?'buy':'sell');
+ $('heroWinRate').textContent=Number(st.win_rate||0).toFixed(1)+'%';
+ $('heroScore').textContent=data.last_score??'—';
+ $('topStatus').textContent=data.connected?'● ONLINE':'● OFFLINE';
+ $('topStatus').className='top-chip '+(data.connected?'online':'offline');
+ $('topAccount').textContent=de.account_mode||'UNKNOWN';
+ $('topUpdated').textContent=data.updated_at||'—';
 }
 function toggle(id){$(id).classList.toggle('on')}
 function renderLog(rows){ lastLog=rows||[]; if(!rows.length){$('log').innerHTML='<div class="small">Todavía no hay operaciones cerradas registradas.</div>';return}
@@ -114,4 +255,4 @@ function renderLog(rows){ lastLog=rows||[]; if(!rows.length){$('log').innerHTML=
 }
 async function tick(){try{const d=await fetch('/api/status?t='+Date.now()).then(r=>r.json());render(d);renderLog(d.closed_trades||[])}catch(e){$('decision').textContent='Dashboard desconectado: '+e.message}}
 tick();setInterval(tick,2000);
-</script></body></html>
+</script></main></div></body></html>
