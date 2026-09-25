@@ -180,6 +180,50 @@ hr{border:0;border-top:1px solid #282e36}
  .terminal-chip,.update-chip{display:none!important}
 }
 
+
+/* ===== HALI MOBILE POLISH V3 ===== */
+@media(max-width:900px){
+  body{padding-bottom:118px}
+  .hali-topbar{min-height:58px;padding:7px 12px;border-bottom-color:#242a31}
+  .hali-brand img{width:38px;height:38px}
+  .hali-wordmark{font-size:18px}
+  .hali-topstats{gap:6px}
+  .top-chip{font-size:10px;padding:7px 9px}
+  .hero-brand{margin-bottom:12px}
+  .kpi-grid{margin-bottom:12px}
+  .hali-mobile-nav{
+    left:12px;right:12px;bottom:12px;
+    padding-bottom:max(0px,env(safe-area-inset-bottom));
+    border-radius:16px;
+  }
+  .hali-mobile-nav a{padding:9px 3px 8px}
+  .section-market,.section-active,.section-analysis,.section-risk,.section-news{scroll-margin-top:82px}
+}
+@media(max-width:560px){
+  .wrap{padding-top:10px}
+  .hero-brand{min-height:0;display:grid;grid-template-columns:70px 1fr;align-items:center;padding:14px 15px}
+  .hero-logo{width:68px;height:68px}
+  .hero-brand h1{font-size:29px;line-height:1}
+  .hero-brand p{font-size:7.5px;line-height:1.4;margin-top:6px}
+  .hero-signal-strip{grid-column:1/-1;display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:13px}
+  .hero-signal-strip span{min-width:0;padding:8px}
+  .hero-signal-strip span:first-child{display:none}
+  .hero-signal-strip small{font-size:7px}.hero-signal-strip b{font-size:10px}
+  .kpi-grid{gap:8px}
+  .kpi{min-height:82px;padding:12px 13px}
+  .kpi-label{font-size:9px}.kpi-value{font-size:19px}.kpi-note{font-size:9px}
+  .grid{gap:10px}
+  .card{padding:14px}
+  .section-title{font-size:17px}
+  .section-market .value{font-size:25px}
+  .section-market .row{gap:10px}
+  .section-market .pill{font-size:9px;padding:6px 8px}
+  .section-market .stats{gap:8px}
+  .section-market .score{font-size:39px}
+  .section-active .trade,.section-history .trade{padding:11px}
+  .hali-mobile-nav small{font-size:7.5px}
+}
+
 </style>
 </head>
 <body>
