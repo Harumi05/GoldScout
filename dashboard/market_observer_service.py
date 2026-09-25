@@ -50,6 +50,7 @@ def _new_cache() -> dict:
         "observation_count": 0,
         "latest_by_timeframe": {"M15": None, "H1": None, "H4": None},
         "last_record": None,
+        "closed_bars": {"M15": {}, "H1": {}, "H4": {}},
     }
 
 
@@ -96,6 +97,18 @@ def _update_cache(path: Path) -> dict:
             cache["latest_by_timeframe"][timeframe] = record
         if cache["last_record"] is None or _record_order(record) >= _record_order(cache["last_record"]):
             cache["last_record"] = record
+
+        if record.get("snapshot_type") == "BAR_CLOSE" and record.get("bar_closed") is True:
+            ts = record.get("timestamp")
+            if isinstance(ts, (int, float)):
+                bars = cache["closed_bars"][timeframe]
+                bars[int(ts)] = {
+                    key: record.get(key)
+                    for key in ("timestamp", "open", "high", "low", "close", "ema20", "ema200", "rsi", "adx")
+                }
+                if len(bars) > 600:
+                    for old_ts in sorted(bars)[:-500]:
+                        bars.pop(old_ts, None)
     return cache
 
 
@@ -156,3 +169,35 @@ def reset_cache() -> None:
     """Test helper; production code never truncates or deletes observations."""
     with _LOCK:
         _CACHE.clear()
+
+def recent_bar_series(
+    paths: Iterable[Path] | None = None,
+    *,
+    timeframe: str = "H1",
+    limit: int = 120,
+) -> dict:
+    """Return recent confirmed OHLC bars for the read-only dashboard chart."""
+    tf = str(timeframe or "H1").upper()
+    if tf not in ALLOWED_TIMEFRAMES:
+        tf = "H1"
+    limit = max(20, min(int(limit or 120), 300))
+    path = _choose_path(paths)
+    if path is None:
+        return {"source": "MT5", "timeframe": tf, "bars": [], "count": 0}
+
+    try:
+        with _LOCK:
+            cache = _update_cache(path)
+            by_time = dict(cache["closed_bars"].get(tf, {}))
+    except OSError:
+        return {"source": "MT5", "timeframe": tf, "bars": [], "count": 0}
+
+    rows = [by_time[key] for key in sorted(by_time)[-limit:]]
+    return {
+        "source": "MT5",
+        "timeframe": tf,
+        "bars": rows,
+        "count": len(rows),
+        "observer_only": True,
+        "score_effect": 0,
+    }
