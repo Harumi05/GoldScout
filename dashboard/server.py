@@ -28,9 +28,13 @@ except Exception:
     read_tradingview_snapshot = None
     record_tradingview_status = None
 try:
-    from market_observer_service import observation_snapshot as read_market_observer_snapshot
+    from market_observer_service import (
+        observation_snapshot as read_market_observer_snapshot,
+        recent_bar_series as read_market_bar_series,
+    )
 except Exception:
     read_market_observer_snapshot = None
+    read_market_bar_series = None
 
 try:
     _tv_rate_limit=max(1,int(os.environ.get('GOLDSCOUT_TRADINGVIEW_RATE_LIMIT_PER_MINUTE','120')))
@@ -248,6 +252,20 @@ class H(BaseHTTPRequestHandler):
                 'external_signal_file':bool(read_json('external_signal_etoro.json')),
                 'tradingview_events':read_tradingview().get('event_count',0),
                 'market_observations':read_market_observer().get('observation_count',0)}
+            self.send_payload(200,'application/json; charset=utf-8',json.dumps(payload,ensure_ascii=False).encode()); return
+        if self.path.startswith('/api/chart'):
+            from urllib.parse import urlparse, parse_qs
+            query=parse_qs(urlparse(self.path).query)
+            timeframe=(query.get('timeframe',['H1'])[0] or 'H1').upper()
+            try:
+                limit=int(query.get('limit',['120'])[0])
+            except (TypeError,ValueError):
+                limit=120
+            if not read_market_bar_series:
+                payload={'source':'MT5','timeframe':timeframe,'bars':[],'count':0,'observer_only':True,'score_effect':0}
+            else:
+                paths=[candidate/'market_observations.jsonl' for candidate in CANDIDATES]
+                payload=read_market_bar_series(paths,timeframe=timeframe,limit=limit)
             self.send_payload(200,'application/json; charset=utf-8',json.dumps(payload,ensure_ascii=False).encode()); return
         if self.path.startswith('/api/log'):
             import csv
