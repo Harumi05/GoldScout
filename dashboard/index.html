@@ -224,6 +224,27 @@ hr{border:0;border-top:1px solid #282e36}
   .hali-mobile-nav small{font-size:7.5px}
 }
 
+
+/* ===== HALI PRICE CHART ===== */
+.grid>.section-chart{order:2;grid-column:span 8;min-height:380px}
+.grid>.section-active{order:2;grid-column:span 4}
+.grid>.section-stats{order:3}
+.chart-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}
+.chart-head .section-title{margin-bottom:5px}
+.chart-tabs{display:flex;gap:5px;padding:4px;border:1px solid #292f37;background:#080a0d;border-radius:10px}
+.chart-tabs button{min-width:46px;padding:7px 9px;border:0;border-radius:7px;color:#717883;background:transparent;font-size:10px}
+.chart-tabs button:hover{background:#12161b}.chart-tabs button.active{color:#f2e5cf;background:linear-gradient(180deg,#30251a,#19130e);box-shadow:inset 0 0 0 1px #72552f}
+.chart-quote{display:flex;align-items:baseline;gap:12px;margin:14px 0 8px;flex-wrap:wrap}
+.chart-quote strong{font-size:25px;color:#f0ece5}.chart-quote span{font-size:11px;color:#808791}.chart-quote .up{color:#27d5a3}.chart-quote .down{color:#ef5369}
+.chart-wrap{position:relative;height:290px;border:1px solid #20262d;border-radius:10px;overflow:hidden;background:linear-gradient(180deg,#080b0e,#06080a)}
+#priceChart{display:block;width:100%;height:100%}
+.chart-empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#626a74;font-size:11px;letter-spacing:.04em}
+.chart-legend{display:flex;gap:15px;margin-top:9px;color:#6f7680;font-size:9px;text-transform:uppercase;letter-spacing:.06em}
+.chart-legend span{display:flex;align-items:center;gap:5px}.chart-legend i{width:14px;height:2px;display:inline-block}.legend-candle{background:#c9b07d}.legend-ema20{background:#d8a64d}.legend-ema200{background:#9a4260}
+@media(max-width:1150px){.grid>.section-chart{grid-column:span 12}.grid>.section-active{grid-column:span 6}}
+@media(max-width:900px){.grid>.section-chart{grid-column:span 12;order:2}.grid>.section-active{order:3}.chart-wrap{height:260px}}
+@media(max-width:560px){.section-chart{padding:12px}.chart-head{align-items:center}.chart-head .small{display:none}.chart-wrap{height:230px}.chart-quote{margin-top:10px}.chart-quote strong{font-size:22px}.chart-tabs button{min-width:40px;padding:6px 7px}}
+
 </style>
 </head>
 <body>
@@ -278,6 +299,33 @@ hr{border:0;border-top:1px solid #282e36}
 </section>
 <div class="grid">
 <section id="market" class="card span8 section-market"><div class="row"><div><h3>XAUUSD — VISIÓN DE MERCADO</h3><div class="value" id="symbol">XAUUSD · H1</div></div><div class="row"><span id="connection" class="pill offline">SIN DATOS MT5</span><span id="mode" class="pill paper">PAPER MODE</span></div></div><p class="small" id="decision">Cargando...</p><div class="stats"><div class="stat"><span class="small">SCORE</span><div class="score" id="score">--</div></div><div class="stat"><span class="small">SETUP</span><div id="setup">--</div></div><div class="stat"><span class="small">DIRECCIÓN</span><div id="direction">--</div></div><div class="stat"><span class="small">RIESGO EFECTIVO</span><div id="risk">—</div><div class="small" id="riskPct">5.0% equity</div><div class="small" id="riskBudget">Objetivo — · restante diario —</div></div></div></section>
+<section id="chart" class="card span8 section-chart">
+  <div class="chart-head">
+    <div>
+      <h2 class="section-title">XAUUSD · PRICE ACTION</h2>
+      <div class="small">Velas confirmadas de MT5 · solo visualización</div>
+    </div>
+    <div class="chart-tabs" role="tablist" aria-label="Timeframe del gráfico">
+      <button type="button" data-tf="M15" onclick="setChartTimeframe('M15')">M15</button>
+      <button type="button" class="active" data-tf="H1" onclick="setChartTimeframe('H1')">H1</button>
+      <button type="button" data-tf="H4" onclick="setChartTimeframe('H4')">H4</button>
+    </div>
+  </div>
+  <div class="chart-quote">
+    <strong id="chartLast">—</strong>
+    <span id="chartChange">—</span>
+    <span id="chartRange">H — · L —</span>
+  </div>
+  <div class="chart-wrap">
+    <canvas id="priceChart" aria-label="Gráfico de velas XAUUSD"></canvas>
+    <div id="chartEmpty" class="chart-empty">Esperando velas confirmadas de MT5…</div>
+  </div>
+  <div class="chart-legend">
+    <span><i class="legend-candle"></i> Precio</span>
+    <span><i class="legend-ema20"></i> EMA20</span>
+    <span><i class="legend-ema200"></i> EMA200</span>
+  </div>
+</section>
 <section id="riskpanel" class="card span4 section-risk"><h3>RIESGO Y PROTECCIÓN</h3><div class="row"><div><div class="small">BALANCE</div><div class="value" id="balance">—</div></div><div><div class="small">EQUITY ACTUAL</div><div class="value" id="equity">—</div></div></div><hr><div class="analysis-row"><span>Equity inicio del día</span><strong id="startEquity">—</strong></div><div class="analysis-row"><span>RiskPercent</span><strong id="tradeRiskPercent">5.0%</strong></div><div class="analysis-row"><span>Riesgo objetivo/trade</span><strong id="targetRisk">—</strong></div><div class="analysis-row"><span>DailyLossLimitPercent</span><strong id="dailyLossPercent">5.0%</strong></div><div class="analysis-row"><span>Presupuesto diario inicial</span><strong id="dailyBudget">—</strong></div><div class="analysis-row"><span>Pérdida diaria utilizada</span><strong id="dailyLossUsed">—</strong></div><div class="analysis-row"><span>Riesgo abierto reservado</span><strong id="openRisk">—</strong></div><div class="analysis-row"><span>Presupuesto diario restante</span><strong id="dailyRemaining">—</strong></div><div class="analysis-row"><span>Riesgo efectivo permitido</span><strong id="effectiveRisk">—</strong></div><div class="meter"><i id="dailyMeter" style="width:0%"></i></div><p class="small" id="riskNote">El presupuesto diario se fija con la equity de inicio del día y no aumenta por ganancias intradía. Pérdidas realizadas y riesgo abierto reducen el disponible.</p><div id="mt5Notice" class="notice small">Conecta el EA en MT5 para reemplazar estos datos por balance, equity y operaciones reales de la cuenta.</div></section>
 <section id="signal" class="card span12 section-analysis"><h2 class="section-title">SEÑAL / DECISIÓN ACTUAL</h2><div class="small" id="analysisBar">Esperando la primera evaluación H1...</div><div class="analysis-grid"><div class="analysis-box"><h4>Tendencia</h4><div class="analysis-row"><span>H4</span><strong id="aH4">—</strong></div><div class="analysis-row"><span>H1</span><strong id="aH1">—</strong></div><div class="analysis-row"><span>EMA H1</span><strong id="aEma">—</strong></div><div class="analysis-row"><span>EMA H4</span><strong id="aH4Ema">—</strong></div></div><div class="analysis-box"><h4>Indicadores</h4><div class="analysis-row"><span>RSI 14</span><strong id="aRsi">—</strong></div><div class="analysis-row"><span>ADX 14</span><strong id="aAdx">—</strong></div><div class="analysis-row"><span>ATR 14</span><strong id="aAtr">—</strong></div><div class="analysis-row"><span>Volumen</span><strong id="aVol">—</strong></div></div><div class="analysis-box"><h4>Scoring</h4><div class="analysis-row"><span>LONG técnico</span><strong id="aLongTech">—</strong></div><div class="analysis-row"><span>SHORT técnico</span><strong id="aShortTech">—</strong></div><div class="analysis-row"><span>Noticias L/S</span><strong id="aNewsPts">—</strong></div><div class="analysis-row"><span>FINAL L/S</span><strong id="aFinal">—</strong></div></div><div class="analysis-box"><h4>Estructura</h4><div class="analysis-row"><span>Setup</span><strong id="aStructure">—</strong></div><div class="analysis-row"><span>Candidato</span><strong id="aCandidate">—</strong></div><div class="analysis-row"><span>R:R mínimo</span><strong id="aMinRR">—</strong></div><div class="analysis-row"><span>Bloqueo</span><strong id="aBlock">—</strong></div></div></div><div class="decision-box"><strong>LECTURA TÉCNICA</strong><div class="small" id="aTechReason">—</div></div><div class="decision-box"><strong>LECTURA DE NOTICIAS</strong><div class="small" id="aNewsReason">—</div></div><div class="muted-box small"><strong>Importante:</strong> el bot arma el setup al comenzar H1 y lo vigila intrabar. Score y sesgo son señales del sistema, no una probabilidad garantizada de acierto.</div></section>
 <section class="card span12 section-monitor"><h2 class="section-title">MONITOREO DE EJECUCIÓN · H1</h2><div class="analysis-grid"><div class="analysis-box"><h4>Estado</h4><div class="analysis-row"><span>Estado</span><strong id="mState">—</strong></div><div class="analysis-row"><span>Candidato</span><strong id="mCandidate">—</strong></div></div><div class="analysis-box"><h4>Trigger</h4><div class="analysis-row"><span>Score</span><strong id="mScore">—</strong></div><div class="analysis-row"><span>Boost L / S</span><strong id="mBoost">—</strong></div></div><div class="analysis-box"><h4>Tiempo</h4><div class="analysis-row"><span>Vigilando</span><strong id="mAge">—</strong></div><div class="analysis-row"><span>Entrada usada H1</span><strong id="mUsed">—</strong></div></div><div class="analysis-box"><h4>Lectura</h4><div class="analysis-row"><span>Estado</span><strong id="mReason">—</strong></div></div></div><div class="decision-box"><strong>MONITOR</strong><div class="small" id="mReasonLong">—</div></div></section><section class="card span12 section-session"><h2 class="section-title">SESIÓN Y LIQUIDEZ · ORO</h2><div class="session-grid"><div class="session-box"><div class="label">Sesión regional</div><div class="big" id="sessionName">—</div></div><div class="session-box"><div class="label">Fase</div><div class="big" id="sessionPhase">—</div></div><div class="session-box"><div class="label">Volatilidad</div><div class="big" id="sessionVol">—</div></div><div class="session-box"><div class="label">Impulso apertura</div><div class="big" id="sessionImpulse">—</div></div><div class="session-box"><div class="label">Puntos L / S</div><div class="big" id="sessionPts">—</div></div></div><div class="session-note small" id="sessionContext">Esperando contexto de mercado...</div><div class="centers" id="marketCenters"></div><div class="small" style="margin-top:10px">Contexto por centros: Tokio, Shanghai/HK, Singapur, Mumbai, Londres, Nueva York/COMEX y ventanas LBMA. Hali usa estas ventanas como contexto de liquidez/volatilidad; no asume que cada apertura produzca un pullback.</div></section>
@@ -304,6 +352,7 @@ hr{border:0;border-top:1px solid #282e36}
 </nav>
 <script>
 const $=id=>document.getElementById(id);
+let chartTimeframe='H1', chartBars=[], latestStatus=null;
 function toggleAdvanced(){
   document.body.classList.toggle('show-advanced');
   const b=$('advancedToggle');
@@ -342,8 +391,76 @@ function currentSessionContext(){
   const phase=opening.length?'OPEN WINDOW':(active.length>=2?'OVERLAP / DESARROLLO':'DESARROLLO');
   return {regional,phase,active,opening,cards,note:`Hora Colombia ${colP.hour}:${colP.minute} · UTC ${utcP.hour}:${utcP.minute} · activos: ${active.join(' + ')||'ninguno'} · aperturas: ${opening.join(' + ')||'ninguna'}`};
 }
+
+function setChartTimeframe(tf){
+  chartTimeframe=tf;
+  document.querySelectorAll('.chart-tabs button').forEach(b=>b.classList.toggle('active',b.dataset.tf===tf));
+  loadChart(true);
+}
+function chartNum(v){const n=Number(v);return Number.isFinite(n)?n:null}
+function drawPriceChart(){
+  const canvas=$('priceChart'), empty=$('chartEmpty');
+  if(!canvas)return;
+  const rect=canvas.getBoundingClientRect();
+  const dpr=Math.max(1,Math.min(2,window.devicePixelRatio||1));
+  canvas.width=Math.max(1,Math.floor(rect.width*dpr)); canvas.height=Math.max(1,Math.floor(rect.height*dpr));
+  const ctx=canvas.getContext('2d'); ctx.setTransform(dpr,0,0,dpr,0,0);
+  const w=rect.width,h=rect.height; ctx.clearRect(0,0,w,h);
+  const bars=chartBars.filter(b=>[b.open,b.high,b.low,b.close].every(v=>chartNum(v)!==null));
+  if(bars.length<2){ if(empty)empty.style.display='flex'; return; }
+  if(empty)empty.style.display='none';
+  const pad={l:10,r:60,t:12,b:22};
+  const values=[];
+  bars.forEach(b=>{values.push(+b.high,+b.low);if(chartNum(b.ema20)!=null)values.push(+b.ema20);if(chartNum(b.ema200)!=null)values.push(+b.ema200)});
+  let min=Math.min(...values),max=Math.max(...values); const extra=Math.max((max-min)*.08,.5); min-=extra;max+=extra;
+  const px=i=>pad.l+(i+.5)*(w-pad.l-pad.r)/bars.length;
+  const py=v=>pad.t+(max-v)/(max-min)*(h-pad.t-pad.b);
+  // grid
+  ctx.lineWidth=1;ctx.strokeStyle='rgba(125,135,145,.10)';ctx.fillStyle='#68717c';ctx.font='9px ui-monospace,monospace';
+  for(let i=0;i<5;i++){const y=pad.t+i*(h-pad.t-pad.b)/4;ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(w-pad.r,y);ctx.stroke();const val=max-i*(max-min)/4;ctx.fillText(val.toFixed(2),w-pad.r+7,y+3)}
+  // candles
+  const step=(w-pad.l-pad.r)/bars.length, body=Math.max(2,Math.min(9,step*.58));
+  bars.forEach((b,i)=>{
+    const x=px(i),up=+b.close>=+b.open;const col=up?'#25cfa0':'#e94f66';
+    ctx.strokeStyle=col;ctx.fillStyle=up?'rgba(37,207,160,.60)':'rgba(233,79,102,.66)';
+    ctx.beginPath();ctx.moveTo(x,py(+b.high));ctx.lineTo(x,py(+b.low));ctx.stroke();
+    const yo=py(+b.open),yc=py(+b.close),top=Math.min(yo,yc),bh=Math.max(1,Math.abs(yc-yo));
+    ctx.fillRect(x-body/2,top,body,bh);
+  });
+  function line(key,color,width){
+    ctx.strokeStyle=color;ctx.lineWidth=width;ctx.beginPath();let started=false;
+    bars.forEach((b,i)=>{const v=chartNum(b[key]);if(v==null)return;const x=px(i),y=py(v);if(!started){ctx.moveTo(x,y);started=true}else ctx.lineTo(x,y)});
+    if(started)ctx.stroke();
+  }
+  line('ema20','#d6a64d',1.25);line('ema200','#98415f',1.15);
+  // active trade SL/TP overlays when available
+  const pos=(latestStatus?.open_positions||[])[0];
+  if(pos){
+    [[pos.sl,'SL','#e45366'],[pos.tp,'TP','#2bcf9f'],[pos.open_price,'ENTRY','#d7b36d']].forEach(([v,label,col])=>{
+      v=chartNum(v);if(v==null||v<min||v>max)return;const y=py(v);ctx.save();ctx.setLineDash([5,5]);ctx.strokeStyle=col;ctx.globalAlpha=.72;ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(w-pad.r,y);ctx.stroke();ctx.restore();ctx.fillStyle=col;ctx.font='9px ui-monospace,monospace';ctx.fillText(label,w-pad.r-38,y-3);
+    });
+  }
+  // x labels
+  ctx.fillStyle='#5f6873';ctx.font='8px ui-monospace,monospace';
+  const picks=[0,Math.floor((bars.length-1)/2),bars.length-1];
+  picks.forEach(i=>{const d=new Date(Number(bars[i].timestamp)*1000);const label=d.toLocaleString('es-CO',{timeZone:'America/Bogota',hour:'2-digit',minute:'2-digit',day:'2-digit',month:'2-digit'});ctx.fillText(label,Math.max(5,Math.min(w-90,px(i)-25)),h-6)});
+  const last=bars[bars.length-1],prev=bars[bars.length-2],lastClose=+last.close,delta=lastClose-+prev.close,pct=+prev.close?delta/+prev.close*100:0;
+  $('chartLast').textContent=lastClose.toFixed(2);
+  $('chartChange').textContent=(delta>=0?'+':'')+delta.toFixed(2)+' ('+(pct>=0?'+':'')+pct.toFixed(2)+'%)';
+  $('chartChange').className=delta>=0?'up':'down';
+  $('chartRange').textContent='H '+Math.max(...bars.map(b=>+b.high)).toFixed(2)+' · L '+Math.min(...bars.map(b=>+b.low)).toFixed(2);
+}
+async function loadChart(force=false){
+  try{
+    const r=await fetch('/api/chart?timeframe='+encodeURIComponent(chartTimeframe)+'&limit=120&t='+Date.now());
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const d=await r.json(); chartBars=Array.isArray(d.bars)?d.bars:[]; drawPriceChart();
+  }catch(e){const empty=$('chartEmpty');if(empty){empty.textContent='Gráfico no disponible · '+e.message;empty.style.display='flex'}}
+}
+
 const lifecycle=v=>String(v||'').toUpperCase()==='POSITION_CLOSE'?'POSITION_CLOSED':String(v||'');
 function render(data){
+ latestStatus=data;
  const armed=data.armed_status||{}; const armedDirection=armed.status==='CANCELLED'?(armed.previous_direction||'—'):(armed.direction||'—'); $('armedStatus').textContent=armed.status==='CANCELLED'?`CANCELLED ${armedDirection}`:armed.status==='VALID'?`ARMED ${armedDirection} — VALID`:(armed.status||'DISABLED'); $('armedDetail').textContent=armed.status==='CANCELLED'?`reason: ${armed.reason||'—'} · RSI: ${Number(armed.rsi||0).toFixed(1)} · Impulse: ${Number(armed.impulse_atr||0).toFixed(2)} ATR`:(armed.reason||'Feature flag apagado.');
  accountCurrency=String(data.account_currency||'USD').toUpperCase(); const legacyRiskAmount=Number(data.risk_amount??data.risk_usd??0); const targetRisk=Number(data.target_risk??legacyRiskAmount); const dailyLossBudget=Number(data.daily_loss_budget??0); const dailyLossUsed=Number(data.daily_loss_used??0); const remainingDailyBudget=Number(data.remaining_daily_budget??Math.max(0,dailyLossBudget-dailyLossUsed)); const effectivePlannedRisk=Math.max(0,Number(data.effective_planned_risk??Math.min(targetRisk,remainingDailyBudget))); const riskAmount=effectivePlannedRisk;
  const de=data.demo_execution||{};
@@ -402,4 +519,6 @@ function renderLog(rows){ lastLog=rows||[]; if(!rows.length){$('log').innerHTML=
 }
 async function tick(){try{const d=await fetch('/api/status?t='+Date.now()).then(r=>r.json());render(d);renderLog(d.closed_trades||[])}catch(e){$('decision').textContent='Dashboard desconectado: '+e.message}}
 tick();setInterval(tick,2000);
+loadChart();setInterval(loadChart,15000);
+window.addEventListener('resize',()=>{clearTimeout(window.__haliChartResize);window.__haliChartResize=setTimeout(drawPriceChart,120)});
 </script></main></div></body></html>
