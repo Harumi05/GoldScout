@@ -192,7 +192,24 @@ def recent_bar_series(
     except OSError:
         return {"source": "MT5", "timeframe": tf, "bars": [], "count": 0}
 
-    rows = [by_time[key] for key in sorted(by_time)[-limit:]]
+    ordered = [by_time[key] for key in sorted(by_time)]
+    # Keep only the newest contiguous closed-bar window. This prevents a stale
+    # historical observation from drawing a long diagonal line across months
+    # when the observer file contains gaps from restarts or older experiments.
+    max_gap_seconds = {"M15": 90 * 60, "H1": 6 * 60 * 60, "H4": 24 * 60 * 60}[tf]
+    contiguous: list[dict] = []
+    for row in reversed(ordered):
+        ts = row.get("timestamp")
+        if not isinstance(ts, (int, float)):
+            continue
+        if contiguous:
+            newer_ts = contiguous[-1].get("timestamp")
+            if isinstance(newer_ts, (int, float)) and int(newer_ts) - int(ts) > max_gap_seconds:
+                break
+        contiguous.append(row)
+        if len(contiguous) >= limit:
+            break
+    rows = list(reversed(contiguous))
     return {
         "source": "MT5",
         "timeframe": tf,
