@@ -227,6 +227,63 @@ class HaliGateway(BaseHTTPRequestHandler):
         finally:
             conn.close()
 
+    def do_HEAD(self):
+        route = self.route()
+        user = self.current_user()
+
+        if route == "/login":
+            if user:
+                self.send_response(302)
+                self.send_header("Location", "/")
+                self.security_headers()
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+            target = (ROOT / "login.html").resolve()
+            if not target.is_file():
+                self.send_response(404)
+                self.security_headers()
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.security_headers()
+            self.send_header("Content-Length", str(target.stat().st_size))
+            self.end_headers()
+            return
+
+        if route == "/api/auth/status":
+            payload = json.dumps(
+                {
+                    "configured": bool(get_auth_config()),
+                    "authenticated": bool(user),
+                    "user": (
+                        {"username": user.get("u"), "display_name": user.get("d")}
+                        if user
+                        else None
+                    ),
+                },
+                ensure_ascii=False,
+            ).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.security_headers()
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            return
+
+        if not user:
+            self.send_response(401 if route.startswith("/api/") else 302)
+            if not route.startswith("/api/"):
+                self.send_header("Location", "/login")
+            self.security_headers()
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+
+        self.proxy()
+
     def do_GET(self):
         route = self.route()
         user = self.current_user()
