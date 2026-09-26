@@ -1332,7 +1332,7 @@ function renderLog(rows){
        <div class="history-num history-result"><small>RESULTADO NETO</small><strong class="${pnl>=0?'buy':'sell'}">${money(pnl)}</strong><span>${rr==null?'R desconocido':(rr>=0?'+':'')+rr.toFixed(3)+'R'} · ${esc(r.close_reason||'OTHER')}</span></div>
        <button class="history-detail-btn" onclick="toggle('r${i}')">DETALLE</button>
      </div>
-     <div id="r${i}" class="reason">Posición ${esc(r.position_id||'—')} · Deal ${esc(r.deal_id||'—')} · SL ${Number(r.sl||0).toFixed(2)} · TP ${Number(r.tp||0).toFixed(2)}<br><span class="small">Bruto ${money(r.gross_pnl)} · comisión ${money(r.commission)} · swap ${money(r.swap)} · señal ${esc(r.signal_event_id||'—')}</span></div>
+     <div id="r${i}" class="reason">Posición ${esc(r.position_id||'—')} · Deal ${esc(r.deal_id||'—')} · SL ${Number(r.sl||0).toFixed(2)} · TP ${Number(r.tp||0).toFixed(2)}<br><span class="small">Bruto ${displayMoney(r.gross_pnl)} · comisión ${displayMoney(r.commission)} · swap ${displayMoney(r.swap)} · señal ${esc(r.signal_event_id||'—')}</span></div>
    </article>`;
  }).join('');
 }
