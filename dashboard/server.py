@@ -344,6 +344,23 @@ class H(BaseHTTPRequestHandler):
             else:
                 paths=[candidate/'market_observations.jsonl' for candidate in CANDIDATES]
                 payload=read_market_bar_series(paths,timeframe=timeframe,limit=limit)
+
+            dashboard=read_json('xau_goldscout_dashboard.json') or {}
+            live_market=dashboard.get('live_market') if isinstance(dashboard,dict) else {}
+            if not isinstance(live_market,dict):
+                live_market={}
+            live_bars=live_market.get('bars') if isinstance(live_market.get('bars'),dict) else {}
+            live_bar=live_bars.get(timeframe) if isinstance(live_bars,dict) else None
+            if not isinstance(live_bar,dict):
+                live_bar=None
+            payload.update({
+                'live_bar':live_bar,
+                'bid':live_market.get('bid'),
+                'ask':live_market.get('ask'),
+                'spread':live_market.get('spread'),
+                'server_time':live_market.get('server_time'),
+                'server_epoch':live_market.get('server_epoch'),
+            })
             self.send_payload(200,'application/json; charset=utf-8',json.dumps(payload,ensure_ascii=False).encode()); return
         if self.path.startswith('/api/log'):
             import csv
