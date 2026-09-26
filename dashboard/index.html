@@ -373,6 +373,31 @@ hr{border:0;border-top:1px solid #282e36}
  .signal-tech-strip{grid-template-columns:repeat(4,1fr);gap:4px}.signal-tech-strip>div{padding:7px 4px}
 }
 
+
+/* ===== HALI RISK PANEL V7 ===== */
+.risk-panel{overflow:visible}
+.risk-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.risk-head h3{margin-bottom:4px}
+.risk-state{font-size:8px;letter-spacing:.09em;padding:6px 8px;border-radius:8px;border:1px solid #343b43;color:#858d97;background:#090c0f;white-space:nowrap}
+.risk-state.safe{color:#32d4a4;border-color:rgba(50,212,164,.35);background:rgba(50,212,164,.06)}
+.risk-state.warn{color:#d7ac64;border-color:rgba(215,172,100,.38);background:rgba(215,172,100,.07)}
+.risk-state.danger{color:#ef566d;border-color:rgba(239,86,109,.38);background:rgba(239,86,109,.07)}
+.risk-overview{display:grid;grid-template-columns:120px 1fr;align-items:center;gap:15px;margin-top:14px;padding:14px;border:1px solid #292f37;border-radius:12px;background:linear-gradient(145deg,#0c1013,#080a0c)}
+.risk-ring{width:108px;height:108px;border-radius:50%;display:grid;place-items:center;background:conic-gradient(#b08b52 var(--risk-pct),#171c21 0);position:relative;box-shadow:0 0 0 1px #2b3138 inset}
+.risk-ring:before{content:"";position:absolute;inset:9px;border-radius:50%;background:#080b0e;border:1px solid #22282f}
+.risk-ring>div{position:relative;z-index:1;text-align:center}.risk-ring strong{display:block;font-size:20px;color:#efe8dc}.risk-ring span{display:block;margin-top:4px;font-size:6px;line-height:1.35;letter-spacing:.10em;color:#6d7580}
+.risk-overview-copy small{display:block;font-size:7px;letter-spacing:.11em;color:#68707a}.risk-overview-copy strong{display:block;font-size:25px;margin-top:6px;color:#eee9e2}.risk-overview-copy span{display:block;margin-top:3px;font-size:9px;color:#6d7480}
+.risk-bars{display:grid;gap:10px;margin-top:13px}.risk-bar-row>div:first-child{display:flex;justify-content:space-between;gap:10px;font-size:9px;color:#7b828c}.risk-bar-row strong{color:#cbd0d5}
+.risk-track{height:7px;margin-top:6px;border:1px solid #262c33;border-radius:999px;background:#101419;overflow:hidden}.risk-track i{display:block;height:100%;width:0;border-radius:999px;transition:width .35s ease}.risk-track .loss{background:linear-gradient(90deg,#6d1828,#ee536a)}.risk-track .reserved{background:linear-gradient(90deg,#4f3b22,#d5aa63)}.risk-track .committed{background:linear-gradient(90deg,#73552f,#d5aa63,#a31c33)}
+.risk-metrics{display:grid;grid-template-columns:repeat(2,1fr);gap:7px;margin-top:13px}.risk-metrics>div{padding:10px;border:1px solid #252c33;border-radius:9px;background:#090c0f;min-width:0}.risk-metrics small,.risk-account small{display:block;font-size:7px;letter-spacing:.10em;color:#666e78;margin-bottom:5px}.risk-metrics strong{display:block;font-size:13px;color:#d7dadf}.risk-metrics span{display:block;font-size:8px;color:#656d77;margin-top:3px}
+.risk-account{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}.risk-account>div{padding:10px 11px;border-top:1px solid #2a3037}.risk-account strong{font-size:15px;color:#e3ded6}
+.risk-guard{display:flex;gap:10px;align-items:flex-start;margin-top:10px;padding:10px;border:1px solid #252b32;border-radius:9px;background:linear-gradient(90deg,rgba(111,76,35,.08),rgba(145,18,38,.04))}
+.guard-icon{width:28px;height:28px;border-radius:8px;border:1px solid #4b3b26;display:grid;place-items:center;color:#c99c55;flex:0 0 auto}.risk-guard strong{font-size:8px;letter-spacing:.10em;color:#c9a361}.risk-guard p{margin:4px 0 0;font-size:8px;line-height:1.5;color:#747b84}
+@media(max-width:560px){
+ .risk-overview{grid-template-columns:95px 1fr;padding:11px;gap:11px}.risk-ring{width:88px;height:88px}.risk-ring strong{font-size:17px}
+ .risk-overview-copy strong{font-size:21px}.risk-metrics{grid-template-columns:repeat(2,1fr)}
+}
+
 </style>
 </head>
 <body>
@@ -454,7 +479,66 @@ hr{border:0;border-top:1px solid #282e36}
     <span><i class="legend-ema200"></i> EMA200</span>
   </div>
 </section>
-<section id="riskpanel" class="card span4 section-risk"><h3>RIESGO Y PROTECCIÓN</h3><div class="row"><div><div class="small">BALANCE</div><div class="value" id="balance">—</div></div><div><div class="small">EQUITY ACTUAL</div><div class="value" id="equity">—</div></div></div><hr><div class="analysis-row"><span>Equity inicio del día</span><strong id="startEquity">—</strong></div><div class="analysis-row"><span>RiskPercent</span><strong id="tradeRiskPercent">5.0%</strong></div><div class="analysis-row"><span>Riesgo objetivo/trade</span><strong id="targetRisk">—</strong></div><div class="analysis-row"><span>DailyLossLimitPercent</span><strong id="dailyLossPercent">5.0%</strong></div><div class="analysis-row"><span>Presupuesto diario inicial</span><strong id="dailyBudget">—</strong></div><div class="analysis-row"><span>Pérdida diaria utilizada</span><strong id="dailyLossUsed">—</strong></div><div class="analysis-row"><span>Riesgo abierto reservado</span><strong id="openRisk">—</strong></div><div class="analysis-row"><span>Presupuesto diario restante</span><strong id="dailyRemaining">—</strong></div><div class="analysis-row"><span>Riesgo efectivo permitido</span><strong id="effectiveRisk">—</strong></div><div class="meter"><i id="dailyMeter" style="width:0%"></i></div><p class="small" id="riskNote">El presupuesto diario se fija con la equity de inicio del día y no aumenta por ganancias intradía. Pérdidas realizadas y riesgo abierto reducen el disponible.</p><div id="mt5Notice" class="notice small">Conecta el EA en MT5 para reemplazar estos datos por balance, equity y operaciones reales de la cuenta.</div></section>
+<section id="riskpanel" class="card span4 section-risk risk-panel">
+  <div class="risk-head">
+    <div>
+      <h3>RIESGO Y PROTECCIÓN</h3>
+      <div class="small">Límites del Champion · solo lectura</div>
+    </div>
+    <div id="riskState" class="risk-state safe">PROTEGIDO</div>
+  </div>
+
+  <div class="risk-overview">
+    <div class="risk-ring" id="riskRing" style="--risk-pct:0%">
+      <div>
+        <strong id="riskUsedPct">0%</strong>
+        <span>CAPACIDAD<br>COMPROMETIDA</span>
+      </div>
+    </div>
+    <div class="risk-overview-copy">
+      <small>RESTANTE DEL DÍA</small>
+      <strong id="dailyRemaining">—</strong>
+      <span id="riskHeadroomText">de — disponibles</span>
+    </div>
+  </div>
+
+  <div class="risk-bars">
+    <div class="risk-bar-row">
+      <div><span>Pérdida realizada</span><strong id="dailyLossUsed">—</strong></div>
+      <div class="risk-track"><i id="riskLossBar" class="loss" style="width:0%"></i></div>
+    </div>
+    <div class="risk-bar-row">
+      <div><span>Riesgo abierto reservado</span><strong id="openRisk">—</strong></div>
+      <div class="risk-track"><i id="riskOpenBar" class="reserved" style="width:0%"></i></div>
+    </div>
+    <div class="risk-bar-row">
+      <div><span>Capacidad comprometida</span><strong id="riskCommitted">—</strong></div>
+      <div class="risk-track"><i id="dailyMeter" class="committed" style="width:0%"></i></div>
+    </div>
+  </div>
+
+  <div class="risk-metrics">
+    <div><small>RISK / TRADE</small><strong id="tradeRiskPercent">5.0%</strong><span id="targetRisk">—</span></div>
+    <div><small>LÍMITE DIARIO</small><strong id="dailyLossPercent">5.0%</strong><span id="dailyBudget">—</span></div>
+    <div><small>RIESGO EFECTIVO</small><strong id="effectiveRisk">—</strong><span>permitido ahora</span></div>
+    <div><small>EQUITY VS INICIO</small><strong id="equityDelta">—</strong><span id="startEquity">—</span></div>
+  </div>
+
+  <div class="risk-account">
+    <div><small>BALANCE</small><strong id="balance">—</strong></div>
+    <div><small>EQUITY ACTUAL</small><strong id="equity">—</strong></div>
+  </div>
+
+  <div class="risk-guard">
+    <div class="guard-icon">◆</div>
+    <div>
+      <strong id="riskGuardTitle">PROTECCIÓN ACTIVA</strong>
+      <p id="riskNote">El presupuesto diario se fija con la equity de inicio del día y no aumenta por ganancias intradía. Pérdidas realizadas y riesgo abierto reducen el disponible.</p>
+    </div>
+  </div>
+
+  <div id="mt5Notice" class="notice small">Conecta el EA en MT5 para reemplazar estos datos por balance, equity y operaciones reales de la cuenta.</div>
+</section>
 <section id="signal" class="card span12 section-analysis signal-panel">
   <div class="signal-header">
     <div>
@@ -722,7 +806,28 @@ function render(data){
  const sd=data.stop_diagnostics||{}; const stopPrice=v=>v==null||Number(v)<=0?'—':Number(v).toFixed(2); const stopAtr=v=>v==null||Number(v)<=0?'—':Number(v).toFixed(2)+' ATR'; const stopLot=v=>v==null||Number(v)<=0?'—':Number(v).toFixed(4)+' lot'; $('stopMode').textContent=esc(sd.mode||data.stop_mode||'NOT_EVALUATED'); $('stopSetup').textContent=esc(sd.setup||'—'); $('stopDirection').textContent=esc(sd.direction||'—'); $('stopCurrent').textContent=sd.evaluated?`${stopPrice(sd.current_sl)} · ${stopAtr(sd.current_sl_atr)}`:'—'; $('stopCurrentLot').textContent=stopLot(sd.current_lot); $('stopAdaptive').textContent=sd.evaluated?`${stopPrice(sd.adaptive_sl)} · ${stopAtr(sd.adaptive_sl_atr)}`:'—'; $('stopAdaptiveLot').textContent=stopLot(sd.adaptive_lot); $('stopSelected').textContent=sd.evaluated?`${stopPrice(sd.selected_sl)} · ${stopLot(sd.selected_lot)}`:'—'; $('stopRisk').textContent=sd.risk_amount==null?'—':displayMoney(sd.risk_amount,sd.account_currency||accountCurrency); $('stopReason').textContent=esc(sd.selection_reason||'NOT_EVALUATED');
  const tp=data.take_profit||{}; const tpPrice=v=>v==null||Number(v)<=0?'—':Number(v).toFixed(2); const tpRR=v=>v==null||Number(v)<=0?'—':Number(v).toFixed(2)+'R'; $('tpMode').textContent=esc(tp.mode||'CURRENT'); $('tpClass').textContent=esc(tp.class||'—'); $('tpSetup').textContent=esc(tp.setup||'—'); $('tpDirection').textContent=esc(tp.direction||'—'); $('tpCurrent').textContent=tpPrice(tp.current_tp); $('tpCurrentRR').textContent=tpRR(tp.current_rr); $('tpV2').textContent=tpPrice(tp.v2_tp); $('tpV2RR').textContent=tpRR(tp.v2_rr); $('tpSelected').textContent=tpPrice(tp.selected_tp); $('tpSelectedRR').textContent=tpRR(tp.selected_rr); $('tpLevel').textContent=tpPrice(tp.structure_level); $('tpConfidence').textContent=esc(tp.structure_confidence||'NONE'); $('tpReason').textContent=esc(tp.selection_reason||'—');
  $('balance').textContent=displayMoney(data.balance); $('equity').textContent=displayMoney(data.equity); $('startEquity').textContent=displayMoney(data.start_of_day_equity); $('tradeRiskPercent').textContent=Number(data.risk_percent||5).toFixed(1)+'%'; $('targetRisk').textContent=displayMoney(targetRisk); $('dailyLossPercent').textContent=Number(data.daily_loss_limit_percent||0).toFixed(1)+'%'; $('dailyBudget').textContent=displayMoney(dailyLossBudget); $('dailyLossUsed').textContent=displayMoney(dailyLossUsed); $('openRisk').textContent=displayMoney(data.open_risk||0); $('dailyRemaining').textContent=displayMoney(remainingDailyBudget); $('effectiveRisk').textContent=displayMoney(effectivePlannedRisk);
- const lim=Math.max(1,dailyLossBudget); $('dailyMeter').style.width=Math.min(100,Math.max(0,dailyLossUsed)/lim*100)+'%';
+ const lim=Math.max(1,dailyLossBudget);
+ const committed=Math.max(0,dailyLossBudget-remainingDailyBudget);
+ const lossPct=Math.min(100,Math.max(0,dailyLossUsed)/lim*100);
+ const openRiskValue=Math.max(0,Number(data.open_risk||0));
+ const openPct=Math.min(100,openRiskValue/lim*100);
+ const committedPct=Math.min(100,committed/lim*100);
+ $('riskLossBar').style.width=lossPct+'%';
+ $('riskOpenBar').style.width=openPct+'%';
+ $('dailyMeter').style.width=committedPct+'%';
+ $('riskCommitted').textContent=displayMoney(committed);
+ $('riskUsedPct').textContent=committedPct.toFixed(0)+'%';
+ $('riskRing').style.setProperty('--risk-pct',committedPct+'%');
+ $('riskHeadroomText').textContent='de '+displayMoney(dailyLossBudget)+' disponibles';
+ const startEq=Number(data.start_of_day_equity||0), eqNow=Number(data.equity||0);
+ const eqDelta=startEq>0&&eqNow>0?eqNow-startEq:null;
+ $('equityDelta').textContent=eqDelta==null?'—':(eqDelta>=0?'+':'')+displayMoney(eqDelta);
+ $('equityDelta').className=eqDelta==null?'':eqDelta>=0?'buy':'sell';
+ const riskDanger=remainingDailyBudget<=0.01 || committedPct>=95;
+ const riskWarn=!riskDanger && committedPct>=70;
+ $('riskState').textContent=riskDanger?'LÍMITE ALCANZADO':riskWarn?'CAPACIDAD BAJA':'PROTEGIDO';
+ $('riskState').className='risk-state '+(riskDanger?'danger':riskWarn?'warn':'safe');
+ $('riskGuardTitle').textContent=riskDanger?'NUEVAS ENTRADAS DEBEN QUEDAR BLOQUEADAS':riskWarn?'MARGEN DIARIO REDUCIDO':'PROTECCIÓN ACTIVA';
  $('execAccountMode').textContent=esc(de.account_mode||'UNKNOWN'); $('execConnected').textContent=de.broker_connected?'CONECTADO':'DESCONECTADO'; $('execEnabled').textContent=de.enabled?'SÍ':'NO'; $('execAllowed').textContent=de.execution_allowed?'SÍ':'NO'; $('execAuthorization').textContent=esc(de.authorization_reason||'—'); $('execState').textContent=esc(lifecycle(de.state||'PAPER')); $('execReason').textContent=esc(de.reason||'—'); $('execIds').textContent=(de.order_id||de.deal_id)?`${de.order_id||0} / ${de.deal_id||0}`:'—'; $('execFill').textContent=de.executed_price?`${Number(de.filled_volume||0).toFixed(4)} @ ${Number(de.executed_price).toFixed(2)}`:'—';
  const positions=data.open_positions||[];
  if(!positions.length){
