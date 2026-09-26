@@ -22,14 +22,17 @@ TERMINAL_EVENTS = {"POSITION_CLOSED", "RECONCILIATION_ERROR"}
 def _number(value: Any) -> float | None:
     if isinstance(value, bool) or not isinstance(value, (float, int)):
         return None
-    result = float(value)
+    try:
+        result = float(value)
+    except (OverflowError, ValueError):
+        return None
     return result if math.isfinite(result) else None
 
 
 def _ticket(value: Any) -> int | None:
     # MT5 identifiers are 64-bit integers; a float conversion can merge two
     # distinct tickets above 2**53 and corrupt deal/position provenance.
-    return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else None
+    return value if isinstance(value, int) and not isinstance(value, bool) and 0 < value <= 2**64 - 1 else None
 
 
 def _percentile(values: list[float], fraction: float) -> float | None:
@@ -59,6 +62,19 @@ def _close_day(row: dict[str, Any]) -> str | None:
     return None
 
 
+def _unique_json_fields(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    record: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in record:
+            raise ValueError("duplicate JSON field")
+        record[key] = value
+    return record
+
+
+def _reject_nonfinite(_value: str) -> None:
+    raise ValueError("non-finite JSON number")
+
+
 def _stats(rows: Iterable[dict[str, Any]]) -> dict[str, Any]:
     closed = list(rows)
     pnl = [_number(row.get("net_pnl")) for row in closed]
@@ -73,6 +89,8 @@ def _stats(rows: Iterable[dict[str, Any]]) -> dict[str, Any]:
     slip = [value for row in closed if (value := _number(row.get("entry_slippage_price"))) is not None]
     return {
         "trades": len(closed), "trades_closed": len(closed),
+        "net_cost_complete_trades": len(known),
+        "net_cost_unknown_trades": len(closed) - len(known),
         "wins": len(wins), "losses": len(losses), "breakeven": breakeven,
         "win_rate": 100.0 * len(wins) / len(known) if known else None,
         "gross_pnl": sum(gross) if len(gross) == len(closed) else None,
@@ -98,10 +116,14 @@ def project_events(events: Iterable[dict[str, Any]], *, day: str | None = None,
     seen_events: set[str] = set()
     closed: dict[str, dict[str, Any]] = {}
     conflicts: set[str] = set()
+    terminal_conflicts: set[str] = set()
     impossible_lifecycle: set[str] = set()
     states: dict[str, str] = {}
     orders: dict[str, set[int]] = defaultdict(set)
     deals: dict[str, set[int]] = defaultdict(set)
+    fill_risks: dict[str, list[float | None]] = defaultdict(list)
+    explicit_fill_risk: set[str] = set()
+    fill_deals: dict[str, set[int]] = defaultdict(set)
     count = 0
     for raw in events:
         if not isinstance(raw, dict):
@@ -124,10 +146,25 @@ def project_events(events: Iterable[dict[str, Any]], *, day: str | None = None,
             orders[trade_id].add(order_ticket)
         if deal_ticket is not None:
             deals[trade_id].add(deal_ticket)
+        if event == "ORDER_FILLED":
+            if deal_ticket is not None and deal_ticket in fill_deals[trade_id]:
+                conflicts.add(trade_id)
+            if deal_ticket is not None:
+                fill_deals[trade_id].add(deal_ticket)
+            if "fill_risk_account_currency" in raw:
+                explicit_fill_risk.add(trade_id)
+            fill_risks[trade_id].append(_number(raw.get(
+                "fill_risk_account_currency", raw.get("initial_risk_account_currency"))))
         if event == "RECONCILIATION_ERROR":
             conflicts.add(trade_id)
+            if str(raw.get("reconciliation_status", "")).startswith(
+                    ("NETTING_INOUT_", "HEDGING_INOUT_", "UNKNOWN_MARGIN_MODE_INOUT_")):
+                terminal_conflicts.add(trade_id)
         elif event == "ORDER_REJECTED":
-            states[trade_id] = "REJECTED"
+            # A later rejection of an unfilled remainder does not undo an
+            # already evidenced partial fill. Rejection before any fill is final.
+            if not fill_deals[trade_id]:
+                states[trade_id] = "REJECTED"
         elif event == "POSITION_OPEN":
             if states.get(trade_id) == "REJECTED":
                 conflicts.add(trade_id)
@@ -139,7 +176,9 @@ def project_events(events: Iterable[dict[str, Any]], *, day: str | None = None,
             # Legacy markers may have no deal/cost proof and are not a reliable
             # source for realized statistics.
             continue
-        if states.get(trade_id) != "REJECTED" and trade_id not in impossible_lifecycle:
+        if (states.get(trade_id) != "REJECTED" and
+                trade_id not in impossible_lifecycle and
+                trade_id not in terminal_conflicts):
             conflicts.discard(trade_id)
         else:
             conflicts.add(trade_id)
@@ -149,14 +188,24 @@ def project_events(events: Iterable[dict[str, Any]], *, day: str | None = None,
         swap = _number(raw.get("swap"))
         fees = _number(raw.get("fees"))
         net = _number(raw.get("net_pnl"))
-        if (None in (gross, commission, swap, fees, net) or
-                _ticket(raw.get("position_identifier")) is None or
+        costs_complete = None not in (gross, commission, swap, fees, net)
+        if (_ticket(raw.get("position_identifier")) is None or
                 _ticket(raw.get("deal_ticket")) is None):
             conflicts.add(trade_id)
-        if None not in (gross, commission, swap, fees, net) and abs(gross + commission + swap + fees - net) > .011:
+        if costs_complete and abs(gross + commission + swap + fees - net) > .011:
+            conflicts.add(trade_id)
+        if not costs_complete and net is not None:
             conflicts.add(trade_id)
         risk = _number(raw.get("initial_risk_account_currency"))
         realized = _number(raw.get("realized_r_net"))
+        if trade_id in explicit_fill_risk:
+            complete_risk = all(value is not None and value > 0 for value in fill_risks[trade_id])
+            if not complete_risk and (risk is not None or realized is not None):
+                conflicts.add(trade_id)
+            if complete_risk and risk is not None and abs(sum(fill_risks[trade_id]) - risk) > .011:
+                conflicts.add(trade_id)
+        if not costs_complete and realized is not None:
+            conflicts.add(trade_id)
         if risk is not None and risk > 0 and realized is not None and net is not None:
             if abs(net / risk - realized) > .001:
                 conflicts.add(trade_id)
@@ -165,6 +214,7 @@ def project_events(events: Iterable[dict[str, Any]], *, day: str | None = None,
             conflicts.add(trade_id)
             continue
         row = dict(raw)
+        row["cost_quality"] = "COMPLETE" if costs_complete else "UNKNOWN"
         row["status"] = "POSITION_CLOSED"
         row["trade_id"] = trade_id
         row["realized_r"] = row.get("realized_r_net", row.get("realized_r"))
@@ -187,6 +237,7 @@ def project_events(events: Iterable[dict[str, Any]], *, day: str | None = None,
         "closed_trades": rows, "session_stats": _stats(session),
         "trade_stats": _stats(rows), "segments": segments,
         "conflicting_trade_ids": sorted(conflicts),
+        "ledger_conflicts": len(conflicts),
     }
 
 
@@ -204,7 +255,8 @@ def read_ledger(paths: Iterable[Path], *, day: str | None = None,
                     if "\ufffd" in line:
                         errors.append({"line": number, "reason": "INVALID_UTF8"})
                     try:
-                        row = json.loads(line)
+                        row = json.loads(line, object_pairs_hook=_unique_json_fields,
+                                         parse_constant=_reject_nonfinite)
                         if not isinstance(row, dict):
                             raise ValueError("record is not an object")
                         yield row

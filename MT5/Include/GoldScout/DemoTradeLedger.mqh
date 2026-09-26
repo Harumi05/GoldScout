@@ -56,24 +56,162 @@ double GSDL_SignedSlippage(const string direction,const double requested,
    return 0.0;
 }
 
+bool GSDL_ParseString(const string json,int &at,string &value,const bool key);
+void GSDL_SkipSpace(const string json,int &at);
+
 string GSDL_JsonField(const string json,const string key)
 {
    string marker="\""+key+"\":";
    int start=StringFind(json,marker);
    if(start<0) return "";
    start+=StringLen(marker);
+   GSDL_SkipSpace(json,start);
    if(start>=StringLen(json)) return "";
    if(StringGetCharacter(json,start)=='"')
    {
-      start++;
-      int finish=StringFind(json,"\"",start);
-      return finish>=start?StringSubstr(json,start,finish-start):"";
+      string value="";
+      return GSDL_ParseString(json,start,value,false)?value:"";
    }
    int comma=StringFind(json,",",start);
    int brace=StringFind(json,"}",start);
    int finish=comma>=0?comma:brace;
    if(brace>=0 && (finish<0 || brace<finish)) finish=brace;
    return finish>=start?StringSubstr(json,start,finish-start):"";
+}
+
+bool GSDL_IsDigit(const ushort c) { return c>='0' && c<='9'; }
+bool GSDL_IsHex(const ushort c)
+{
+   return GSDL_IsDigit(c) || (c>='a' && c<='f') || (c>='A' && c<='F');
+}
+
+void GSDL_SkipSpace(const string json,int &at)
+{
+   while(at<StringLen(json))
+   {
+      ushort c=StringGetCharacter(json,at);
+      if(c!=' ' && c!='\t' && c!='\r' && c!='\n') break;
+      at++;
+   }
+}
+
+bool GSDL_ParseString(const string json,int &at,string &value,const bool key)
+{
+   value="";
+   int length=StringLen(json);
+   if(at>=length || StringGetCharacter(json,at)!='"') return false;
+   at++;
+   while(at<length)
+   {
+      ushort c=StringGetCharacter(json,at++);
+      if(c=='"') return true;
+      if(c<32) return false;
+      if(c!='\\')
+      {
+         if(key && !((c>='a' && c<='z') || (c>='A' && c<='Z') ||
+            GSDL_IsDigit(c) || c=='_')) return false;
+         value+=ShortToString(c);
+         continue;
+      }
+      if(key || at>=length) return false; // Schema keys are literal ASCII.
+      ushort escaped=StringGetCharacter(json,at++);
+      if(escaped=='"' || escaped=='\\' || escaped=='/')
+         value+=ShortToString(escaped);
+      else if(escaped=='b') value+=ShortToString(8);
+      else if(escaped=='f') value+=ShortToString(12);
+      else if(escaped=='n') value+="\n";
+      else if(escaped=='r') value+="\r";
+      else if(escaped=='t') value+="\t";
+      else if(escaped=='u')
+      {
+         if(at+4>length) return false;
+         int code=0;
+         for(int j=0;j<4;j++)
+         {
+            ushort digit=StringGetCharacter(json,at++);
+            if(!GSDL_IsHex(digit)) return false;
+            code=code*16+(GSDL_IsDigit(digit)?(int)(digit-'0'):
+               ((digit>='a' && digit<='f')?(int)(digit-'a'+10):(int)(digit-'A'+10)));
+         }
+         // UTF-16 surrogate code units are valid only as an adjacent pair.
+         if(code>=0xD800 && code<=0xDBFF)
+         {
+            if(at+6>length || StringGetCharacter(json,at++)!='\\' ||
+               StringGetCharacter(json,at++)!='u') return false;
+            int low=0;
+            for(int j=0;j<4;j++)
+            {
+               ushort digit=StringGetCharacter(json,at++);
+               if(!GSDL_IsHex(digit)) return false;
+               low=low*16+(GSDL_IsDigit(digit)?(int)(digit-'0'):
+                  ((digit>='a' && digit<='f')?(int)(digit-'a'+10):(int)(digit-'A'+10)));
+            }
+            if(low<0xDC00 || low>0xDFFF) return false;
+            value+=ShortToString((ushort)code)+ShortToString((ushort)low);
+         }
+         else
+         {
+            if(code>=0xDC00 && code<=0xDFFF) return false;
+            value+=ShortToString((ushort)code);
+         }
+      }
+      else return false;
+   }
+   return false;
+}
+
+bool GSDL_ParseNumber(const string json,int &at,string &raw)
+{
+   int start=at,length=StringLen(json);
+   if(at<length && StringGetCharacter(json,at)=='-') at++;
+   if(at>=length) return false;
+   ushort c=StringGetCharacter(json,at);
+   if(c=='0')
+   {
+      at++;
+      if(at<length && GSDL_IsDigit(StringGetCharacter(json,at))) return false;
+   }
+   else
+   {
+      if(c<'1' || c>'9') return false;
+      while(at<length && GSDL_IsDigit(StringGetCharacter(json,at))) at++;
+   }
+   if(at<length && StringGetCharacter(json,at)=='.')
+   {
+      at++;
+      if(at>=length || !GSDL_IsDigit(StringGetCharacter(json,at))) return false;
+      while(at<length && GSDL_IsDigit(StringGetCharacter(json,at))) at++;
+   }
+   if(at<length && (StringGetCharacter(json,at)=='e' ||
+      StringGetCharacter(json,at)=='E'))
+   {
+      at++;
+      if(at<length && (StringGetCharacter(json,at)=='+' ||
+         StringGetCharacter(json,at)=='-')) at++;
+      if(at>=length || !GSDL_IsDigit(StringGetCharacter(json,at))) return false;
+      while(at<length && GSDL_IsDigit(StringGetCharacter(json,at))) at++;
+   }
+   raw=StringSubstr(json,start,at-start);
+   return MathIsValidNumber(StringToDouble(raw));
+}
+
+bool GSDL_IsPositiveInteger(const string raw)
+{
+   if(raw=="" || StringLen(raw)>20 || StringGetCharacter(raw,0)=='0') return false;
+   for(int i=0;i<StringLen(raw);i++)
+      if(!GSDL_IsDigit(StringGetCharacter(raw,i))) return false;
+   if(StringLen(raw)==20 && StringCompare(raw,"18446744073709551615")>0)
+      return false;
+   return true;
+}
+
+bool GSDL_ParseUlong(const string raw,ulong &value)
+{
+   value=0;
+   if(!GSDL_IsPositiveInteger(raw)) return false;
+   for(int i=0;i<StringLen(raw);i++)
+      value=value*10+(ulong)(StringGetCharacter(raw,i)-'0');
+   return true;
 }
 
 bool GSDL_JsonNumber(const string json,const string key,double &value)
@@ -90,26 +228,79 @@ bool GSDL_JsonNumber(const string json,const string key,double &value)
 bool GSDL_ValidJsonObject(const string json)
 {
    int length=StringLen(json);
-   if(length<2 || StringGetCharacter(json,0)!='{' ||
-      StringGetCharacter(json,length-1)!='}') return false;
-   int depth=0;
-   bool quoted=false,escaped=false;
-   for(int i=0;i<length;i++)
+   int at=0;
+   GSDL_SkipSpace(json,at);
+   if(at>=length || StringGetCharacter(json,at++)!='{') return false;
+   string seen="|",event="",eventId="",tradeId="",account="",schema="",source="";
+   string position="",deal="",order="";
+   bool eventString=false,idString=false,tradeString=false;
+   bool accountNumber=false,schemaNumber=false,sourceString=false;
+   GSDL_SkipSpace(json,at);
+   if(at<length && StringGetCharacter(json,at)=='}') return false;
+   while(at<length)
    {
-      ushort c=StringGetCharacter(json,i);
-      if(quoted)
+      string key="",value="";
+      if(!GSDL_ParseString(json,at,key,true) || key=="" ||
+         StringFind(seen,"|"+key+"|")>=0) return false;
+      seen+=key+"|";
+      GSDL_SkipSpace(json,at);
+      if(at>=length || StringGetCharacter(json,at++)!=':') return false;
+      GSDL_SkipSpace(json,at);
+      if(at>=length) return false;
+      ushort first=StringGetCharacter(json,at);
+      bool stringValue=first=='"';
+      bool numberValue=first=='-' || GSDL_IsDigit(first);
+      if(first=='"')
       {
-         if(escaped) { escaped=false; continue; }
-         if(c=='\\') { escaped=true; continue; }
-         if(c=='"') quoted=false;
-         continue;
+         if(!GSDL_ParseString(json,at,value,false)) return false;
       }
-      if(c=='"') { quoted=true; continue; }
-      if(c=='{') depth++;
-      if(c=='}') depth--;
-      if(depth<0) return false;
+      else if(first=='n' && StringSubstr(json,at,4)=="null")
+      { value="null"; at+=4; }
+      else if(first=='t' && StringSubstr(json,at,4)=="true")
+      { value="true"; at+=4; }
+      else if(first=='f' && StringSubstr(json,at,5)=="false")
+      { value="false"; at+=5; }
+      else if(!GSDL_ParseNumber(json,at,value)) return false;
+      if(key=="event_id") { eventId=value; idString=stringValue; }
+      if(key=="event") { event=value; eventString=stringValue; }
+      if(key=="trade_id") { tradeId=value; tradeString=stringValue; }
+      if(key=="account_login") { account=value; accountNumber=numberValue; }
+      if(key=="schema_version") { schema=value; schemaNumber=numberValue; }
+      if(key=="source") { source=value; sourceString=stringValue; }
+      if(key=="position_identifier") position=value;
+      if(key=="deal_ticket") deal=value;
+      if(key=="order_ticket") order=value;
+      GSDL_SkipSpace(json,at);
+      if(at>=length) return false;
+      ushort delimiter=StringGetCharacter(json,at++);
+      if(delimiter=='}') break;
+      if(delimiter!=',') return false;
+      GSDL_SkipSpace(json,at);
+      if(at>=length || StringGetCharacter(json,at)=='}') return false;
    }
-   return !quoted && !escaped && depth==0;
+   GSDL_SkipSpace(json,at);
+   if(at!=length || eventId=="" || event=="" || !eventString || !idString ||
+      source=="" || !sourceString) return false;
+   // Historical v1 rows have no account/trade/schema and are read-only.
+   if(schema=="") return StringFind(eventId,"GSE2-")!=0;
+   if(schema!="2" || !schemaNumber || tradeId=="" || !tradeString ||
+      !accountNumber || !GSDL_IsPositiveInteger(account) || source!="MT5") return false;
+   if(StringLen(account)>19 || (StringLen(account)==19 &&
+      StringCompare(account,"9223372036854775807")>0)) return false;
+   if(position!="" && position!="null" && !GSDL_IsPositiveInteger(position)) return false;
+   if(deal!="" && deal!="null" && !GSDL_IsPositiveInteger(deal)) return false;
+   if(order!="" && order!="null" && !GSDL_IsPositiveInteger(order)) return false;
+   string kind=GSDL_CanonicalEvent(event);
+   if(kind!="SIGNAL" && kind!="RESERVED" && kind!="ORDER_REQUESTED" &&
+      kind!="ORDER_FILLED" && kind!="ORDER_REJECTED" &&
+      kind!="POSITION_OPEN" && kind!="PARTIALLY_CLOSED" &&
+      kind!="POSITION_CLOSED" && kind!="RECONCILED" &&
+      kind!="RECONCILIATION_ERROR") return false;
+   if(kind=="ORDER_FILLED" || kind=="PARTIALLY_CLOSED" ||
+      kind=="POSITION_CLOSED")
+      if(!GSDL_IsPositiveInteger(position) || !GSDL_IsPositiveInteger(deal)) return false;
+   if(kind=="POSITION_OPEN" && !GSDL_IsPositiveInteger(position)) return false;
+   return true;
 }
 
 struct GSDL_PositionState
@@ -117,8 +308,10 @@ struct GSDL_PositionState
    ulong positionId;
    string tradeId;
    string signalId;
+   string attemptId;
    string status;
    bool closedSeen;
+   bool reversalConflict;
    string setup;
    string tradeClass;
    string direction;
@@ -136,7 +329,16 @@ struct GSDL_PositionState
    double slippageWeighted;
    double slippageVolume;
    int fillCount;
+   int riskFillCount;
    string excursionQuality;
+};
+
+struct GSDL_AttemptClaim
+{
+   string attemptId;
+   string signalId;
+   string symbol;
+   long magic;
 };
 
 class GoldScoutDemoLedger
@@ -146,10 +348,29 @@ private:
    string m_ids[];
    int m_buckets[];
    string m_ambiguousTrades[];
+   GSDL_AttemptClaim m_claims[];
    GSDL_PositionState m_positions[];
    bool m_healthy;
    int m_sequence;
    long m_account;
+
+   bool RefreshAll(const int handle)
+   {
+      if(!FileSeek(handle,0,SEEK_SET)) return false;
+      while(!FileIsEnding(handle))
+      {
+         string line=FileReadString(handle);
+         StringTrimLeft(line);
+         StringTrimRight(line);
+         if(StringLen(line)>0 && StringGetCharacter(line,0)==65279)
+            line=StringSubstr(line,1);
+         if(line=="") continue;
+         if(!GSDL_ValidJsonObject(line)) return false;
+         string existingId=GSDL_JsonField(line,"event_id");
+         if(!HasEvent(existingId)) Remember(line,existingId);
+      }
+      return true;
+   }
 
    void RebuildBuckets(const int capacity)
    {
@@ -196,6 +417,19 @@ private:
       if(recordAccount!="" && (long)StringToInteger(recordAccount)!=m_account) return;
       string tradeIdForOrder=GSDL_JsonField(json,"trade_id");
       string eventForOrder=GSDL_CanonicalEvent(GSDL_JsonField(json,"event"));
+      if(eventForOrder=="RESERVED")
+      {
+         string claimId=GSDL_JsonField(json,"execution_attempt_id");
+         if(claimId!="" && claimId!="null")
+         {
+            int count=ArraySize(m_claims);
+            ArrayResize(m_claims,count+1);
+            m_claims[count].attemptId=claimId;
+            m_claims[count].signalId=GSDL_JsonField(json,"signal_event_id");
+            m_claims[count].symbol=GSDL_JsonField(json,"symbol");
+            m_claims[count].magic=(long)StringToInteger(GSDL_JsonField(json,"magic"));
+         }
+      }
       if(eventForOrder=="RECONCILIATION_ERROR" &&
          GSDL_JsonField(json,"reconciliation_status")=="AMBIGUOUS_ORDER_RESULT" &&
          tradeIdForOrder!="")
@@ -221,9 +455,9 @@ private:
                break;
             }
       }
-      ulong positionId=(ulong)StringToInteger(GSDL_JsonField(json,"position_identifier"));
-      if(positionId==0)
-         positionId=(ulong)StringToInteger(GSDL_JsonField(json,"position_id"));
+      ulong positionId=0;
+      if(!GSDL_ParseUlong(GSDL_JsonField(json,"position_identifier"),positionId))
+         GSDL_ParseUlong(GSDL_JsonField(json,"position_id"),positionId);
       if(positionId==0) return;
       int index=PositionIndex(positionId);
       if(index<0)
@@ -233,6 +467,7 @@ private:
          m_positions[index].positionId=positionId;
          m_positions[index].status="UNKNOWN";
          m_positions[index].closedSeen=false;
+         m_positions[index].reversalConflict=false;
          m_positions[index].setup="UNKNOWN";
          m_positions[index].tradeClass="UNKNOWN";
          m_positions[index].direction="UNKNOWN";
@@ -250,12 +485,15 @@ private:
          m_positions[index].slippageWeighted=0.0;
          m_positions[index].slippageVolume=0.0;
          m_positions[index].fillCount=0;
+         m_positions[index].riskFillCount=0;
          m_positions[index].excursionQuality="UNKNOWN";
       }
       string tradeId=GSDL_JsonField(json,"trade_id");
       string signalId=GSDL_JsonField(json,"signal_event_id");
       if(tradeId!="") m_positions[index].tradeId=tradeId;
       if(signalId!="") m_positions[index].signalId=signalId;
+      string attemptId=GSDL_JsonField(json,"execution_attempt_id");
+      if(attemptId!="" && attemptId!="null") m_positions[index].attemptId=attemptId;
       string setup=GSDL_JsonField(json,"setup");
       string tradeClass=GSDL_JsonField(json,"class");
       string direction=GSDL_JsonField(json,"direction");
@@ -265,14 +503,25 @@ private:
       string score=GSDL_JsonField(json,"score");
       if(score!="") m_positions[index].score=(int)StringToInteger(score);
       string kind=GSDL_CanonicalEvent(GSDL_JsonField(json,"event"));
-      if(kind=="POSITION_OPEN") m_positions[index].status="OPEN";
+      if(kind=="POSITION_OPEN" && !m_positions[index].reversalConflict &&
+         !m_positions[index].closedSeen)
+         m_positions[index].status="OPEN";
       if(kind=="POSITION_CLOSED")
       {
-         m_positions[index].status="CLOSED";
+         m_positions[index].status=m_positions[index].reversalConflict?"ERROR":"CLOSED";
          m_positions[index].closedSeen=true;
       }
-      if(kind=="RECONCILIATION_ERROR") m_positions[index].status="ERROR";
+      if(kind=="RECONCILIATION_ERROR")
+      {
+         m_positions[index].status="ERROR";
+         string reason=GSDL_JsonField(json,"reconciliation_status");
+         if(StringFind(reason,"NETTING_INOUT_")==0 ||
+            StringFind(reason,"HEDGING_INOUT_")==0 ||
+            StringFind(reason,"UNKNOWN_MARGIN_MODE_INOUT_")==0)
+            m_positions[index].reversalConflict=true;
+      }
       if(kind=="RECONCILED" && !m_positions[index].closedSeen &&
+         !m_positions[index].reversalConflict &&
          (GSDL_JsonField(json,"reconciliation_status")=="RECOVERED_OK" ||
           GSDL_JsonField(json,"reconciliation_status")=="RECOVERED_ORPHAN" ||
           GSDL_JsonField(json,"reconciliation_status")=="RECOVERED_AFTER_ERROR"))
@@ -284,7 +533,7 @@ private:
          if(GSDL_JsonNumber(json,"initial_risk_account_currency",value) && value>0.0)
          {
             m_positions[index].initialRisk+=value;
-            m_positions[index].riskKnown=true;
+            m_positions[index].riskFillCount++;
          }
          double fillPrice=0.0,fillVolume=0.0;
          if(GSDL_JsonNumber(json,"executed_price",fillPrice) && fillPrice>0.0 &&
@@ -306,6 +555,8 @@ private:
             m_positions[index].slippageWeighted+=slip*volume;
             m_positions[index].slippageVolume+=volume;
          }
+         m_positions[index].riskKnown=m_positions[index].fillCount>0 &&
+            m_positions[index].fillCount==m_positions[index].riskFillCount;
       }
       if(kind=="RECONCILED" && GSDL_JsonField(json,"reconciliation_status")=="EXCURSION_SAMPLE")
       {
@@ -329,6 +580,15 @@ public:
    int NextSequence(void) { return m_sequence+1; }
    int PositionCount(void) { return ArraySize(m_positions); }
    bool AmbiguousOrders(void) { return ArraySize(m_ambiguousTrades)>0; }
+   bool AttemptMatches(const string attemptId,const string signalId,
+                       const string symbol,const long magic)
+   {
+      for(int i=0;i<ArraySize(m_claims);i++)
+         if(m_claims[i].attemptId==attemptId && m_claims[i].signalId==signalId &&
+            m_claims[i].symbol==symbol && m_claims[i].magic==magic)
+            return true;
+      return false;
+   }
    GSDL_PositionState PositionAt(const int index) { return m_positions[index]; }
    bool StateFor(const ulong positionId,GSDL_PositionState &state)
    {
@@ -359,6 +619,7 @@ public:
       m_sequence=0;
       ArrayResize(m_ids,0);
       ArrayResize(m_ambiguousTrades,0);
+      ArrayResize(m_claims,0);
       RebuildBuckets(1024);
       ArrayResize(m_positions,0);
       if(!FileIsExist(filename,FILE_COMMON)) return true;
@@ -386,13 +647,57 @@ public:
       FileClose(handle);
       return m_healthy;
    }
+   bool ClaimAttempt(const string signalId,const string symbol,const long magic,
+                     const string direction,const string setup,const string tradeClass,
+                     const int score,string &attemptId)
+   {
+      attemptId="";
+      if(!m_healthy || signalId=="") return false;
+      int handle=FileOpen(m_filename,FILE_COMMON|FILE_READ|FILE_WRITE|FILE_TXT|
+         FILE_ANSI|FILE_SHARE_READ,0,CP_UTF8);
+      if(handle==INVALID_HANDLE) { m_healthy=false; return false; }
+      if(!RefreshAll(handle)) { FileClose(handle); m_healthy=false; return false; }
+      if(m_sequence>=2147483646)
+      { FileClose(handle); m_healthy=false; return false; }
+      int sequence=m_sequence+1;
+      attemptId=StringFormat("GSA-%I64d-%d",m_account,sequence);
+      string tradeId=GSDL_TradeId(m_account,symbol,magic,attemptId,0);
+      string eventId="GSE2-"+attemptId+"|RESERVED";
+      datetime now=TimeTradeServer();
+      if(now<=0) now=TimeCurrent();
+      string json=StringFormat("{\"event_id\":\"%s\",\"trade_id\":\"%s\",\"signal_event_id\":\"%s\",\"execution_attempt_id\":\"%s\",\"source\":\"MT5\",\"score_effect\":0,\"schema_version\":2,\"event\":\"RESERVED\",\"account_login\":%I64d,\"timestamp\":%I64d,\"sequence\":%d,\"symbol\":\"%s\",\"magic\":%I64d,\"direction\":\"%s\",\"setup\":\"%s\",\"class\":\"%s\",\"score\":%d}",
+         eventId,tradeId,signalId,attemptId,m_account,(long)now,sequence,
+         symbol,magic,direction,setup,tradeClass,score);
+      if(!GSDL_ValidJsonObject(json) || !FileSeek(handle,0,SEEK_END))
+      { FileClose(handle); m_healthy=false; attemptId=""; return false; }
+      // A valid last JSON row may lack a trailing newline after a crash;
+      // the leading separator keeps the next append from merging two rows.
+      string record="\r\n"+json+"\r\n";
+      uint written=FileWriteString(handle,record);
+      FileFlush(handle);
+      FileClose(handle);
+      if(written<(uint)StringLen(record))
+      { m_healthy=false; attemptId=""; return false; }
+      Remember(json,eventId);
+      return true;
+   }
    bool Append(const string eventId,const string json)
    {
-      if(!m_healthy) return false;
+      if(!m_healthy || !GSDL_ValidJsonObject(json)) return false;
       if(HasEvent(eventId)) return true;
       int handle=FileOpen(m_filename,FILE_COMMON|FILE_READ|FILE_WRITE|FILE_TXT|
          FILE_ANSI|FILE_SHARE_READ,0,CP_UTF8);
       if(handle==INVALID_HANDLE) { m_healthy=false; return false; }
+      string eventType=GSDL_CanonicalEvent(GSDL_JsonField(json,"event"));
+      bool critical=eventType!="RECONCILED" ||
+         GSDL_JsonField(json,"reconciliation_status")!="EXCURSION_SAMPLE";
+      if(critical)
+      {
+         if(!RefreshAll(handle)) { FileClose(handle); m_healthy=false; return false; }
+         if(HasEvent(eventId)) { FileClose(handle); return true; }
+      }
+      else
+      {
       // The writer lock serializes terminals sharing Common/Files. Refresh a
       // bounded recent tail because another EA instance may have appended
       // after this instance loaded its in-memory index.
@@ -418,8 +723,9 @@ public:
             return true;
          }
       }
+      }
       if(!FileSeek(handle,0,SEEK_END)) { FileClose(handle); m_healthy=false; return false; }
-      string record=json+"\r\n";
+      string record="\r\n"+json+"\r\n";
       uint written=FileWriteString(handle,record);
       FileFlush(handle);
       FileClose(handle);

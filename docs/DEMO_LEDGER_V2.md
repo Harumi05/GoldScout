@@ -24,14 +24,29 @@ Legacy `ORDER_REQUEST` and `POSITION_PARTIAL_CLOSE` are accepted on read, but
 new records emit `ORDER_REQUESTED` and `PARTIALLY_CLOSED`. A deterministic
 `event_id` is keyed by event, stable trade identity and broker deal/position
 where available. A restart reloads known event IDs and position states before
-reconciliation. `trade_id` is account/symbol/magic/signal scoped for normal
-orders; a broker orphan uses an explicit position-scoped identity.
+reconciliation. `signal_event_id` groups one logical setup; each broker send
+first claims a durable `execution_attempt_id` under the ledger writer lock.
+`trade_id` is account/symbol/magic/attempt scoped, so a safely rejected attempt
+cannot contaminate a later retry of the same H1 signal. A broker orphan has an
+explicit position-scoped identity. The compact `GS2` broker comment carries the
+signal hash and persisted attempt ordinal as a recovery hint, not as the source
+of truth. The claim must match signal, symbol and magic exactly. A missing or
+mismatched claim is a reconciliation error, not a verified fill.
 
 Broker facts are not inferred from price proximity: close reason uses
 `DEAL_REASON`; unsupported reasons are `OTHER` or `UNKNOWN`. Unknown prices,
 spread, slippage, costs or initial risk are null. Initial risk is captured at
 entry and is never recomputed from a modified closing stop. Realized R is
 null unless initial account-currency risk and broker net PnL are both known.
+`order_planned_risk` is the pre-send budget and is never summed as fill risk.
+Each `ORDER_FILLED` contributes only its own `fill_risk_account_currency` based
+on executed volume/price. `position_initial_risk` is the sum of all unique
+fill risks; if any fill risk is missing, or broker entry-deal count/volume does
+not match captured fills, `riskKnown=false` and realized net R stays null.
+Broker commission, swap, fee and gross getters are checked
+individually. Unknown cost evidence is null (`cost_quality=UNKNOWN`), never
+silently zero; those rows retain reliable gross PnL but are excluded from net
+cost statistics.
 `spread_at_fill`/`spread_at_exit` are only present when the terminal's quote is
 within one second of the deal timestamp; they are nearby observed quotes, not
 a broker-certified execution spread. Excursions use delivered DEMO ticks and
@@ -52,6 +67,17 @@ reconciled. Ledger recovery and deal capture run only with a positively
 identified DEMO account; REAL and unknown account modes fail closed.
 Account-scoped dashboard projections omit legacy events lacking `account_login`;
 the EA may still use their position IDs to avoid duplicate lifecycle writes.
+The writer validates every critical JSONL record with a strict schema parser
+and rescans the entire ledger under its writer lock before appending critical
+events. This is intentional for strong idempotency across EA instances and
+ledgers larger than 256 KB; an invalid/truncated row marks the ledger unhealthy
+and blocks new DEMO entries. Only noncritical excursion samples use a bounded
+tail scan. `ledger_conflicts` and `conflicting_trade_ids` are visible in the
+dashboard when statistics exclude trades. A NETTING `DEAL_ENTRY_INOUT` is not
+treated as a new entry: if old/new exposure cannot be split unambiguously, the
+old ledger position becomes a persistent reconciliation error and new DEMO
+entries are blocked; no open broker position is modified. HEDGING `INOUT` is
+also treated as unexpected rather than inventing a strategy identity.
 
 ## DEMO validation checklist (Capital.com)
 

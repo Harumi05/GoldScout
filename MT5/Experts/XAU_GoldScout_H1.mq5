@@ -255,6 +255,7 @@ string g_executionState="PAPER";
 string g_executionReason="DEMO_EXECUTION_DISABLED";
 string g_executionAuthorizationReason="DEMO_EXECUTION_DISABLED";
 string g_activeSignalEventId="";
+string g_activeExecutionAttemptId="";
 string g_observerSignalEventId="";
 ulong  g_lastExecutionOrder=0;
 ulong  g_lastExecutionDeal=0;
@@ -270,8 +271,10 @@ double g_lastOpenRisk=0.0;
 datetime g_lastExecutionEventError=0;
 GoldScoutDemoLedger g_demoLedger;
 string g_ledgerRequestSignalId="";
+string g_ledgerRequestAttemptId="";
 double g_ledgerRequestPrice=0.0, g_ledgerRequestBid=0.0, g_ledgerRequestAsk=0.0;
 double g_ledgerRequestVolume=0.0, g_ledgerRequestSL=0.0, g_ledgerRequestTP=0.0;
+double g_ledgerRequestPlannedRisk=0.0;
 bool g_ledgerReconciliationBlocked=false;
 datetime g_ledgerStartupTime=0;
 datetime g_lastLedgerRecoveryAttempt=0;
@@ -379,6 +382,7 @@ struct GoldScoutTradeMetadata
    int    score;
    double initialRisk;
    string signalEventId;
+   string executionAttemptId;
 };
 
 struct GoldScoutClosedTrade
@@ -405,6 +409,8 @@ struct GoldScoutClosedTrade
    double   realizedR;
    double   realizedRGross;
    bool     initialRiskKnown;
+   bool     grossPnlKnown;
+   bool     costsKnown;
    double   initialEntry;
    double   initialSL;
    double   initialTP;
@@ -536,29 +542,50 @@ string SignalEventId(const datetime bar,const int direction,const string setup,
 }
 
 string DemoTradeComment(const string tradeClass,const string setup,const int score,
-                        const double initialRisk,const string signalEventId)
+                        const string signalEventId,const string attemptId)
 {
    string classCode=tradeClass=="GOD"?"G":"C";
    string hash=signalEventId;
    if(StringFind(hash,"GS-")==0) hash=StringSubstr(hash,3);
-   return StringFormat("GS|%s|%s|%d|%.2f|%s",classCode,SetupCode(setup),score,
-      initialRisk,hash);
+   int dash=StringFind(attemptId,"-",StringLen("GSA-")+1);
+   string ordinal=dash>=0?StringSubstr(attemptId,dash+1):"";
+   return StringFormat("GS2|%s|%s|%d|%s|%s",classCode,SetupCode(setup),score,
+      hash,ordinal);
 }
 
 bool ParseDemoTradeComment(const string comment,string &tradeClass,string &setup,
-                           int &score,double &initialRisk,string &signalEventId)
+                           int &score,double &initialRisk,string &signalEventId,
+                           string &attemptId)
 {
    tradeClass="UNKNOWN"; setup="UNKNOWN"; score=0; initialRisk=0.0;
-   signalEventId="";
+   signalEventId=""; attemptId="";
    string parts[];
    int count=StringSplit(comment,(ushort)'|',parts);
-   if(count<6 || parts[0]!="GS") return false;
+   if(count<6 || (parts[0]!="GS" && parts[0]!="GS2")) return false;
    tradeClass=parts[1]=="G"?"GOD":(parts[1]=="C"?"CHILL":"UNKNOWN");
    setup=SetupNameFromCode(parts[2]);
    score=(int)StringToInteger(parts[3]);
-   initialRisk=StringToDouble(parts[4]);
-   signalEventId="GS-"+parts[5];
+   if(parts[0]=="GS2")
+   {
+      int ordinal=(int)StringToInteger(parts[5]);
+      if(ordinal<=0 || parts[4]=="") return false;
+      signalEventId="GS-"+parts[4];
+      attemptId=StringFormat("GSA-%I64d-%d",AccountInfoInteger(ACCOUNT_LOGIN),ordinal);
+   }
+   else
+   {
+      initialRisk=StringToDouble(parts[4]);
+      signalEventId="GS-"+parts[5];
+   }
    return signalEventId!="GS-";
+}
+
+bool DealMoneyEvidence(const ulong deal,const ENUM_DEAL_PROPERTY_DOUBLE property,
+                       double &value)
+{
+   value=0.0;
+   ResetLastError();
+   return HistoryDealGetDouble(deal,property,value) && MathIsValidNumber(value);
 }
 
 bool AppendExecutionEvent(const string eventType,const string signalEventId,
@@ -569,7 +596,8 @@ bool AppendExecutionEvent(const string eventType,const string signalEventId,
                           const double requestedPrice,const double executedPrice,
                           const double requestedVolume,const double filledVolume,
                           const double sl,const double tp,const double spread,
-                          const double slippage,const string reason)
+                          const double slippage,const string reason,
+                          const string suppliedAttemptId="")
 {
    datetime now=TimeTradeServer();
    if(now<=0) now=TimeCurrent();
@@ -577,10 +605,17 @@ bool AppendExecutionEvent(const string eventType,const string signalEventId,
    string canonical=GSDL_CanonicalEvent(eventType);
    GSDL_PositionState knownPosition;
    bool hasKnownPosition=positionId>0 && g_demoLedger.StateFor(positionId,knownPosition);
+   string attemptId=hasKnownPosition?knownPosition.attemptId:suppliedAttemptId;
+   if(attemptId=="" && positionId==0 && signalEventId!="" &&
+      signalEventId==g_activeSignalEventId)
+      attemptId=g_activeExecutionAttemptId;
+   if(attemptId!="" && !g_demoLedger.AttemptMatches(attemptId,signalEventId,
+      _Symbol,MagicNumber))
+   { g_ledgerReconciliationBlocked=true; return false; }
    string tradeId=hasKnownPosition && knownPosition.tradeId!=""
       ? knownPosition.tradeId
       : GSDL_TradeId(AccountInfoInteger(ACCOUNT_LOGIN),_Symbol,MagicNumber,
-         signalEventId,positionId);
+         attemptId!=""?attemptId:(positionId==0?"SIGNAL-"+signalEventId:""),positionId);
    string eventId=GSDL_EventId(canonical,tradeId,orderId,dealId,positionId,reason);
    if(g_demoLedger.HasEvent(eventId)) return true;
    long brokerTimeMsc=0;
@@ -588,7 +623,8 @@ bool AppendExecutionEvent(const string eventType,const string signalEventId,
       brokerTimeMsc=HistoryDealGetInteger(dealId,DEAL_TIME_MSC);
    bool requestKnown=requestedPrice>0.0;
    double requestBid=0.0,requestAsk=0.0;
-   bool matchingRequest=signalEventId!="" && signalEventId==g_ledgerRequestSignalId;
+   bool matchingRequest=signalEventId!="" && signalEventId==g_ledgerRequestSignalId &&
+      attemptId!="" && attemptId==g_ledgerRequestAttemptId;
    if(matchingRequest)
    {
       requestBid=g_ledgerRequestBid;
@@ -626,6 +662,8 @@ bool AppendExecutionEvent(const string eventType,const string signalEventId,
    string json="{";
    json+="\"event_id\":\""+JsonEscape(eventId)+"\",";
    json+="\"signal_event_id\":\""+JsonEscape(signalEventId)+"\",";
+   json+="\"execution_attempt_id\":"+
+      (attemptId!=""?"\""+JsonEscape(attemptId)+"\"":"null")+",";
    json+="\"trade_id\":\""+JsonEscape(tradeId)+"\",";
    json+="\"source\":\"MT5\",\"score_effect\":0,\"schema_version\":2,";
    json+="\"strategy_id\":\"INTRADAY_H1_BASELINE\",\"policy_version\":\"DEMO_LEDGER_V2\",";
@@ -658,6 +696,10 @@ bool AppendExecutionEvent(const string eventType,const string signalEventId,
    json+="\"initial_entry\":"+JsonNumberOrNull(canonical=="ORDER_FILLED" && executedPrice>0.0,executedPrice)+",";
    json+="\"initial_risk_price\":"+JsonNumberOrNull(initialRiskKnown,MathAbs(executedPrice-sl))+",";
    json+="\"initial_risk_account_currency\":"+JsonNumberOrNull(initialRiskKnown,initialRisk,2)+",";
+   json+="\"order_planned_risk\":"+JsonNumberOrNull(
+      canonical=="ORDER_REQUESTED" && matchingRequest,g_ledgerRequestPlannedRisk,2)+",";
+   json+="\"fill_risk_account_currency\":"+JsonNumberOrNull(
+      canonical=="ORDER_FILLED" && initialRiskKnown,initialRisk,2)+",";
    json+="\"account_currency\":\""+JsonEscape(AccountInfoString(ACCOUNT_CURRENCY))+"\",";
    json+="\"bid_at_request\":"+JsonNumberOrNull(requestBid>0.0,requestBid)+",";
    json+="\"ask_at_request\":"+JsonNumberOrNull(requestAsk>0.0,requestAsk)+",";
@@ -673,12 +715,19 @@ bool AppendExecutionEvent(const string eventType,const string signalEventId,
       json+="\"reconciliation_status\":\""+JsonEscape(reason)+"\",";
    if(canonical=="PARTIALLY_CLOSED" && dealId>0 && HistoryDealSelect(dealId))
    {
-      double gross=HistoryDealGetDouble(dealId,DEAL_PROFIT);
-      double commission=HistoryDealGetDouble(dealId,DEAL_COMMISSION);
-      double swap=HistoryDealGetDouble(dealId,DEAL_SWAP);
-      double fees=HistoryDealGetDouble(dealId,DEAL_FEE);
-      json+=StringFormat("\"gross_pnl\":%.2f,\"commission\":%.2f,\"swap\":%.2f,\"fees\":%.2f,\"net_pnl\":%.2f,",
-         gross,commission,swap,fees,gross+commission+swap+fees);
+      double gross=0.0,commission=0.0,swap=0.0,fees=0.0;
+      bool grossKnown=DealMoneyEvidence(dealId,DEAL_PROFIT,gross);
+      bool commissionKnown=DealMoneyEvidence(dealId,DEAL_COMMISSION,commission);
+      bool swapKnown=DealMoneyEvidence(dealId,DEAL_SWAP,swap);
+      bool feeKnown=DealMoneyEvidence(dealId,DEAL_FEE,fees);
+      bool costsKnown=commissionKnown && swapKnown && feeKnown;
+      json+="\"commission\":"+JsonNumberOrNull(commissionKnown,commission,2)+",";
+      json+="\"swap\":"+JsonNumberOrNull(swapKnown,swap,2)+",";
+      json+="\"fees\":"+JsonNumberOrNull(feeKnown,fees,2)+",";
+      json+="\"gross_pnl\":"+JsonNumberOrNull(grossKnown,gross,2)+",";
+      json+="\"net_pnl\":"+JsonNumberOrNull(grossKnown && costsKnown,
+         gross+commission+swap+fees,2)+",";
+      json+="\"cost_quality\":\""+(grossKnown && costsKnown?"COMPLETE":"UNKNOWN")+"\",";
       json+="\"close_reason\":\""+
          JsonEscape(GSDE_CloseReason(HistoryDealGetInteger(dealId,DEAL_REASON)))+"\",";
       json+="\"spread_at_exit\":"+JsonNumberOrNull(fillQuoteKnown,
@@ -3378,6 +3427,7 @@ void TryTrade()
 
    datetime entryBar=iTime(_Symbol,PERIOD_H1,0);
    g_activeSignalEventId=SignalEventId(entryBar,direction,setup,score);
+   g_activeExecutionAttemptId="";
    g_observerSignalEventId=g_activeSignalEventId;
    g_lastExecutionOrder=0;
    g_lastExecutionDeal=0;
@@ -3390,12 +3440,14 @@ void TryTrade()
    g_lastExecutionSpread=0.0;
    g_lastExecutionSlippage=0.0;
    g_ledgerRequestSignalId=g_activeSignalEventId;
+   g_ledgerRequestAttemptId="";
    g_ledgerRequestPrice=price;
    g_ledgerRequestBid=tick.bid;
    g_ledgerRequestAsk=tick.ask;
    g_ledgerRequestVolume=lots;
    g_ledgerRequestSL=sl;
    g_ledgerRequestTP=tp;
+   g_ledgerRequestPlannedRisk=actualRisk;
    RefreshExecutionAuthorizationDiagnostic();
    bool executeDemo=false;
    if(EnableDemoExecution)
@@ -3437,14 +3489,15 @@ void TryTrade()
       g_lastDecision="Bloqueado: no se pudo crear reserva H1 PENDING persistente";
       g_diagBlockReason=g_lastDecision; UpdateDashboard(); return;
    }
-   if(executeDemo && !AppendExecutionEvent("RESERVED",g_activeSignalEventId,
-      direction>0?"LONG":"SHORT",setup,tradeClass,score,0,0,0,0,
-      price,0.0,lots,0.0,sl,tp,tick.ask-tick.bid,0.0,"H1_PENDING"))
+   if(executeDemo && !g_demoLedger.ClaimAttempt(g_activeSignalEventId,_Symbol,
+      MagicNumber,direction>0?"LONG":"SHORT",setup,tradeClass,score,
+      g_activeExecutionAttemptId))
    {
       ReleasePendingH1Entry(entryBar);
       g_lastDecision="Bloqueado: reserva DEMO sin ledger persistente";
       g_diagBlockReason=g_lastDecision; UpdateDashboard(); return;
    }
+   g_ledgerRequestAttemptId=g_activeExecutionAttemptId;
 
    bool requestSent=false;
    bool executionConfirmed=false;
@@ -3452,7 +3505,8 @@ void TryTrade()
    ulong deal=0,orderId=0,positionId=0;
    double executedPrice=0.0,filledVolume=0.0;
    string comment=executeDemo
-      ? DemoTradeComment(tradeClass,setup,score,actualRisk,g_activeSignalEventId)
+      ? DemoTradeComment(tradeClass,setup,score,g_activeSignalEventId,
+         g_activeExecutionAttemptId)
       : paperComment;
    if(executeDemo)
    {
@@ -3606,6 +3660,7 @@ void ClearTradeMetadata(GoldScoutTradeMetadata &metadata)
    metadata.score=0;
    metadata.initialRisk=0.0;
    metadata.signalEventId="";
+   metadata.executionAttemptId="";
 }
 
 bool LoadTradeMetadata(const ulong positionId,GoldScoutTradeMetadata &metadata)
@@ -3619,6 +3674,7 @@ bool LoadTradeMetadata(const ulong positionId,GoldScoutTradeMetadata &metadata)
       metadata.score=ledgerState.score;
       metadata.initialRisk=ledgerState.riskKnown?ledgerState.initialRisk:0.0;
       metadata.signalEventId=ledgerState.signalId;
+      metadata.executionAttemptId=ledgerState.attemptId;
       return true;
    }
    if(positionId==0 || !HistorySelectByPosition(positionId)) return false;
@@ -3632,7 +3688,13 @@ bool LoadTradeMetadata(const ulong positionId,GoldScoutTradeMetadata &metadata)
       string comment=HistoryDealGetString(deal,DEAL_COMMENT);
       if(ParseDemoTradeComment(comment,metadata.tradeClass,metadata.setup,
                                metadata.score,metadata.initialRisk,
-                               metadata.signalEventId)) return true;
+                               metadata.signalEventId,metadata.executionAttemptId))
+      {
+         if(metadata.executionAttemptId!="" && !g_demoLedger.AttemptMatches(
+            metadata.executionAttemptId,metadata.signalEventId,_Symbol,MagicNumber))
+            return false;
+         return true;
+      }
       metadata.tradeClass=ExtractTag(comment);
       metadata.setup="UNKNOWN";
       return true;
@@ -3655,13 +3717,40 @@ bool PositionBelongsToGoldScout(const ulong positionId)
    return false;
 }
 
+void RecordReversalConflict(const ulong dealId,const uint retcode)
+{
+   if(dealId==0 || !HistoryDealSelect(dealId) ||
+      HistoryDealGetInteger(dealId,DEAL_ENTRY)!=DEAL_ENTRY_INOUT) return;
+   ulong positionId=(ulong)HistoryDealGetInteger(dealId,DEAL_POSITION_ID);
+   if(positionId==0) { g_ledgerReconciliationBlocked=true; return; }
+   GSDL_PositionState state;
+   bool known=g_demoLedger.StateFor(positionId,state);
+   long marginMode=AccountInfoInteger(ACCOUNT_MARGIN_MODE);
+   string reason="UNKNOWN_MARGIN_MODE_INOUT_RECONCILIATION_REQUIRED";
+   if(marginMode==ACCOUNT_MARGIN_MODE_RETAIL_NETTING ||
+      marginMode==ACCOUNT_MARGIN_MODE_EXCHANGE)
+      reason="NETTING_INOUT_REVERSAL_REQUIRES_SPLIT";
+   else if(marginMode==ACCOUNT_MARGIN_MODE_RETAIL_HEDGING)
+      reason="HEDGING_INOUT_UNEXPECTED";
+   // INOUT contains a close of the old exposure and possibly a new opposite
+   // exposure. Without an unambiguous split, neither may be labeled OPEN.
+   g_ledgerReconciliationBlocked=true;
+   g_executionState="RECONCILIATION_ERROR";
+   AppendExecutionEvent("RECONCILIATION_ERROR",known?state.signalId:"",
+      known?state.direction:"UNKNOWN",known?state.setup:"UNKNOWN",
+      known?state.tradeClass:"UNKNOWN",known?state.score:0,retcode,
+      (ulong)HistoryDealGetInteger(dealId,DEAL_ORDER),dealId,positionId,
+      0.0,HistoryDealGetDouble(dealId,DEAL_PRICE),0.0,
+      HistoryDealGetDouble(dealId,DEAL_VOLUME),0,0,0,0,reason);
+}
+
 void RecordEntryDeal(const ulong dealId,const uint retcode)
 {
    if(dealId==0 || !HistoryDealSelect(dealId) ||
       HistoryDealGetString(dealId,DEAL_SYMBOL)!=_Symbol ||
       (long)HistoryDealGetInteger(dealId,DEAL_MAGIC)!=MagicNumber) return;
    long entry=HistoryDealGetInteger(dealId,DEAL_ENTRY);
-   if(entry!=DEAL_ENTRY_IN && entry!=DEAL_ENTRY_INOUT) return;
+   if(entry!=DEAL_ENTRY_IN) return;
    ulong positionId=(ulong)HistoryDealGetInteger(dealId,DEAL_POSITION_ID);
    ulong orderId=(ulong)HistoryDealGetInteger(dealId,DEAL_ORDER);
    if(positionId==0) { g_ledgerReconciliationBlocked=true; return; }
@@ -3679,10 +3768,31 @@ void RecordEntryDeal(const ulong dealId,const uint retcode)
    ClearTradeMetadata(metadata);
    string comment=HistoryDealGetString(dealId,DEAL_COMMENT);
    if(!ParseDemoTradeComment(comment,metadata.tradeClass,metadata.setup,
-      metadata.score,metadata.initialRisk,metadata.signalEventId))
+      metadata.score,metadata.initialRisk,metadata.signalEventId,
+      metadata.executionAttemptId))
       LoadTradeMetadata(positionId,metadata);
+   if(metadata.executionAttemptId!="" && !g_demoLedger.AttemptMatches(
+      metadata.executionAttemptId,metadata.signalEventId,_Symbol,MagicNumber))
+   {
+      g_ledgerReconciliationBlocked=true;
+      AppendExecutionEvent("RECONCILIATION_ERROR",metadata.signalEventId,
+         direction,metadata.setup,metadata.tradeClass,metadata.score,retcode,
+         orderId,dealId,positionId,0,executed,0,volume,0,0,0,0,
+         "UNCLAIMED_EXECUTION_ATTEMPT");
+      return;
+   }
+   if(metadata.signalEventId=="")
+   {
+      g_ledgerReconciliationBlocked=true;
+      AppendExecutionEvent("RECONCILIATION_ERROR","",direction,"UNKNOWN",
+         "UNKNOWN",0,retcode,orderId,dealId,positionId,0,executed,0,volume,
+         0,0,0,0,"ENTRY_IDENTITY_UNAVAILABLE");
+      return;
+   }
    bool matchingRequest=metadata.signalEventId!="" &&
-      metadata.signalEventId==g_ledgerRequestSignalId;
+      metadata.signalEventId==g_ledgerRequestSignalId &&
+      metadata.executionAttemptId!="" &&
+      metadata.executionAttemptId==g_ledgerRequestAttemptId;
    double requested=matchingRequest?g_ledgerRequestPrice:0.0;
    double requestedVolume=matchingRequest?g_ledgerRequestVolume:0.0;
    double sl=HistoryDealGetDouble(dealId,DEAL_SL);
@@ -3696,18 +3806,17 @@ void RecordEntryDeal(const ulong dealId,const uint retcode)
    if(tp<=0.0 && matchingRequest) tp=g_ledgerRequestTP;
    double spread=matchingRequest && g_ledgerRequestAsk>=g_ledgerRequestBid &&
       g_ledgerRequestBid>0.0?g_ledgerRequestAsk-g_ledgerRequestBid:0.0;
-   if(metadata.signalEventId=="") g_ledgerReconciliationBlocked=true;
    if(!AppendExecutionEvent("ORDER_FILLED",metadata.signalEventId,direction,
       metadata.setup,metadata.tradeClass,metadata.score,retcode,orderId,dealId,
       positionId,requested,executed,requestedVolume,volume,sl,tp,spread,0.0,
-      "BROKER_ENTRY_DEAL"))
+      "BROKER_ENTRY_DEAL",metadata.executionAttemptId))
       g_ledgerReconciliationBlocked=true;
    GSDL_PositionState state;
    if(!g_demoLedger.StateFor(positionId,state) || state.status!="OPEN")
       if(!AppendExecutionEvent("POSITION_OPEN",metadata.signalEventId,direction,
          metadata.setup,metadata.tradeClass,metadata.score,retcode,orderId,dealId,
          positionId,requested,executed,requestedVolume,volume,sl,tp,spread,0.0,
-         "BROKER_POSITION_OPEN"))
+         "BROKER_POSITION_OPEN",metadata.executionAttemptId))
          g_ledgerReconciliationBlocked=true;
 }
 
@@ -3978,6 +4087,8 @@ bool BuildClosedTradeSummary(const ulong positionId,GoldScoutClosedTrade &tradeS
    tradeSummary.realizedR=0.0;
    tradeSummary.realizedRGross=0.0;
    tradeSummary.initialRiskKnown=false;
+   tradeSummary.grossPnlKnown=true;
+   tradeSummary.costsKnown=true;
    tradeSummary.initialEntry=0.0;
    tradeSummary.initialSL=0.0;
    tradeSummary.initialTP=0.0;
@@ -3996,6 +4107,7 @@ bool BuildClosedTradeSummary(const ulong positionId,GoldScoutClosedTrade &tradeS
    double entryValue=0.0,entryVolume=0.0,exitValue=0.0,exitVolume=0.0;
    string entryComment="";
    bool ownEntry=false,foreignEntry=false,directionConflict=false;
+   int entryDealCount=0;
    string entryDirection="";
    long latestExitMsc=0;
    uint deals=HistoryDealsTotal();
@@ -4004,6 +4116,7 @@ bool BuildClosedTradeSummary(const ulong positionId,GoldScoutClosedTrade &tradeS
       ulong deal=HistoryDealGetTicket(i);
       if(deal==0 || HistoryDealGetString(deal,DEAL_SYMBOL)!=_Symbol) continue;
       long entry=HistoryDealGetInteger(deal,DEAL_ENTRY);
+      if(entry==DEAL_ENTRY_INOUT) return false;
       if(entry==DEAL_ENTRY_IN &&
          (long)HistoryDealGetInteger(deal,DEAL_MAGIC)==MagicNumber)
          ownEntry=true;
@@ -4013,12 +4126,18 @@ bool BuildClosedTradeSummary(const ulong positionId,GoldScoutClosedTrade &tradeS
       double volume=HistoryDealGetDouble(deal,DEAL_VOLUME);
       double price=HistoryDealGetDouble(deal,DEAL_PRICE);
       datetime time=(datetime)HistoryDealGetInteger(deal,DEAL_TIME);
-      tradeSummary.grossPnl+=HistoryDealGetDouble(deal,DEAL_PROFIT);
-      tradeSummary.commission+=HistoryDealGetDouble(deal,DEAL_COMMISSION);
-      tradeSummary.fees+=HistoryDealGetDouble(deal,DEAL_FEE);
-      tradeSummary.swap+=HistoryDealGetDouble(deal,DEAL_SWAP);
+      double money=0.0;
+      if(DealMoneyEvidence(deal,DEAL_PROFIT,money)) tradeSummary.grossPnl+=money;
+      else tradeSummary.grossPnlKnown=false;
+      if(DealMoneyEvidence(deal,DEAL_COMMISSION,money)) tradeSummary.commission+=money;
+      else tradeSummary.costsKnown=false;
+      if(DealMoneyEvidence(deal,DEAL_FEE,money)) tradeSummary.fees+=money;
+      else tradeSummary.costsKnown=false;
+      if(DealMoneyEvidence(deal,DEAL_SWAP,money)) tradeSummary.swap+=money;
+      else tradeSummary.costsKnown=false;
       if(entry==DEAL_ENTRY_IN)
       {
+         entryDealCount++;
          entryValue+=price*volume; entryVolume+=volume;
          if(tradeSummary.openTime==0 || time<tradeSummary.openTime)
             tradeSummary.openTime=time;
@@ -4067,8 +4186,10 @@ bool BuildClosedTradeSummary(const ulong positionId,GoldScoutClosedTrade &tradeS
       tradeSummary.swap+tradeSummary.fees;
    GSDL_PositionState ledgerState;
    bool hasLedgerState=g_demoLedger.StateFor(positionId,ledgerState);
+   string parsedAttemptId="";
    ParseDemoTradeComment(entryComment,tradeSummary.tradeClass,tradeSummary.setup,
-      tradeSummary.score,tradeSummary.initialRisk,tradeSummary.signalEventId);
+      tradeSummary.score,tradeSummary.initialRisk,tradeSummary.signalEventId,
+      parsedAttemptId);
    if(tradeSummary.tradeClass=="UNKNOWN") tradeSummary.tradeClass=ExtractTag(entryComment);
    // Broker comment is useful legacy metadata but never a reliable initial-risk
    // source. The executed-fill snapshot survives later SL modifications.
@@ -4082,7 +4203,9 @@ bool BuildClosedTradeSummary(const ulong positionId,GoldScoutClosedTrade &tradeS
       if(ledgerState.initialSL>0.0) tradeSummary.initialSL=ledgerState.initialSL;
       if(ledgerState.initialTP>0.0) tradeSummary.initialTP=ledgerState.initialTP;
       if(ledgerState.initialEntry>0.0) tradeSummary.initialEntry=ledgerState.initialEntry;
-      tradeSummary.initialRiskKnown=ledgerState.riskKnown && ledgerState.initialRisk>0.0;
+      tradeSummary.initialRiskKnown=ledgerState.riskKnown && ledgerState.initialRisk>0.0 &&
+         ledgerState.fillCount==entryDealCount &&
+         MathAbs(ledgerState.entryVolume-entryVolume)<=volumeTolerance;
       if(tradeSummary.initialRiskKnown) tradeSummary.initialRisk=ledgerState.initialRisk;
       tradeSummary.entrySlippageKnown=ledgerState.slippageVolume>0.0;
       if(tradeSummary.entrySlippageKnown)
@@ -4092,11 +4215,13 @@ bool BuildClosedTradeSummary(const ulong positionId,GoldScoutClosedTrade &tradeS
       tradeSummary.excursionObserved=ledgerState.excursionObserved;
       tradeSummary.mfeMaeQuality=ledgerState.excursionQuality;
    }
-   if(tradeSummary.initialRiskKnown)
+   if(tradeSummary.initialRiskKnown && tradeSummary.costsKnown &&
+      tradeSummary.grossPnlKnown)
    {
       tradeSummary.realizedR=tradeSummary.netPnl/tradeSummary.initialRisk;
-      tradeSummary.realizedRGross=tradeSummary.grossPnl/tradeSummary.initialRisk;
    }
+   if(tradeSummary.initialRiskKnown && tradeSummary.grossPnlKnown)
+      tradeSummary.realizedRGross=tradeSummary.grossPnl/tradeSummary.initialRisk;
    return true;
 }
 
@@ -4105,6 +4230,9 @@ bool AppendClosedTradeRecord(const GoldScoutClosedTrade &item,const uint retcode
    GSDL_PositionState state;
    bool known=g_demoLedger.StateFor(item.positionId,state);
    if(known && state.status=="CLOSED") return true;
+   if(known && state.attemptId!="" && !g_demoLedger.AttemptMatches(
+      state.attemptId,state.signalId,_Symbol,MagicNumber))
+   { g_ledgerReconciliationBlocked=true; return false; }
    string tradeId=known && state.tradeId!=""?state.tradeId:
       GSDL_TradeId(AccountInfoInteger(ACCOUNT_LOGIN),_Symbol,MagicNumber,
          item.signalEventId,item.positionId);
@@ -4118,6 +4246,8 @@ bool AppendClosedTradeRecord(const GoldScoutClosedTrade &item,const uint retcode
    string json="{";
    json+="\"event_id\":\""+JsonEscape(eventId)+"\",";
    json+="\"signal_event_id\":\""+JsonEscape(item.signalEventId)+"\",";
+   json+="\"execution_attempt_id\":"+
+      (known && state.attemptId!=""?"\""+JsonEscape(state.attemptId)+"\"":"null")+",";
    json+="\"trade_id\":\""+JsonEscape(tradeId)+"\",";
    json+="\"source\":\"MT5\",\"score_effect\":0,\"schema_version\":2,";
    json+="\"strategy_id\":\"INTRADAY_H1_BASELINE\",\"policy_version\":\"DEMO_LEDGER_V2\",";
@@ -4147,11 +4277,15 @@ bool AppendClosedTradeRecord(const GoldScoutClosedTrade &item,const uint retcode
    json+="\"initial_risk_price\":"+JsonNumberOrNull(riskPrice>0.0,riskPrice)+",";
    json+="\"initial_risk_account_currency\":"+JsonNumberOrNull(item.initialRiskKnown,item.initialRisk,2)+",";
    json+="\"account_currency\":\""+JsonEscape(AccountInfoString(ACCOUNT_CURRENCY))+"\",";
-   json+=StringFormat("\"gross_pnl\":%.2f,\"commission\":%.2f,\"swap\":%.2f,\"fees\":%.2f,\"net_pnl\":%.2f,",
-      item.grossPnl,item.commission,item.swap,item.fees,item.netPnl);
-   json+="\"realized_r_gross\":"+JsonNumberOrNull(item.initialRiskKnown,item.realizedRGross,6)+",";
-   json+="\"realized_r_net\":"+JsonNumberOrNull(item.initialRiskKnown,item.realizedR,6)+",";
-   json+="\"realized_r\":"+JsonNumberOrNull(item.initialRiskKnown,item.realizedR,6)+",";
+   json+="\"gross_pnl\":"+JsonNumberOrNull(item.grossPnlKnown,item.grossPnl,2)+",";
+   json+="\"commission\":"+JsonNumberOrNull(item.costsKnown,item.commission,2)+",";
+   json+="\"swap\":"+JsonNumberOrNull(item.costsKnown,item.swap,2)+",";
+   json+="\"fees\":"+JsonNumberOrNull(item.costsKnown,item.fees,2)+",";
+   json+="\"net_pnl\":"+JsonNumberOrNull(item.grossPnlKnown && item.costsKnown,item.netPnl,2)+",";
+   json+="\"cost_quality\":\""+(item.grossPnlKnown && item.costsKnown?"COMPLETE":"UNKNOWN")+"\",";
+   json+="\"realized_r_gross\":"+JsonNumberOrNull(item.initialRiskKnown && item.grossPnlKnown,item.realizedRGross,6)+",";
+   json+="\"realized_r_net\":"+JsonNumberOrNull(item.initialRiskKnown && item.grossPnlKnown && item.costsKnown,item.realizedR,6)+",";
+   json+="\"realized_r\":"+JsonNumberOrNull(item.initialRiskKnown && item.grossPnlKnown && item.costsKnown,item.realizedR,6)+",";
    json+="\"entry_slippage_price\":"+JsonNumberOrNull(item.entrySlippageKnown,item.entrySlippage)+",";
    json+="\"bid_at_exit\":"+JsonNumberOrNull(item.exitQuoteKnown,item.exitBid)+",";
    json+="\"ask_at_exit\":"+JsonNumberOrNull(item.exitQuoteKnown,item.exitAsk)+",";
@@ -4258,6 +4392,65 @@ void RecoverDemoPositionState()
 {
    if(!g_demoLedger.Healthy()) { g_ledgerReconciliationBlocked=true; return; }
    g_ledgerReconciliationBlocked=false;
+   // The broker may change POSITION_MAGIC after a manual NETTING reversal.
+   // Discover owned entry positions from full available history, not only
+   // currently open positions, before accepting new DEMO entries on restart.
+   ulong reversalCandidates[];
+   ArrayResize(reversalCandidates,0);
+   for(int i=0;i<g_demoLedger.PositionCount();i++)
+   {
+      GSDL_PositionState prior=g_demoLedger.PositionAt(i);
+      if(prior.reversalConflict)
+      { g_ledgerReconciliationBlocked=true; return; }
+      int count=ArraySize(reversalCandidates);
+      ArrayResize(reversalCandidates,count+1);
+      reversalCandidates[count]=prior.positionId;
+   }
+   datetime historyEnd=TimeTradeServer();
+   if(historyEnd<=0) historyEnd=TimeCurrent();
+   if(historyEnd<=0 || !HistorySelect(0,historyEnd))
+      g_ledgerReconciliationBlocked=true;
+   else
+   {
+      int availableDeals=(int)HistoryDealsTotal();
+      for(int i=0;i<availableDeals;i++)
+      {
+         ulong deal=HistoryDealGetTicket(i);
+         if(deal==0 || HistoryDealGetString(deal,DEAL_SYMBOL)!=_Symbol ||
+            HistoryDealGetInteger(deal,DEAL_ENTRY)!=DEAL_ENTRY_IN ||
+            (long)HistoryDealGetInteger(deal,DEAL_MAGIC)!=MagicNumber) continue;
+         ulong id=(ulong)HistoryDealGetInteger(deal,DEAL_POSITION_ID);
+         if(id==0) continue;
+         bool seen=false;
+         for(int j=0;j<ArraySize(reversalCandidates);j++)
+            if(reversalCandidates[j]==id) { seen=true; break; }
+         if(!seen)
+         {
+            int count=ArraySize(reversalCandidates);
+            ArrayResize(reversalCandidates,count+1);
+            reversalCandidates[count]=id;
+         }
+      }
+   }
+   for(int i=0;i<ArraySize(reversalCandidates);i++)
+   {
+      if(!HistorySelectByPosition(reversalCandidates[i]))
+      { g_ledgerReconciliationBlocked=true; continue; }
+      int deals=(int)HistoryDealsTotal();
+      ulong reversals[];
+      ArrayResize(reversals,0);
+      for(int j=0;j<deals;j++)
+      {
+         ulong deal=HistoryDealGetTicket(j);
+         if(deal>0 && HistoryDealGetInteger(deal,DEAL_ENTRY)==DEAL_ENTRY_INOUT)
+         {
+            int count=ArraySize(reversals);
+            ArrayResize(reversals,count+1);
+            reversals[count]=deal;
+         }
+      }
+      for(int j=0;j<ArraySize(reversals);j++) RecordReversalConflict(reversals[j],0);
+   }
    int total=PositionsTotal(),found=0;
    for(int i=0;i<total;i++)
    {
@@ -4270,6 +4463,8 @@ void RecoverDemoPositionState()
       g_lastExecutionPosition=positionId;
       GSDL_PositionState ledgerState;
       bool inLedger=g_demoLedger.StateFor(positionId,ledgerState);
+      if(inLedger && ledgerState.reversalConflict)
+      { g_ledgerReconciliationBlocked=true; continue; }
       if(inLedger && (ledgerState.status=="CLOSED" || ledgerState.closedSeen))
       {
          g_ledgerReconciliationBlocked=true;
@@ -4332,6 +4527,8 @@ void RecoverDemoPositionState()
    for(int i=0;i<g_demoLedger.PositionCount();i++)
    {
       GSDL_PositionState state=g_demoLedger.PositionAt(i);
+      if(state.reversalConflict)
+      { g_ledgerReconciliationBlocked=true; continue; }
       if(state.status=="CLOSED") continue;
       if(IsPositionIdentifierOpen(state.positionId)) continue;
       MarkDemoExcursionPartial(state.positionId);
@@ -4715,11 +4912,17 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
    if(entry!=DEAL_ENTRY_IN && entry!=DEAL_ENTRY_OUT &&
       entry!=DEAL_ENTRY_OUT_BY && entry!=DEAL_ENTRY_INOUT) return;
    ulong positionId=(ulong)HistoryDealGetInteger(trans.deal,DEAL_POSITION_ID);
-   bool ownEntry=(entry==DEAL_ENTRY_IN || entry==DEAL_ENTRY_INOUT) &&
+   bool ownEntry=entry==DEAL_ENTRY_IN &&
       (long)HistoryDealGetInteger(trans.deal,DEAL_MAGIC)==MagicNumber;
    GSDL_PositionState ledgerPosition;
    bool knownPosition=g_demoLedger.StateFor(positionId,ledgerPosition);
    if(!ownEntry && !knownPosition && !PositionBelongsToGoldScout(positionId)) return;
+   if(entry==DEAL_ENTRY_INOUT)
+   {
+      RecordReversalConflict(trans.deal,result.retcode);
+      UpdateDashboard();
+      return;
+   }
    long dealType=HistoryDealGetInteger(trans.deal,DEAL_TYPE);
    double price=HistoryDealGetDouble(trans.deal,DEAL_PRICE);
    double volume=HistoryDealGetDouble(trans.deal,DEAL_VOLUME);
@@ -4729,13 +4932,14 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
    ClearTradeMetadata(metadata);
    string comment=HistoryDealGetString(trans.deal,DEAL_COMMENT);
    ParseDemoTradeComment(comment,metadata.tradeClass,metadata.setup,
-      metadata.score,metadata.initialRisk,metadata.signalEventId);
+      metadata.score,metadata.initialRisk,metadata.signalEventId,
+      metadata.executionAttemptId);
    if(metadata.signalEventId=="" && positionId>0)
       LoadTradeMetadata(positionId,metadata);
    g_observerSignalEventId=metadata.signalEventId;
    string direction=(dealType==DEAL_TYPE_BUY?"LONG":"SHORT");
 
-   if(entry==DEAL_ENTRY_IN || entry==DEAL_ENTRY_INOUT)
+   if(entry==DEAL_ENTRY_IN)
    {
       g_lastExecutionPosition=positionId;
       g_executionState="POSITION_OPEN";
