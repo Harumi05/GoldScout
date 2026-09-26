@@ -129,6 +129,69 @@ def read_json(name):
                 pass
     return None
 
+def file_health(name):
+    """Return non-sensitive freshness metadata for one Common/Files artifact."""
+    now=time.time()
+    for p in CANDIDATES:
+        f=p/name
+        if not f.exists():
+            continue
+        try:
+            stat=f.stat()
+            return {
+                'exists':True,
+                'age_seconds':max(0.0,now-stat.st_mtime),
+                'size_bytes':int(stat.st_size),
+            }
+        except OSError:
+            return {'exists':True,'age_seconds':None,'size_bytes':None}
+    return {'exists':False,'age_seconds':None,'size_bytes':None}
+
+
+def system_health_snapshot():
+    dash=read_json('xau_goldscout_dashboard.json')
+    news=read_json('gold_news_analysis.json')
+    dash_file=file_health('xau_goldscout_dashboard.json')
+    news_file=file_health('gold_news_analysis.json')
+    observer_file=file_health('market_observations.jsonl')
+    broker=bool(((dash or {}).get('demo_execution') or {}).get('broker_connected'))
+    execution_allowed=bool(((dash or {}).get('demo_execution') or {}).get('execution_allowed'))
+    account_mode=str(((dash or {}).get('demo_execution') or {}).get('account_mode') or 'UNKNOWN')
+    dash_age=dash_file.get('age_seconds')
+    ea_fresh=bool(dash_file.get('exists') and isinstance(dash_age,(int,float)) and dash_age<=45)
+    news_age=news_file.get('age_seconds')
+    try:
+        news_stale_after=float((news or {}).get('stale_after_seconds',900))
+    except (TypeError,ValueError):
+        news_stale_after=900.0
+    news_fresh=bool(news_file.get('exists') and isinstance(news_age,(int,float)) and news_age<=max(60.0,news_stale_after))
+    return {
+        'ok':True,
+        'server_epoch':time.time(),
+        'backend':{'status':'ONLINE'},
+        'ea_feed':{
+            'status':'ONLINE' if ea_fresh else ('STALE' if dash_file.get('exists') else 'NO_DATA'),
+            **dash_file,
+        },
+        'broker':{
+            'status':'CONNECTED' if broker else 'DISCONNECTED',
+            'connected':broker,
+            'account_mode':account_mode,
+        },
+        'demo_execution':{
+            'status':'READY' if execution_allowed else 'BLOCKED',
+            'execution_allowed':execution_allowed,
+        },
+        'news_engine':{
+            'status':'ONLINE' if news_fresh else ('STALE' if news_file.get('exists') else 'NO_DATA'),
+            **news_file,
+        },
+        'market_observer':{
+            'status':'AVAILABLE' if observer_file.get('exists') else 'NO_DATA',
+            **observer_file,
+        },
+    }
+
 def read_news():
     d=read_json('gold_news_analysis.json')
     if not d:
@@ -260,11 +323,12 @@ class H(BaseHTTPRequestHandler):
             d=canonical_lifecycle_value(d)
             self.send_payload(200,'application/json; charset=utf-8',json.dumps(d,ensure_ascii=False).encode()); return
         if self.path.startswith('/api/health'):
-            payload={'ok':True,'candidates':[str(p) for p in CANDIDATES],
-                'news_file':bool(read_json('gold_news_analysis.json')),
+            payload=system_health_snapshot()
+            payload.update({
                 'external_signal_file':bool(read_json('external_signal_etoro.json')),
                 'tradingview_events':read_tradingview().get('event_count',0),
-                'market_observations':read_market_observer().get('observation_count',0)}
+                'market_observations':read_market_observer().get('observation_count',0),
+            })
             self.send_payload(200,'application/json; charset=utf-8',json.dumps(payload,ensure_ascii=False).encode()); return
         if self.path.startswith('/api/chart'):
             from urllib.parse import urlparse, parse_qs
