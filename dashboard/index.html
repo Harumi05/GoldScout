@@ -579,6 +579,18 @@ section[id]{scroll-margin-top:88px}
  .health-head{align-items:center}.health-overall{font-size:7px}
 }
 
+
+/* ===== HALI LIVE CHART V12 ===== */
+.chart-live{display:inline-flex;align-items:center;gap:6px;margin-left:auto;padding:4px 7px;border:1px solid #333a42;border-radius:7px;font-size:7px!important;letter-spacing:.08em;color:#727a84}
+.chart-live i{width:6px;height:6px;border-radius:50%;background:#656d77}
+.chart-live.live{color:#2fd3a2;border-color:rgba(47,211,162,.30);background:rgba(47,211,162,.05)}
+.chart-live.live i{background:#2fd3a2;box-shadow:0 0 9px rgba(47,211,162,.5);animation:haliLivePulse 1.5s ease-in-out infinite}
+.chart-live.stale{color:#d8ad66;border-color:rgba(216,173,102,.28)}
+.chart-live.stale i{background:#d8ad66}
+@keyframes haliLivePulse{0%,100%{opacity:.45}50%{opacity:1}}
+@media(prefers-reduced-motion:reduce){.chart-live.live i{animation:none}}
+@media(max-width:560px){.chart-live{margin-left:0;width:max-content}}
+
 </style>
 </head>
 <body>
@@ -644,7 +656,7 @@ section[id]{scroll-margin-top:88px}
   <div class="chart-head">
     <div>
       <h2 class="section-title">XAUUSD · PRICE ACTION</h2>
-      <div class="small">Velas confirmadas de MT5 · solo visualización</div>
+      <div class="small">Velas confirmadas + vela actual de MT5 · solo visualización</div>
     </div>
     <div class="chart-tabs" role="tablist" aria-label="Timeframe del gráfico">
       <button type="button" data-tf="M15" onclick="setChartTimeframe('M15')">M15</button>
@@ -656,6 +668,7 @@ section[id]{scroll-margin-top:88px}
     <strong id="chartLast">—</strong>
     <span id="chartChange">—</span>
     <span id="chartRange">H — · L —</span>
+    <span id="chartLive" class="chart-live offline"><i></i> ESPERANDO LIVE</span>
   </div>
   <div class="chart-wrap">
     <canvas id="priceChart" aria-label="Gráfico de velas XAUUSD"></canvas>
@@ -1202,11 +1215,40 @@ function drawPriceChart(){
 }
 async function loadChart(force=false){
   try{
-    const r=await fetch('/api/chart?timeframe='+encodeURIComponent(chartTimeframe)+'&limit=120&t='+Date.now());
+    const r=await fetch('/api/chart?timeframe='+encodeURIComponent(chartTimeframe)+'&limit=120&t='+Date.now(),{cache:'no-store'});
     if(r.status===401){location.replace('/login');return}
-   if(!r.ok)throw new Error('HTTP '+r.status);
-    const d=await r.json(); chartBars=Array.isArray(d.bars)?d.bars:[]; drawPriceChart();
-  }catch(e){const empty=$('chartEmpty');if(empty){empty.textContent='Gráfico no disponible · '+e.message;empty.style.display='flex'}}
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const d=await r.json();
+    const bars=Array.isArray(d.bars)?d.bars.slice():[];
+    const live=d.live_bar&&typeof d.live_bar==='object'?d.live_bar:null;
+    if(live && [live.open,live.high,live.low,live.close].every(v=>Number.isFinite(Number(v)))){
+      const ts=Number(live.timestamp);
+      const idx=bars.findIndex(b=>Number(b.timestamp)===ts);
+      const enriched={...live,live:true};
+      if(idx>=0)bars[idx]=enriched;else bars.push(enriched);
+    }
+    chartBars=bars.slice(-121);
+    const liveEl=$('chartLive');
+    const serverEpoch=Number(d.server_epoch||0);
+    const age=serverEpoch>0?Math.max(0,Date.now()/1000-serverEpoch):null;
+    if(liveEl){
+      if(live && age!=null && age<=15){
+        liveEl.className='chart-live live';
+        liveEl.innerHTML='<i></i> LIVE · '+Math.round(age)+'s';
+      }else if(live){
+        liveEl.className='chart-live stale';
+        liveEl.innerHTML='<i></i> LIVE STALE';
+      }else{
+        liveEl.className='chart-live offline';
+        liveEl.innerHTML='<i></i> SIN VELA LIVE';
+      }
+    }
+    drawPriceChart();
+  }catch(e){
+    const liveEl=$('chartLive');
+    if(liveEl){liveEl.className='chart-live offline';liveEl.innerHTML='<i></i> OFFLINE'}
+    const empty=$('chartEmpty');if(empty){empty.textContent='Gráfico no disponible · '+e.message;empty.style.display='flex'}
+  }
 }
 
 const lifecycle=v=>String(v||'').toUpperCase()==='POSITION_CLOSE'?'POSITION_CLOSED':String(v||'');
@@ -1510,6 +1552,6 @@ loadIdentity();
 loadSystemHealth();setInterval(loadSystemHealth,15000);
 tick();setInterval(tick,2000);
 document.querySelectorAll('.chart-tabs button').forEach(b=>b.classList.toggle('active',b.dataset.tf===chartTimeframe));
-loadChart();setInterval(loadChart,15000);
+loadChart();setInterval(loadChart,2000);
 window.addEventListener('resize',()=>{clearTimeout(window.__haliChartResize);window.__haliChartResize=setTimeout(()=>{drawPriceChart();drawEquityCurve()},120)});
 </script></main></div></body></html>
