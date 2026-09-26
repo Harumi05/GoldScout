@@ -3802,46 +3802,6 @@ void RecoverDemoPositionState()
    }
 }
 
-string LiveBarJson(const ENUM_TIMEFRAMES timeframe,const string timeframeName)
-{
-   datetime barTime=iTime(_Symbol,timeframe,0);
-   if(barTime<=0) return "null";
-
-   double open=iOpen(_Symbol,timeframe,0);
-   double high=iHigh(_Symbol,timeframe,0);
-   double low=iLow(_Symbol,timeframe,0);
-   double close=iClose(_Symbol,timeframe,0);
-   long volume=(long)iVolume(_Symbol,timeframe,0);
-   if(open<=0.0 || high<=0.0 || low<=0.0 || close<=0.0) return "null";
-
-   return StringFormat(
-      "{\"timeframe\":\"%s\",\"timestamp\":%I64d,\"open\":%.8f,\"high\":%.8f,\"low\":%.8f,\"close\":%.8f,\"volume\":%I64d,\"live\":true}",
-      JsonEscape(timeframeName),(long)barTime,open,high,low,close,volume
-   );
-}
-
-string LiveMarketJson()
-{
-   MqlTick tick;
-   bool hasTick=SymbolInfoTick(_Symbol,tick);
-   double bid=hasTick?tick.bid:SymbolInfoDouble(_Symbol,SYMBOL_BID);
-   double ask=hasTick?tick.ask:SymbolInfoDouble(_Symbol,SYMBOL_ASK);
-   double spread=(bid>0.0 && ask>0.0)?ask-bid:0.0;
-   datetime serverNow=TimeTradeServer();
-
-   string json="{";
-   json += StringFormat(
-      "\"server_time\":\"%s\",\"server_epoch\":%I64d,\"bid\":%.8f,\"ask\":%.8f,\"spread\":%.8f,",
-      JsonEscape(TimeToString(serverNow,TIME_DATE|TIME_SECONDS)),(long)serverNow,bid,ask,spread
-   );
-   json += "\"bars\":{";
-   json += "\"M15\":"+LiveBarJson(PERIOD_M15,"M15")+",";
-   json += "\"H1\":"+LiveBarJson(PERIOD_H1,"H1")+",";
-   json += "\"H4\":"+LiveBarJson(PERIOD_H4,"H4");
-   json += "}}";
-   return json;
-}
-
 void UpdateDashboard()
 {
    // Observation failures are deliberately ignored: dataset persistence must
@@ -3931,7 +3891,6 @@ void UpdateDashboard()
       JsonEscape(g_armedInvalidationStructure));
    json += StringFormat("\"news\":{\"available\":%s,\"updated_at\":\"%s\",\"bias\":%d,\"confidence\":%d,\"risk\":\"%s\",\"data_risk\":\"%s\",\"direction\":\"%s\",\"summary\":\"%s\",\"article_count\":%d,\"sources_ok\":%d,\"source_count\":%d},",
       (g_newsAvailable && g_newsUpdated!="")?"true":"false",JsonEscape(g_newsUpdated),g_newsBias,g_newsConfidence,JsonEscape(g_newsRisk),JsonEscape(g_newsDataRisk),JsonEscape(g_newsDirection),JsonEscape(g_newsSummary),g_newsCount,g_newsSourcesOk,g_newsSourceCount);
-   json += StringFormat("\"live_market\":%s,",LiveMarketJson());
    json += StringFormat("\"active_trade\":%s,",active);
    json += StringFormat("\"open_positions_count\":%d,\"open_positions\":%s,",openPositionCount,openPositions);
    json += StringFormat("\"closed_trades\":%s,",ClosedTradesJson());
