@@ -432,6 +432,65 @@ hr{border:0;border-top:1px solid #282e36}
  .news-item{grid-template-columns:32px 1fr;gap:8px;padding:9px}.impact-badge{width:30px;height:30px}.news-item .category{grid-column:2;justify-self:start}
 }
 
+
+/* ===== HALI UX FINAL PASS V9 ===== */
+*{box-sizing:border-box}
+body{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+.value,.score,.kpi-value,strong,b{font-variant-numeric:tabular-nums}
+button,a{-webkit-tap-highlight-color:transparent}
+button:focus-visible,a:focus-visible,summary:focus-visible{outline:2px solid #b1844b;outline-offset:2px}
+section[id]{scroll-margin-top:88px}
+.connection-banner{position:fixed;top:72px;left:50%;transform:translate(-50%,-16px);z-index:190;display:flex;align-items:center;gap:8px;max-width:min(520px,calc(100vw - 24px));padding:8px 12px;border:1px solid rgba(239,86,109,.42);border-radius:10px;background:rgba(28,8,13,.96);color:#e7a4ae;font-size:9px;letter-spacing:.06em;box-shadow:0 12px 35px rgba(0,0,0,.42);opacity:0;pointer-events:none;transition:.2s ease}
+.connection-banner.on{opacity:1;transform:translate(-50%,8px)}
+.connection-dot{width:7px;height:7px;border-radius:50%;background:#ef566d;box-shadow:0 0 10px rgba(239,86,109,.55);flex:0 0 auto}
+.hali-nav a.active{color:#f2e8d8;border-color:#5f1726;background:linear-gradient(90deg,rgba(143,15,34,.5),rgba(143,15,34,.06));box-shadow:inset 3px 0 #dc3049}
+.hali-mobile-nav a.active{color:#e8be77;background:linear-gradient(180deg,rgba(139,94,44,.10),rgba(143,15,34,.08))}
+.hali-mobile-nav a.active span{filter:drop-shadow(0 0 6px rgba(216,173,102,.4))}
+.grid>.section-market{order:1}
+.grid>.section-chart{order:2}
+.grid>.section-active{order:3}
+.grid>.section-analysis{order:4}
+.grid>.section-risk{order:5}
+.grid>.section-session{order:6}
+.grid>.section-news{order:7}
+.grid>.section-stats{order:8}
+.grid>.section-history{order:9}
+.grid>.section-monitor{order:12}
+.grid>.section-stop{order:13}
+.grid>.section-tp{order:14}
+.grid>.section-execution{order:15}
+.grid>.section-external{order:20}
+.grid>.section-tv{order:21}
+.grid>.section-observer{order:22}
+.grid>.section-how{order:23}
+.card{transition:border-color .18s ease,transform .18s ease}
+@media(hover:hover) and (pointer:fine){.card:hover{border-color:#353c45}}
+.advanced-control{display:none}
+@media(max-width:900px){
+  section[id]{scroll-margin-top:74px}
+  .connection-banner{top:58px}
+  .advanced-control{display:block;padding:2px 12px 8px}
+  .advanced-control button{min-height:42px;border-radius:10px}
+  .advanced-section{display:none!important}
+  .show-advanced .advanced-section{display:block!important}
+  .grid>.section-market{order:1}
+  .grid>.section-chart{order:2}
+  .grid>.section-active{order:3}
+  .grid>.section-analysis{order:4}
+  .grid>.section-risk{order:5}
+  .grid>.section-news{order:6}
+  .grid>.section-session{order:7}
+  .grid>.section-stats{order:8}
+  .grid>.section-history{order:9}
+}
+@media(max-width:560px){
+  body{padding-bottom:106px}
+  .wrap{padding-bottom:24px}
+  .card{box-shadow:0 8px 24px rgba(0,0,0,.20)}
+  .section-title{line-height:1.08}
+  .hali-mobile-nav{padding-bottom:max(2px,env(safe-area-inset-bottom))}
+}
+
 </style>
 </head>
 <body>
@@ -448,16 +507,20 @@ hr{border:0;border-top:1px solid #282e36}
     <span class="top-chip update-chip">Actualizado: <b id="topUpdated">—</b></span>
   </div>
 </header>
+<div id="connectionBanner" class="connection-banner" role="status" aria-live="polite">
+  <span class="connection-dot"></span>
+  <span id="connectionBannerText">Reconectando con Hali…</span>
+</div>
 <div class="app-shell">
 <aside class="hali-sidebar">
   <nav class="hali-nav">
-    <a class="active" href="#overview">◈ Dashboard</a>
-    <a href="#active">↗ Operaciones</a>
-    <a href="#analysisBar">⌁ Señales</a>
-    <a href="#sessionName">◉ Mercado</a>
-    <a href="#dailyMeter">⬡ Riesgo</a>
-    <a href="#newsDir">✦ Noticias</a>
-    <a href="#observerStatus">▣ Registros</a>
+    <a class="active" href="#overview" data-nav="overview">◈ Resumen</a>
+    <a href="#market" data-nav="market">◉ Mercado</a>
+    <a href="#trades" data-nav="trades">↗ Operaciones</a>
+    <a href="#signal" data-nav="signal">⌁ Señal</a>
+    <a href="#riskpanel" data-nav="riskpanel">⬡ Riesgo</a>
+    <a href="#news" data-nav="news">✦ Noticias</a>
+    <a href="#history" data-nav="history">▣ Historial</a>
   </nav>
   <div class="sidebar-mark">Disciplina<br>Datos<br>Resultados</div>
 </aside>
@@ -726,26 +789,48 @@ hr{border:0;border-top:1px solid #282e36}
 <section class="card span12 section-external advanced-section"><h2 class="section-title">CONSENSO EXTERNO · SOLO DIAGNÓSTICO</h2><div class="stats"><div class="stat"><span class="small">LONG</span><div class="value buy" id="extLong">0%</div></div><div class="stat"><span class="small">SHORT</span><div class="value sell" id="extShort">0%</div></div><div class="stat"><span class="small">NEUTRAL</span><div class="value" id="extNeutral">0%</div></div><div class="stat"><span class="small">TRADERS VÁLIDOS</span><div class="value" id="extTraders">0</div></div></div><div class="statusline small"><span id="extQuality">Calidad: 0</span><span id="extFresh">Frescura: —</span><span id="extApi">API: SIN DATOS</span></div><div class="muted-box small" id="extReadOnly">Solo diagnóstico · score_effect=0 · sin copy trading ni ejecución.</div></section>
 <section class="card span12 section-tv advanced-section"><h2 class="section-title">TRADINGVIEW · OBSERVACIÓN</h2><div class="stats"><div class="stat"><span class="small">DIRECCIÓN</span><div class="value" id="tvDirection">—</div></div><div class="stat"><span class="small">TIMEFRAME</span><div class="value" id="tvTimeframe">—</div></div><div class="stat"><span class="small">EVENTO</span><div class="value" id="tvEvent">—</div></div><div class="stat"><span class="small">PRECIO</span><div class="value" id="tvPrice">—</div></div></div><div class="statusline small"><span id="tvStatus">Estado: NO_DATA</span><span id="tvLast">Última señal: —</span><span id="tvFresh">Frescura: —</span><span id="tvCount">Eventos: 0</span></div><div class="muted-box small">Solo observación · score_effect=0</div></section>
 <section class="card span12 section-observer advanced-section"><h2 class="section-title">MARKET OBSERVER · MT5</h2><div class="stats"><div class="stat"><span class="small">ÚLTIMO M15</span><div id="observerM15">—</div></div><div class="stat"><span class="small">ÚLTIMO H1</span><div id="observerH1">—</div></div><div class="stat"><span class="small">ÚLTIMO H4</span><div id="observerH4">—</div></div><div class="stat"><span class="small">OBSERVACIONES</span><div class="value" id="observerCount">0</div></div></div><div class="statusline small"><span id="observerStatus">Estado: NO_DATA</span><span id="observerFresh">Frescura: —</span></div><div class="decision-box"><strong>ÚLTIMA DECISIÓN HALI</strong><div class="small" id="observerDecision">—</div></div><div class="muted-box small">Solo observación · score_effect=0</div></section>
-<section class="card span12 section-stop"><h2 class="section-title">STOP MODE · CURRENT vs ADAPTIVE V2</h2><div class="analysis-grid"><div class="analysis-box"><h4>Selección</h4><div class="analysis-row"><span>Modo</span><strong id="stopMode">NOT_EVALUATED</strong></div><div class="analysis-row"><span>Setup</span><strong id="stopSetup">—</strong></div><div class="analysis-row"><span>Dirección</span><strong id="stopDirection">—</strong></div></div><div class="analysis-box"><h4>CURRENT shadow</h4><div class="analysis-row"><span>SL / ATR</span><strong id="stopCurrent">—</strong></div><div class="analysis-row"><span>Lotaje</span><strong id="stopCurrentLot">—</strong></div></div><div class="analysis-box"><h4>ADAPTIVE V2 shadow</h4><div class="analysis-row"><span>SL / ATR</span><strong id="stopAdaptive">—</strong></div><div class="analysis-row"><span>Lotaje</span><strong id="stopAdaptiveLot">—</strong></div></div><div class="analysis-box"><h4>Utilizado</h4><div class="analysis-row"><span>SL / lote</span><strong id="stopSelected">—</strong></div><div class="analysis-row"><span>Riesgo</span><strong id="stopRisk">—</strong></div><div class="analysis-row"><span>Motivo</span><strong id="stopReason">—</strong></div></div></div><div class="muted-box small">Feature flag apagado por defecto. Adaptive V2 solo puede seleccionarse en PAPER o en cuenta DEMO verificada; REAL permanece hard-blocked.</div></section>
-<section class="card span12 section-tp"><h2 class="section-title">TAKE PROFIT · CURRENT vs V2</h2><div class="analysis-grid"><div class="analysis-box"><h4>Selección</h4><div class="analysis-row"><span>Modo</span><strong id="tpMode">CURRENT</strong></div><div class="analysis-row"><span>Clase</span><strong id="tpClass">—</strong></div><div class="analysis-row"><span>Setup</span><strong id="tpSetup">—</strong></div><div class="analysis-row"><span>Dirección</span><strong id="tpDirection">—</strong></div></div><div class="analysis-box"><h4>CURRENT</h4><div class="analysis-row"><span>TP</span><strong id="tpCurrent">—</strong></div><div class="analysis-row"><span>R:R</span><strong id="tpCurrentRR">—</strong></div></div><div class="analysis-box"><h4>V2 shadow</h4><div class="analysis-row"><span>TP</span><strong id="tpV2">—</strong></div><div class="analysis-row"><span>R:R</span><strong id="tpV2RR">—</strong></div><div class="analysis-row"><span>Nivel</span><strong id="tpLevel">—</strong></div><div class="analysis-row"><span>Confidence</span><strong id="tpConfidence">NONE</strong></div></div><div class="analysis-box"><h4>Utilizado</h4><div class="analysis-row"><span>TP</span><strong id="tpSelected">—</strong></div><div class="analysis-row"><span>R:R</span><strong id="tpSelectedRR">—</strong></div><div class="analysis-row"><span>Motivo</span><strong id="tpReason">—</strong></div></div></div><div class="muted-box small">Comparación PAPER CURRENT vs V2. V2 no modifica score, SL, lotaje ni riesgo y queda bloqueado en LIVE.</div></section>
-<section class="card span12 section-execution"><h2 class="section-title">EJECUCIÓN DEMO</h2><div class="analysis-grid"><div class="analysis-box"><h4>Cuenta</h4><div class="analysis-row"><span>Modo</span><strong id="execAccountMode">UNKNOWN</strong></div><div class="analysis-row"><span>Broker</span><strong id="execConnected">DESCONECTADO</strong></div></div><div class="analysis-box"><h4>Permiso</h4><div class="analysis-row"><span>Input habilitado</span><strong id="execEnabled">NO</strong></div><div class="analysis-row"><span>Ejecución permitida</span><strong id="execAllowed">NO</strong></div><div class="analysis-row"><span>Autorización</span><strong id="execAuthorization">—</strong></div></div><div class="analysis-box"><h4>Estado</h4><div class="analysis-row"><span>Ciclo</span><strong id="execState">PAPER</strong></div><div class="analysis-row"><span>Resultado</span><strong id="execReason">—</strong></div></div><div class="analysis-box"><h4>Último resultado</h4><div class="analysis-row"><span>Order / Deal</span><strong id="execIds">—</strong></div><div class="analysis-row"><span>Fill</span><strong id="execFill">—</strong></div></div></div><div class="muted-box small">Las órdenes reales solo se permiten en ACCOUNT_TRADE_MODE_DEMO. Una cuenta REAL queda bloqueada sin excepción.</div></section>
+<section class="card span12 section-stop advanced-section"><h2 class="section-title">STOP MODE · CURRENT vs ADAPTIVE V2</h2><div class="analysis-grid"><div class="analysis-box"><h4>Selección</h4><div class="analysis-row"><span>Modo</span><strong id="stopMode">NOT_EVALUATED</strong></div><div class="analysis-row"><span>Setup</span><strong id="stopSetup">—</strong></div><div class="analysis-row"><span>Dirección</span><strong id="stopDirection">—</strong></div></div><div class="analysis-box"><h4>CURRENT shadow</h4><div class="analysis-row"><span>SL / ATR</span><strong id="stopCurrent">—</strong></div><div class="analysis-row"><span>Lotaje</span><strong id="stopCurrentLot">—</strong></div></div><div class="analysis-box"><h4>ADAPTIVE V2 shadow</h4><div class="analysis-row"><span>SL / ATR</span><strong id="stopAdaptive">—</strong></div><div class="analysis-row"><span>Lotaje</span><strong id="stopAdaptiveLot">—</strong></div></div><div class="analysis-box"><h4>Utilizado</h4><div class="analysis-row"><span>SL / lote</span><strong id="stopSelected">—</strong></div><div class="analysis-row"><span>Riesgo</span><strong id="stopRisk">—</strong></div><div class="analysis-row"><span>Motivo</span><strong id="stopReason">—</strong></div></div></div><div class="muted-box small">Feature flag apagado por defecto. Adaptive V2 solo puede seleccionarse en PAPER o en cuenta DEMO verificada; REAL permanece hard-blocked.</div></section>
+<section class="card span12 section-tp advanced-section"><h2 class="section-title">TAKE PROFIT · CURRENT vs V2</h2><div class="analysis-grid"><div class="analysis-box"><h4>Selección</h4><div class="analysis-row"><span>Modo</span><strong id="tpMode">CURRENT</strong></div><div class="analysis-row"><span>Clase</span><strong id="tpClass">—</strong></div><div class="analysis-row"><span>Setup</span><strong id="tpSetup">—</strong></div><div class="analysis-row"><span>Dirección</span><strong id="tpDirection">—</strong></div></div><div class="analysis-box"><h4>CURRENT</h4><div class="analysis-row"><span>TP</span><strong id="tpCurrent">—</strong></div><div class="analysis-row"><span>R:R</span><strong id="tpCurrentRR">—</strong></div></div><div class="analysis-box"><h4>V2 shadow</h4><div class="analysis-row"><span>TP</span><strong id="tpV2">—</strong></div><div class="analysis-row"><span>R:R</span><strong id="tpV2RR">—</strong></div><div class="analysis-row"><span>Nivel</span><strong id="tpLevel">—</strong></div><div class="analysis-row"><span>Confidence</span><strong id="tpConfidence">NONE</strong></div></div><div class="analysis-box"><h4>Utilizado</h4><div class="analysis-row"><span>TP</span><strong id="tpSelected">—</strong></div><div class="analysis-row"><span>R:R</span><strong id="tpSelectedRR">—</strong></div><div class="analysis-row"><span>Motivo</span><strong id="tpReason">—</strong></div></div></div><div class="muted-box small">Comparación PAPER CURRENT vs V2. V2 no modifica score, SL, lotaje ni riesgo y queda bloqueado en LIVE.</div></section>
+<section class="card span12 section-execution advanced-section"><h2 class="section-title">EJECUCIÓN DEMO</h2><div class="analysis-grid"><div class="analysis-box"><h4>Cuenta</h4><div class="analysis-row"><span>Modo</span><strong id="execAccountMode">UNKNOWN</strong></div><div class="analysis-row"><span>Broker</span><strong id="execConnected">DESCONECTADO</strong></div></div><div class="analysis-box"><h4>Permiso</h4><div class="analysis-row"><span>Input habilitado</span><strong id="execEnabled">NO</strong></div><div class="analysis-row"><span>Ejecución permitida</span><strong id="execAllowed">NO</strong></div><div class="analysis-row"><span>Autorización</span><strong id="execAuthorization">—</strong></div></div><div class="analysis-box"><h4>Estado</h4><div class="analysis-row"><span>Ciclo</span><strong id="execState">PAPER</strong></div><div class="analysis-row"><span>Resultado</span><strong id="execReason">—</strong></div></div><div class="analysis-box"><h4>Último resultado</h4><div class="analysis-row"><span>Order / Deal</span><strong id="execIds">—</strong></div><div class="analysis-row"><span>Fill</span><strong id="execFill">—</strong></div></div></div><div class="muted-box small">Las órdenes reales solo se permiten en ACCOUNT_TRADE_MODE_DEMO. Una cuenta REAL queda bloqueada sin excepción.</div></section>
 <section id="trades" class="card span12 section-active"><h2 class="section-title">OPERACIONES ACTIVAS</h2><div id="active">No hay posiciones abiertas del MagicNumber de Hali.</div></section>
 <section class="card span12 section-stats"><h2 class="section-title">RENDIMIENTO DE SESIÓN</h2><div class="stats"><div class="stat"><span class="small">TRADES</span><div class="value" id="statsTrades">0</div></div><div class="stat"><span class="small">W / L</span><div class="value" id="statsWL">0 / 0</div></div><div class="stat"><span class="small">WIN RATE</span><div class="value" id="statsWinRate">0%</div></div><div class="stat"><span class="small">NET P/L</span><div class="value" id="statsNet">—</div></div></div><div class="statusline small"><span id="statsExpectancy">Expectancy: 0R</span><span id="statsPF">Profit factor: 0</span></div></section>
-<section class="card span12 section-history"><h2 class="section-title">ÚLTIMAS OPERACIONES</h2><div id="log"><div class="small">Cargando historial...</div></div></section>
+<section id="history" class="card span12 section-history"><h2 class="section-title">ÚLTIMAS OPERACIONES</h2><div id="log"><div class="small">Cargando historial...</div></div></section>
 <section class="card span12 section-how advanced-section"><h2 class="section-title">MOTOR DE DECISIÓN HALI</h2><div class="timeline"><div><span class="tag">1. ESCANEA</span> H4 define sesgo; H1 define entrada; RSI, ADX, ATR, tick-volume y contexto de sesión filtran ruido.</div><div><span class="tag">2. DETECTA</span> Busca continuación, pullback, ruptura o momentum y usa la sesión Asia/Europa/EE. UU. como contexto. No asume que toda apertura termina en pullback.</div><div><span class="tag">3. PUNTÚA</span> Un score ≥ 74 habilita la señal. El tamaño se calcula con OrderCalcProfit para mantener el riesgo objetivo del 5% de equity.</div><div><span class="tag">4. REVISA</span> El calendario USD de alto impacto puede bloquear entradas alrededor del evento.</div><div><span class="tag">5. PROTEGE</span> Stop dinámico ATR + estructura, límite de pérdida diaria, drawdown, spread máximo, una entrada por vela H1 y PAPER por defecto.</div></div></section>
 </div></div>
 <div class="wrap" style="padding-top:0"><section class="card"><h2 class="section-title">ARMED STATUS</h2><div class="statusline"><strong id="armedStatus">DISABLED</strong><span class="small" id="armedDetail">Feature flag apagado.</span></div></section></div>
 <div class="advanced-control"><button id="advancedToggle" type="button" onclick="toggleAdvanced()">MOSTRAR DIAGNÓSTICO AVANZADO</button></div>
 <nav class="hali-mobile-nav" aria-label="Navegación móvil">
-  <a href="#overview"><span>◆</span><small>Inicio</small></a>
-  <a href="#trades"><span>↗</span><small>Trades</small></a>
-  <a href="#signal"><span>⌁</span><small>Señal</small></a>
-  <a href="#riskpanel"><span>⬡</span><small>Riesgo</small></a>
-  <a href="#news"><span>✦</span><small>Noticias</small></a>
+  <a class="active" href="#overview" data-nav="overview"><span>◆</span><small>Inicio</small></a>
+  <a href="#trades" data-nav="trades"><span>↗</span><small>Trades</small></a>
+  <a href="#signal" data-nav="signal"><span>⌁</span><small>Señal</small></a>
+  <a href="#riskpanel" data-nav="riskpanel"><span>⬡</span><small>Riesgo</small></a>
+  <a href="#news" data-nav="news"><span>✦</span><small>Noticias</small></a>
 </nav>
 <script>
 const $=id=>document.getElementById(id);
-let chartTimeframe='H1', chartBars=[], latestStatus=null;
+let chartTimeframe=localStorage.getItem('hali_chart_tf')||'H1', chartBars=[], latestStatus=null;
+function setConnectionBanner(on,message='Reconectando con Hali…'){
+  const el=$('connectionBanner'),txt=$('connectionBannerText');
+  if(!el||!txt)return;
+  txt.textContent=message;el.classList.toggle('on',!!on);
+}
+function setActiveNav(id){
+  document.querySelectorAll('[data-nav]').forEach(a=>{
+    const active=a.dataset.nav===id;
+    a.classList.toggle('active',active);
+    if(active)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');
+  });
+}
+function initNavObserver(){
+  const ids=['overview','market','trades','signal','riskpanel','news','history'];
+  const sections=ids.map(id=>document.getElementById(id)).filter(Boolean);
+  if(!('IntersectionObserver' in window)||!sections.length)return;
+  const observer=new IntersectionObserver(entries=>{
+    const visible=entries.filter(e=>e.isIntersecting).sort((a,b)=>b.intersectionRatio-a.intersectionRatio)[0];
+    if(visible)setActiveNav(visible.target.id);
+  },{rootMargin:'-20% 0px -65% 0px',threshold:[0,.15,.35,.6]});
+  sections.forEach(s=>observer.observe(s));
+}
 function toggleAdvanced(){
   document.body.classList.toggle('show-advanced');
   const b=$('advancedToggle');
@@ -787,6 +872,7 @@ function currentSessionContext(){
 
 function setChartTimeframe(tf){
   chartTimeframe=tf;
+  localStorage.setItem('hali_chart_tf',tf);
   document.querySelectorAll('.chart-tabs button').forEach(b=>b.classList.toggle('active',b.dataset.tf===tf));
   loadChart(true);
 }
@@ -1029,8 +1115,22 @@ function toggle(id){$(id).classList.toggle('on')}
 function renderLog(rows){ lastLog=rows||[]; if(!rows.length){$('log').innerHTML='<div class="small">Todavía no hay operaciones cerradas registradas.</div>';return}
  $('log').innerHTML=rows.slice(0,30).map((r,i)=>`<div class="trade"><div><strong class="${r.direction==='LONG'?'buy':'sell'}">${esc(r.direction||'—')}</strong><div class="small">${esc(r.close_time||'')} · <span class="pill">${esc(r.class||'CHILL')}</span> ${esc(r.setup||'—')}</div></div><div><div class="small">ENTRADA / SALIDA</div><strong>${Number(r.entry||0).toFixed(2)} / ${Number(r.exit||0).toFixed(2)}</strong><div class="small">${esc(r.close_reason||'OTHER')} · ${Number(r.lots||0).toFixed(4)} lot</div></div><div><div class="small">RESULTADO NETO</div><strong>${money(r.net_pnl)}</strong><div class="small">${Number(r.realized_r||0).toFixed(3)}R · ${esc(lifecycle(r.status||'POSITION_CLOSED'))}</div></div><button onclick="toggle('r${i}')">Abrir detalle</button><div id="r${i}" class="reason" style="grid-column:1/-1">Posición ${esc(r.position_id)} · Deal ${esc(r.deal_id)} · SL ${Number(r.sl||0).toFixed(2)} · TP ${Number(r.tp||0).toFixed(2)}<br><span class="small">Bruto ${money(r.gross_pnl)} · comisión ${money(r.commission)} · swap ${money(r.swap)} · señal ${esc(r.signal_event_id||'—')}</span></div></div>`).join('')
 }
-async function tick(){try{const d=await fetch('/api/status?t='+Date.now()).then(r=>r.json());render(d);renderLog(d.closed_trades||[])}catch(e){$('decision').textContent='Dashboard desconectado: '+e.message}}
+let tickFailures=0;
+async function tick(){
+ try{
+   const r=await fetch('/api/status?t='+Date.now(),{cache:'no-store'});
+   if(!r.ok)throw new Error('HTTP '+r.status);
+   const d=await r.json();
+   tickFailures=0;setConnectionBanner(false);
+   render(d);renderLog(d.closed_trades||[]);
+ }catch(e){
+   tickFailures++;
+   setConnectionBanner(true,tickFailures>2?'Hali no responde · reintentando conexión…':'Reconectando con Hali…');
+ }
+}
+initNavObserver();
 tick();setInterval(tick,2000);
+document.querySelectorAll('.chart-tabs button').forEach(b=>b.classList.toggle('active',b.dataset.tf===chartTimeframe));
 loadChart();setInterval(loadChart,15000);
 window.addEventListener('resize',()=>{clearTimeout(window.__haliChartResize);window.__haliChartResize=setTimeout(drawPriceChart,120)});
 </script></main></div></body></html>
