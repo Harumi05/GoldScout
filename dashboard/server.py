@@ -155,6 +155,7 @@ def system_health_snapshot():
     dash_file=file_health('xau_goldscout_dashboard.json')
     news_file=file_health('gold_news_analysis.json')
     observer_file=file_health('market_observations.jsonl')
+    live_file=file_health('hali_live_market.json')
     broker=bool(((dash or {}).get('demo_execution') or {}).get('broker_connected'))
     execution_allowed=bool(((dash or {}).get('demo_execution') or {}).get('execution_allowed'))
     account_mode=str(((dash or {}).get('demo_execution') or {}).get('account_mode') or 'UNKNOWN')
@@ -190,6 +191,10 @@ def system_health_snapshot():
         'market_observer':{
             'status':'AVAILABLE' if observer_file.get('exists') else 'NO_DATA',
             **observer_file,
+        },
+        'live_feed':{
+            'status':'ONLINE' if live_file.get('exists') and isinstance(live_file.get('age_seconds'),(int,float)) and live_file.get('age_seconds')<=5 else ('STALE' if live_file.get('exists') else 'NO_DATA'),
+            **live_file,
         },
     }
 
@@ -345,8 +350,7 @@ class H(BaseHTTPRequestHandler):
                 paths=[candidate/'market_observations.jsonl' for candidate in CANDIDATES]
                 payload=read_market_bar_series(paths,timeframe=timeframe,limit=limit)
 
-            dashboard=read_json('xau_goldscout_dashboard.json') or {}
-            live_market=dashboard.get('live_market') if isinstance(dashboard,dict) else {}
+            live_market=read_json('hali_live_market.json') or {}
             if not isinstance(live_market,dict):
                 live_market={}
             live_bars=live_market.get('bars') if isinstance(live_market.get('bars'),dict) else {}
@@ -360,6 +364,8 @@ class H(BaseHTTPRequestHandler):
                 'spread':live_market.get('spread'),
                 'server_time':live_market.get('server_time'),
                 'server_epoch':live_market.get('server_epoch'),
+                'tick_epoch':live_market.get('tick_epoch'),
+                'tick_time_msc':live_market.get('tick_time_msc'),
             })
             self.send_payload(200,'application/json; charset=utf-8',json.dumps(payload,ensure_ascii=False).encode()); return
         if self.path.startswith('/api/log'):
