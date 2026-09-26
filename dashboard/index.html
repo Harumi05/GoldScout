@@ -321,6 +321,58 @@ hr{border:0;border-top:1px solid #282e36}
  .live-trade-meta{grid-template-columns:repeat(2,1fr);gap:9px}
 }
 
+
+/* ===== HALI SIGNAL PANEL V6 ===== */
+.signal-panel{overflow:visible}
+.signal-header{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.signal-decision{padding:7px 10px;border-radius:8px;border:1px solid #343a43;background:#0a0d10;color:#8e959f;font-size:9px;letter-spacing:.09em;white-space:nowrap}
+.signal-decision.ready{color:#31d5a4;border-color:rgba(49,213,164,.38);background:rgba(49,213,164,.07)}
+.signal-decision.armed{color:#d8ad66;border-color:rgba(216,173,102,.38);background:rgba(216,173,102,.07)}
+.signal-decision.blocked{color:#ef5b70;border-color:rgba(239,91,112,.38);background:rgba(239,91,112,.07)}
+.signal-score-grid{display:grid;grid-template-columns:1fr 1fr;gap:11px;margin-top:15px}
+.signal-score-card{padding:13px;border:1px solid #272e36;border-radius:11px;background:#090c0f}
+.signal-score-top{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px}
+.signal-score-top span{font-size:10px;letter-spacing:.12em;color:#7c838d}
+.signal-score-top strong{font-size:24px}
+.long-side .signal-score-top strong{color:#2bd6a5}.short-side .signal-score-top strong{color:#ef566d}
+.signal-meter{height:10px;position:relative;border:1px solid #293038;border-radius:999px;background:#101419;overflow:visible}
+.signal-meter i{display:block;height:100%;width:0;border-radius:999px;transition:width .35s ease}
+.long-side .signal-meter i{background:linear-gradient(90deg,#135b49,#2bd6a5)}
+.short-side .signal-meter i{background:linear-gradient(90deg,#651827,#ef566d)}
+.signal-meter b{position:absolute;top:-3px;width:1px;height:16px;background:#6f7781;opacity:.7}
+.signal-meter .arm-marker{left:58%}.signal-meter .trade-marker{left:74%;background:#d3ac69}
+.signal-thresholds{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;margin-top:6px;font-size:7px;color:#59616b}
+.signal-thresholds span:nth-child(2),.signal-thresholds span:nth-child(3){text-align:center}.signal-thresholds span:last-child{text-align:right}
+.signal-core-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:11px}
+.signal-core-card{position:relative;min-height:78px;padding:11px;border:1px solid #252c34;border-radius:10px;background:linear-gradient(145deg,#0b0e12,#080a0d)}
+.signal-core-card small{display:block;font-size:7px;letter-spacing:.11em;color:#656d77;margin-bottom:7px}
+.signal-core-card strong{font-size:13px;color:#d6d9dd;display:block;max-width:86%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.signal-core-card>span{position:absolute;right:10px;bottom:9px;font-size:10px;color:#5f6670}
+.signal-core-card.bull strong,.signal-core-card.bull>span{color:#2bd6a5}.signal-core-card.bear strong,.signal-core-card.bear>span{color:#ef566d}
+.signal-decision-box{display:grid;grid-template-columns:2fr 1fr;gap:9px;margin-top:11px;padding:12px;border:1px solid #2b3139;border-radius:10px;background:linear-gradient(90deg,#0b0e11,#090b0e)}
+.signal-decision-box small{display:block;font-size:7px;color:#646c76;letter-spacing:.10em;margin-bottom:5px}
+.signal-decision-box strong{font-size:11px;color:#d0d4d9;line-height:1.5}
+.signal-block{text-align:right}.signal-block strong{color:#d59b60}
+.signal-tech-strip{display:grid;grid-template-columns:repeat(8,1fr);gap:6px;margin-top:10px}
+.signal-tech-strip>div{padding:8px;border-top:1px solid #262d34;min-width:0}
+.signal-tech-strip span{display:block;font-size:7px;color:#626a74;margin-bottom:4px;white-space:nowrap}
+.signal-tech-strip strong{font-size:10px;color:#c7cbd0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
+.signal-details{margin-top:10px;border:1px solid #252c33;border-radius:9px;background:#080b0e}
+.signal-details summary{cursor:pointer;list-style:none;padding:9px 11px;font-size:8px;letter-spacing:.09em;color:#777f89}.signal-details summary::-webkit-details-marker{display:none}
+.signal-details[open] summary{border-bottom:1px solid #252c33;color:#d5ad68}
+.signal-details-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;padding:9px}
+.signal-disclaimer{margin-top:9px;padding-top:9px;border-top:1px dashed #262c33;font-size:8px}
+@media(max-width:900px){.signal-tech-strip{grid-template-columns:repeat(4,1fr)}.signal-details-grid{grid-template-columns:1fr}}
+@media(max-width:560px){
+ .signal-header{align-items:center}.signal-header .section-title{margin-bottom:2px}
+ .signal-decision{font-size:8px;padding:6px 8px}
+ .signal-score-grid{gap:8px;margin-top:12px}.signal-score-card{padding:10px}.signal-score-top strong{font-size:21px}
+ .signal-core-grid{grid-template-columns:repeat(2,1fr);gap:7px}
+ .signal-core-card{min-height:68px;padding:9px}
+ .signal-decision-box{grid-template-columns:1fr;gap:8px}.signal-block{text-align:left}
+ .signal-tech-strip{grid-template-columns:repeat(4,1fr);gap:4px}.signal-tech-strip>div{padding:7px 4px}
+}
+
 </style>
 </head>
 <body>
@@ -403,7 +455,95 @@ hr{border:0;border-top:1px solid #282e36}
   </div>
 </section>
 <section id="riskpanel" class="card span4 section-risk"><h3>RIESGO Y PROTECCIÓN</h3><div class="row"><div><div class="small">BALANCE</div><div class="value" id="balance">—</div></div><div><div class="small">EQUITY ACTUAL</div><div class="value" id="equity">—</div></div></div><hr><div class="analysis-row"><span>Equity inicio del día</span><strong id="startEquity">—</strong></div><div class="analysis-row"><span>RiskPercent</span><strong id="tradeRiskPercent">5.0%</strong></div><div class="analysis-row"><span>Riesgo objetivo/trade</span><strong id="targetRisk">—</strong></div><div class="analysis-row"><span>DailyLossLimitPercent</span><strong id="dailyLossPercent">5.0%</strong></div><div class="analysis-row"><span>Presupuesto diario inicial</span><strong id="dailyBudget">—</strong></div><div class="analysis-row"><span>Pérdida diaria utilizada</span><strong id="dailyLossUsed">—</strong></div><div class="analysis-row"><span>Riesgo abierto reservado</span><strong id="openRisk">—</strong></div><div class="analysis-row"><span>Presupuesto diario restante</span><strong id="dailyRemaining">—</strong></div><div class="analysis-row"><span>Riesgo efectivo permitido</span><strong id="effectiveRisk">—</strong></div><div class="meter"><i id="dailyMeter" style="width:0%"></i></div><p class="small" id="riskNote">El presupuesto diario se fija con la equity de inicio del día y no aumenta por ganancias intradía. Pérdidas realizadas y riesgo abierto reducen el disponible.</p><div id="mt5Notice" class="notice small">Conecta el EA en MT5 para reemplazar estos datos por balance, equity y operaciones reales de la cuenta.</div></section>
-<section id="signal" class="card span12 section-analysis"><h2 class="section-title">SEÑAL / DECISIÓN ACTUAL</h2><div class="small" id="analysisBar">Esperando la primera evaluación H1...</div><div class="analysis-grid"><div class="analysis-box"><h4>Tendencia</h4><div class="analysis-row"><span>H4</span><strong id="aH4">—</strong></div><div class="analysis-row"><span>H1</span><strong id="aH1">—</strong></div><div class="analysis-row"><span>EMA H1</span><strong id="aEma">—</strong></div><div class="analysis-row"><span>EMA H4</span><strong id="aH4Ema">—</strong></div></div><div class="analysis-box"><h4>Indicadores</h4><div class="analysis-row"><span>RSI 14</span><strong id="aRsi">—</strong></div><div class="analysis-row"><span>ADX 14</span><strong id="aAdx">—</strong></div><div class="analysis-row"><span>ATR 14</span><strong id="aAtr">—</strong></div><div class="analysis-row"><span>Volumen</span><strong id="aVol">—</strong></div></div><div class="analysis-box"><h4>Scoring</h4><div class="analysis-row"><span>LONG técnico</span><strong id="aLongTech">—</strong></div><div class="analysis-row"><span>SHORT técnico</span><strong id="aShortTech">—</strong></div><div class="analysis-row"><span>Noticias L/S</span><strong id="aNewsPts">—</strong></div><div class="analysis-row"><span>FINAL L/S</span><strong id="aFinal">—</strong></div></div><div class="analysis-box"><h4>Estructura</h4><div class="analysis-row"><span>Setup</span><strong id="aStructure">—</strong></div><div class="analysis-row"><span>Candidato</span><strong id="aCandidate">—</strong></div><div class="analysis-row"><span>R:R mínimo</span><strong id="aMinRR">—</strong></div><div class="analysis-row"><span>Bloqueo</span><strong id="aBlock">—</strong></div></div></div><div class="decision-box"><strong>LECTURA TÉCNICA</strong><div class="small" id="aTechReason">—</div></div><div class="decision-box"><strong>LECTURA DE NOTICIAS</strong><div class="small" id="aNewsReason">—</div></div><div class="muted-box small"><strong>Importante:</strong> el bot arma el setup al comenzar H1 y lo vigila intrabar. Score y sesgo son señales del sistema, no una probabilidad garantizada de acierto.</div></section>
+<section id="signal" class="card span12 section-analysis signal-panel">
+  <div class="signal-header">
+    <div>
+      <h2 class="section-title">SEÑAL / DECISIÓN ACTUAL</h2>
+      <div class="small" id="analysisBar">Esperando la primera evaluación H1...</div>
+    </div>
+    <div id="signalDecision" class="signal-decision neutral">MONITOREANDO</div>
+  </div>
+
+  <div class="signal-score-grid">
+    <div class="signal-score-card long-side">
+      <div class="signal-score-top"><span>LONG</span><strong id="signalLongFinal">—</strong></div>
+      <div class="signal-meter"><i id="signalLongBar" style="width:0%"></i><b class="arm-marker" title="Arm 58"></b><b class="trade-marker" title="Trade 74"></b></div>
+      <div class="signal-thresholds"><span>0</span><span>ARM 58</span><span>TRADE 74</span><span>100</span></div>
+    </div>
+    <div class="signal-score-card short-side">
+      <div class="signal-score-top"><span>SHORT</span><strong id="signalShortFinal">—</strong></div>
+      <div class="signal-meter"><i id="signalShortBar" style="width:0%"></i><b class="arm-marker" title="Arm 58"></b><b class="trade-marker" title="Trade 74"></b></div>
+      <div class="signal-thresholds"><span>0</span><span>ARM 58</span><span>TRADE 74</span><span>100</span></div>
+    </div>
+  </div>
+
+  <div class="signal-core-grid">
+    <div class="signal-core-card">
+      <small>TENDENCIA H4</small>
+      <strong id="aH4">—</strong>
+      <span id="signalH4Icon">◇</span>
+    </div>
+    <div class="signal-core-card">
+      <small>TENDENCIA H1</small>
+      <strong id="aH1">—</strong>
+      <span id="signalH1Icon">◇</span>
+    </div>
+    <div class="signal-core-card">
+      <small>SETUP</small>
+      <strong id="aStructure">—</strong>
+      <span id="signalSetupState">—</span>
+    </div>
+    <div class="signal-core-card">
+      <small>CANDIDATO</small>
+      <strong id="aCandidate">—</strong>
+      <span id="signalCandidateState">—</span>
+    </div>
+  </div>
+
+  <div class="signal-decision-box">
+    <div>
+      <small>DECISIÓN DE HALI</small>
+      <strong id="signalDecisionText">Esperando datos…</strong>
+    </div>
+    <div class="signal-block">
+      <small>BLOQUEO</small>
+      <strong id="aBlock">—</strong>
+    </div>
+  </div>
+
+  <div class="signal-tech-strip">
+    <div><span>LONG técnico</span><strong id="aLongTech">—</strong></div>
+    <div><span>SHORT técnico</span><strong id="aShortTech">—</strong></div>
+    <div><span>Noticias L/S</span><strong id="aNewsPts">—</strong></div>
+    <div><span>FINAL L/S</span><strong id="aFinal">—</strong></div>
+    <div><span>RSI</span><strong id="aRsi">—</strong></div>
+    <div><span>ADX</span><strong id="aAdx">—</strong></div>
+    <div><span>ATR</span><strong id="aAtr">—</strong></div>
+    <div><span>Volumen</span><strong id="aVol">—</strong></div>
+  </div>
+
+  <details class="signal-details">
+    <summary>VER LECTURA TÉCNICA COMPLETA</summary>
+    <div class="signal-details-grid">
+      <div class="analysis-box">
+        <h4>Medias y contexto</h4>
+        <div class="analysis-row"><span>EMA H1</span><strong id="aEma">—</strong></div>
+        <div class="analysis-row"><span>EMA H4</span><strong id="aH4Ema">—</strong></div>
+        <div class="analysis-row"><span>R:R mínimo</span><strong id="aMinRR">—</strong></div>
+      </div>
+      <div class="analysis-box">
+        <h4>Lectura técnica</h4>
+        <div class="small" id="aTechReason">—</div>
+      </div>
+      <div class="analysis-box">
+        <h4>Noticias</h4>
+        <div class="small" id="aNewsReason">—</div>
+      </div>
+    </div>
+  </details>
+
+  <div class="signal-disclaimer small">Score y sesgo son señales del sistema; no representan una probabilidad garantizada de acierto. Champion actual: armado 58 · ejecución 74.</div>
+</section>
 <section class="card span12 section-monitor"><h2 class="section-title">MONITOREO DE EJECUCIÓN · H1</h2><div class="analysis-grid"><div class="analysis-box"><h4>Estado</h4><div class="analysis-row"><span>Estado</span><strong id="mState">—</strong></div><div class="analysis-row"><span>Candidato</span><strong id="mCandidate">—</strong></div></div><div class="analysis-box"><h4>Trigger</h4><div class="analysis-row"><span>Score</span><strong id="mScore">—</strong></div><div class="analysis-row"><span>Boost L / S</span><strong id="mBoost">—</strong></div></div><div class="analysis-box"><h4>Tiempo</h4><div class="analysis-row"><span>Vigilando</span><strong id="mAge">—</strong></div><div class="analysis-row"><span>Entrada usada H1</span><strong id="mUsed">—</strong></div></div><div class="analysis-box"><h4>Lectura</h4><div class="analysis-row"><span>Estado</span><strong id="mReason">—</strong></div></div></div><div class="decision-box"><strong>MONITOR</strong><div class="small" id="mReasonLong">—</div></div></section><section class="card span12 section-session"><h2 class="section-title">SESIÓN Y LIQUIDEZ · ORO</h2><div class="session-grid"><div class="session-box"><div class="label">Sesión regional</div><div class="big" id="sessionName">—</div></div><div class="session-box"><div class="label">Fase</div><div class="big" id="sessionPhase">—</div></div><div class="session-box"><div class="label">Volatilidad</div><div class="big" id="sessionVol">—</div></div><div class="session-box"><div class="label">Impulso apertura</div><div class="big" id="sessionImpulse">—</div></div><div class="session-box"><div class="label">Puntos L / S</div><div class="big" id="sessionPts">—</div></div></div><div class="session-note small" id="sessionContext">Esperando contexto de mercado...</div><div class="centers" id="marketCenters"></div><div class="small" style="margin-top:10px">Contexto por centros: Tokio, Shanghai/HK, Singapur, Mumbai, Londres, Nueva York/COMEX y ventanas LBMA. Hali usa estas ventanas como contexto de liquidez/volatilidad; no asume que cada apertura produzca un pullback.</div></section>
 <section id="news" class="card span12 section-news"><h2 class="section-title">NOTICIAS Y CONTEXTO</h2><div class="stats"><div class="stat"><span class="small">SESGO</span><div class="value" id="newsDir">NEUTRO</div></div><div class="stat"><span class="small">BIAS</span><div class="score" style="font-size:34px" id="newsBias">0</div></div><div class="stat"><span class="small">CONFIANZA</span><div class="value" id="newsConf">0%</div></div><div class="stat"><span class="small">RIESGO</span><div class="value" id="newsRisk">UNKNOWN</div></div></div><p class="small" id="newsDataRisk">Riesgo de datos: UNKNOWN</p><p class="small" id="newsSummary">Esperando análisis de noticias...</p><div id="newsSources" class="sources"></div><h3 style="margin-top:18px">Titulares recientes</h3><div id="newsHeadlines" class="timeline"></div><p class="small" id="newsSource">Motor multi-fuente: GDELT + Google News RSS + Bing News RSS. GDELT es opcional; las fuentes RSS funcionan como respaldo.</p></section>
 <section class="card span12 section-external advanced-section"><h2 class="section-title">CONSENSO EXTERNO · SOLO DIAGNÓSTICO</h2><div class="stats"><div class="stat"><span class="small">LONG</span><div class="value buy" id="extLong">0%</div></div><div class="stat"><span class="small">SHORT</span><div class="value sell" id="extShort">0%</div></div><div class="stat"><span class="small">NEUTRAL</span><div class="value" id="extNeutral">0%</div></div><div class="stat"><span class="small">TRADERS VÁLIDOS</span><div class="value" id="extTraders">0</div></div></div><div class="statusline small"><span id="extQuality">Calidad: 0</span><span id="extFresh">Frescura: —</span><span id="extApi">API: SIN DATOS</span></div><div class="muted-box small" id="extReadOnly">Solo diagnóstico · score_effect=0 · sin copy trading ni ejecución.</div></section>
@@ -545,7 +685,27 @@ function render(data){
  $('connection').textContent=data.connected?'MT5 CONECTADO':'SIN DATOS MT5'; $('connection').className='pill '+(data.connected?'paper':'offline');
  $('mt5Notice').style.display=data.connected?'none':'block';
  $('decision').textContent=data.last_decision||'—'; $('score').textContent=data.last_score??'—'; $('setup').textContent=data.last_setup||'—'; $('direction').textContent=data.last_direction||'—'; $('risk').textContent=displayMoney(effectivePlannedRisk); $('riskPct').textContent=Number(data.risk_percent||5).toFixed(1)+'% equity'; $('riskBudget').textContent=`Objetivo ${displayMoney(targetRisk)} · restante diario ${displayMoney(remainingDailyBudget)}`;
- const a=data.analysis||{}; const m=data.monitor||{}; if(!m.state && data.last_decision){ m.state='ESTADO ACTUAL'; m.reason=data.last_decision; m.score=data.last_score??0; m.candidate=data.last_direction||'-'; m.age_sec=0; m.entry_used_this_bar=false; m.boost_l=0; m.boost_s=0; } $('analysisBar').textContent='Última evaluación H1: '+(a.bar||'—'); $('aH4').textContent=a.h4_trend||'—'; $('aH1').textContent=a.h1_trend||'—'; $('aEma').textContent=(a.ema_fast!=null&&a.ema_slow!=null)?`${Number(a.ema_fast).toFixed(2)} / ${Number(a.ema_slow).toFixed(2)}`:'—'; $('aH4Ema').textContent=(a.h4_ema_fast!=null&&a.h4_ema_slow!=null)?`${Number(a.h4_ema_fast).toFixed(2)} / ${Number(a.h4_ema_slow).toFixed(2)}`:'—'; $('aRsi').textContent=a.rsi!=null?Number(a.rsi).toFixed(1):'—'; $('aAdx').textContent=a.adx!=null?Number(a.adx).toFixed(1):'—'; $('aAtr').textContent=a.atr!=null?Number(a.atr).toFixed(2):'—'; $('aVol').textContent=a.volume_state||'—'; $('aLongTech').textContent=a.long_tech??'—'; $('aShortTech').textContent=a.short_tech??'—'; $('aNewsPts').textContent=(a.long_news_points!=null&&a.short_news_points!=null)?`${a.long_news_points>0?'+':''}${a.long_news_points} / ${a.short_news_points>0?'+':''}${a.short_news_points}`:'—'; $('aFinal').textContent=(a.long_final!=null&&a.short_final!=null)?`${a.long_final} / ${a.short_final}`:'—'; $('aStructure').textContent=a.structure||'—'; $('aCandidate').textContent=a.candidate||'—'; $('aMinRR').textContent=data.min_rr!=null?Number(data.min_rr).toFixed(2):'—'; $('aBlock').textContent=a.block_reason||'Ninguno'; $('aTechReason').textContent=a.technical_reason||'—'; $('aNewsReason').textContent=a.news_reason||'—'; $('mState').textContent=m.state||'—'; $('mCandidate').textContent=m.candidate||'—'; $('mScore').textContent=m.score??'—'; $('mBoost').textContent=(m.boost_l!=null&&m.boost_s!=null)?`${Number(m.boost_l)>=0?'+':''}${m.boost_l} / ${Number(m.boost_s)>=0?'+':''}${m.boost_s}`:'—'; $('mAge').textContent=m.age_sec!=null?Math.floor(Number(m.age_sec)/60)+'m '+Math.max(0,Math.floor(Number(m.age_sec)%60))+'s':'—'; $('mUsed').textContent=m.entry_used_this_bar?'SÍ':'NO'; $('mReason').textContent=m.reason||'—'; $('mReasonLong').textContent=m.reason||'—'; const sess=currentSessionContext();
+ const a=data.analysis||{}; const m=data.monitor||{}; if(!m.state && data.last_decision){ m.state='ESTADO ACTUAL'; m.reason=data.last_decision; m.score=data.last_score??0; m.candidate=data.last_direction||'-'; m.age_sec=0; m.entry_used_this_bar=false; m.boost_l=0; m.boost_s=0; } $('analysisBar').textContent='Última evaluación H1: '+(a.bar||'—'); $('aH4').textContent=a.h4_trend||'—'; $('aH1').textContent=a.h1_trend||'—'; $('aEma').textContent=(a.ema_fast!=null&&a.ema_slow!=null)?`${Number(a.ema_fast).toFixed(2)} / ${Number(a.ema_slow).toFixed(2)}`:'—'; $('aH4Ema').textContent=(a.h4_ema_fast!=null&&a.h4_ema_slow!=null)?`${Number(a.h4_ema_fast).toFixed(2)} / ${Number(a.h4_ema_slow).toFixed(2)}`:'—'; $('aRsi').textContent=a.rsi!=null?Number(a.rsi).toFixed(1):'—'; $('aAdx').textContent=a.adx!=null?Number(a.adx).toFixed(1):'—'; $('aAtr').textContent=a.atr!=null?Number(a.atr).toFixed(2):'—'; $('aVol').textContent=a.volume_state||'—'; $('aLongTech').textContent=a.long_tech??'—'; $('aShortTech').textContent=a.short_tech??'—'; $('aNewsPts').textContent=(a.long_news_points!=null&&a.short_news_points!=null)?`${a.long_news_points>0?'+':''}${a.long_news_points} / ${a.short_news_points>0?'+':''}${a.short_news_points}`:'—'; $('aFinal').textContent=(a.long_final!=null&&a.short_final!=null)?`${a.long_final} / ${a.short_final}`:'—'; $('aStructure').textContent=a.structure||'—'; $('aCandidate').textContent=a.candidate||'—'; $('aMinRR').textContent=data.min_rr!=null?Number(data.min_rr).toFixed(2):'—'; $('aBlock').textContent=a.block_reason||'Ninguno'; $('aTechReason').textContent=a.technical_reason||'—'; $('aNewsReason').textContent=a.news_reason||'—';
+ const longFinal=Number(a.long_final??a.long_tech??0), shortFinal=Number(a.short_final??a.short_tech??0);
+ $('signalLongFinal').textContent=Number.isFinite(longFinal)?Math.round(longFinal):'—';
+ $('signalShortFinal').textContent=Number.isFinite(shortFinal)?Math.round(shortFinal):'—';
+ $('signalLongBar').style.width=Math.max(0,Math.min(100,longFinal))+'%';
+ $('signalShortBar').style.width=Math.max(0,Math.min(100,shortFinal))+'%';
+ const decisionText=String(data.last_decision||a.block_reason||'MONITOREANDO');
+ $('signalDecisionText').textContent=decisionText;
+ const maxSignal=Math.max(longFinal,shortFinal);
+ const blocked=/bloque|block|spread|news|noticia|risk|riesgo|margin|margen/i.test(decisionText+' '+String(a.block_reason||''));
+ const ready=!blocked && maxSignal>=74;
+ const armed=!blocked && !ready && maxSignal>=58;
+ $('signalDecision').textContent=blocked?'BLOQUEADO':ready?'LISTO / TRIGGER':armed?'ARMADO':'MONITOREANDO';
+ $('signalDecision').className='signal-decision '+(blocked?'blocked':ready?'ready':armed?'armed':'neutral');
+ const trendClass=v=>/alcista|bull/i.test(String(v||''))?'bull':/bajista|bear/i.test(String(v||''))?'bear':'';
+ const h4Card=$('aH4').closest('.signal-core-card'),h1Card=$('aH1').closest('.signal-core-card');
+ h4Card.className='signal-core-card '+trendClass(a.h4_trend); h1Card.className='signal-core-card '+trendClass(a.h1_trend);
+ $('signalH4Icon').textContent=trendClass(a.h4_trend)==='bull'?'↗':trendClass(a.h4_trend)==='bear'?'↘':'◇';
+ $('signalH1Icon').textContent=trendClass(a.h1_trend)==='bull'?'↗':trendClass(a.h1_trend)==='bear'?'↘':'◇';
+ $('signalSetupState').textContent=a.structure&&a.structure!=='—'?'DETECTADO':'—';
+ $('signalCandidateState').textContent=maxSignal>=74?'VALIDADO':maxSignal>=58?'EN ARMADO':'ESPERA'; $('mState').textContent=m.state||'—'; $('mCandidate').textContent=m.candidate||'—'; $('mScore').textContent=m.score??'—'; $('mBoost').textContent=(m.boost_l!=null&&m.boost_s!=null)?`${Number(m.boost_l)>=0?'+':''}${m.boost_l} / ${Number(m.boost_s)>=0?'+':''}${m.boost_s}`:'—'; $('mAge').textContent=m.age_sec!=null?Math.floor(Number(m.age_sec)/60)+'m '+Math.max(0,Math.floor(Number(m.age_sec)%60))+'s':'—'; $('mUsed').textContent=m.entry_used_this_bar?'SÍ':'NO'; $('mReason').textContent=m.reason||'—'; $('mReasonLong').textContent=m.reason||'—'; const sess=currentSessionContext();
  $('sessionName').textContent=a.session||sess.regional||'—';
  $('sessionPhase').textContent=a.session_phase||sess.phase||'—';
  $('sessionVol').textContent=a.session_volatility||'—';
