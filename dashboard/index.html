@@ -288,6 +288,39 @@ hr{border:0;border-top:1px solid #282e36}
   .kpi-value{font-size:16px}
 }
 
+
+/* ===== HALI ACTIVE TRADE CARD V5 ===== */
+.section-active{overflow:visible}
+.trade-empty{min-height:150px;display:flex;align-items:center;gap:14px;padding:18px;border:1px dashed #2a3139;border-radius:11px;background:#080b0e}
+.trade-empty-mark{width:42px;height:42px;border:1px solid #3b4149;border-radius:50%;display:grid;place-items:center;color:#74552f;font-size:19px;flex:0 0 auto}
+.trade-empty strong{font-size:11px;letter-spacing:.10em;color:#c7cbd0}.trade-empty p{margin:7px 0 0;color:#757c86;font-size:10px;line-height:1.55}
+.live-trade-card{border:1px solid #2b3139;border-radius:13px;padding:15px;background:linear-gradient(155deg,#0d1115,#07090b);box-shadow:inset 0 1px 0 rgba(218,174,102,.08),0 14px 35px rgba(0,0,0,.28)}
+.live-trade-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+.live-trade-symbol{font-family:Georgia,'Times New Roman',serif;font-weight:700;font-size:19px;color:#e5c07d;letter-spacing:.04em}
+.direction-badge{display:inline-flex;align-items:center;margin-left:6px;padding:4px 7px;border-radius:7px;font-family:ui-monospace,monospace;font-size:9px;letter-spacing:.04em;vertical-align:2px}
+.direction-badge.long{color:#31d8a7;border:1px solid rgba(49,216,167,.34);background:rgba(49,216,167,.07)}
+.direction-badge.short{color:#ef5a70;border:1px solid rgba(239,90,112,.34);background:rgba(239,90,112,.07)}
+.live-trade-tags{display:flex;gap:5px;flex-wrap:wrap;margin-top:7px}.live-trade-tags span{font-size:8px;text-transform:uppercase;letter-spacing:.06em;color:#777f89;border:1px solid #262c33;padding:4px 6px;border-radius:6px;background:#090c0f}
+.live-state{font-size:8px;letter-spacing:.09em;color:#35d2a3;border:1px solid rgba(53,210,163,.3);border-radius:8px;padding:6px 8px;white-space:nowrap}.live-state i{display:inline-block;width:6px;height:6px;border-radius:50%;background:#35d2a3;margin-right:5px;box-shadow:0 0 10px rgba(53,210,163,.65)}
+.live-trade-pnl{display:grid;grid-template-columns:1.5fr 1fr;gap:8px;margin-top:14px;padding:11px 0;border-top:1px solid #20262d;border-bottom:1px solid #20262d}
+.live-trade-pnl small,.live-price-grid small,.live-trade-meta small{display:block;font-size:7px;letter-spacing:.10em;color:#676f79;margin-bottom:4px}
+.live-trade-pnl strong{font-size:22px;letter-spacing:.01em}.live-trade-pnl>div:last-child{text-align:right}.live-trade-pnl>div:last-child strong{font-size:16px}
+.live-price-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-top:12px}.live-price-grid>div{padding:8px;border:1px solid #242a31;border-radius:8px;background:#090c0f;min-width:0}.live-price-grid b{font-size:11px;color:#d8dbe0}
+.rr-rail-wrap{margin-top:14px}.rr-rail-labels{display:grid;grid-template-columns:1fr 1fr 1fr;font-size:7px;color:#626a74;letter-spacing:.05em;margin-bottom:6px}.rr-rail-labels span:nth-child(2){text-align:center}.rr-rail-labels span:last-child{text-align:right}
+.rr-rail{height:8px;position:relative;border-radius:999px;background:#11161b;overflow:visible;border:1px solid #272d34}
+.rr-rail .rail-loss{position:absolute;left:0;top:0;bottom:0;width:33.33%;border-radius:999px 0 0 999px;background:linear-gradient(90deg,rgba(145,21,40,.65),rgba(145,21,40,.16))}
+.rr-rail .rail-win{position:absolute;right:0;top:0;bottom:0;border-radius:0 999px 999px 0;background:linear-gradient(90deg,rgba(38,128,102,.12),rgba(39,190,146,.5))}
+.entry-marker,.current-marker{position:absolute;top:50%;width:2px;height:14px;transform:translate(-1px,-50%);background:#d9b46f;box-shadow:0 0 7px rgba(217,180,111,.35)}
+.current-marker{width:8px;height:8px;border-radius:50%;transform:translate(-4px,-50%);background:#e7e7e7;border:1px solid #080a0d;box-shadow:0 0 0 2px #3b4149}
+.current-marker.buy{background:#2bd6a5;box-shadow:0 0 0 2px rgba(43,214,165,.18),0 0 12px rgba(43,214,165,.35)}.current-marker.sell{background:#ef566d;box-shadow:0 0 0 2px rgba(239,86,109,.18),0 0 12px rgba(239,86,109,.35)}
+.live-trade-meta{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:12px}.live-trade-meta span{min-width:0}.live-trade-meta b{font-size:10px;color:#c4c9cf}
+.trade-detail-btn{margin-top:12px;width:100%;font-size:8px;letter-spacing:.10em;padding:8px}.trade-reason{font-size:9px}
+@media(max-width:560px){
+ .live-trade-card{padding:13px}.live-trade-symbol{font-size:18px}.live-trade-pnl strong{font-size:20px}
+ .live-price-grid{grid-template-columns:repeat(2,1fr)}
+ .live-trade-meta{grid-template-columns:repeat(2,1fr);gap:9px}
+}
+
 </style>
 </head>
 <body>
@@ -532,8 +565,66 @@ function render(data){
  const lim=Math.max(1,dailyLossBudget); $('dailyMeter').style.width=Math.min(100,Math.max(0,dailyLossUsed)/lim*100)+'%';
  $('execAccountMode').textContent=esc(de.account_mode||'UNKNOWN'); $('execConnected').textContent=de.broker_connected?'CONECTADO':'DESCONECTADO'; $('execEnabled').textContent=de.enabled?'SÍ':'NO'; $('execAllowed').textContent=de.execution_allowed?'SÍ':'NO'; $('execAuthorization').textContent=esc(de.authorization_reason||'—'); $('execState').textContent=esc(lifecycle(de.state||'PAPER')); $('execReason').textContent=esc(de.reason||'—'); $('execIds').textContent=(de.order_id||de.deal_id)?`${de.order_id||0} / ${de.deal_id||0}`:'—'; $('execFill').textContent=de.executed_price?`${Number(de.filled_volume||0).toFixed(4)} @ ${Number(de.executed_price).toFixed(2)}`:'—';
  const positions=data.open_positions||[];
- if(!positions.length){$('active').innerHTML='<div class="small">No hay posiciones abiertas del MagicNumber de Hali. Las señales PAPER no se muestran como posiciones reales.</div>'}
- else {$('active').innerHTML=positions.map((t,i)=>`<div class="trade"><div><strong class="${t.direction==='LONG'?'buy':'sell'}">${esc(t.direction)}</strong><div class="small"><span class="pill">${esc(t.class||'—')}</span> ${esc(t.setup||'—')} · score ${Number(t.score||0)}</div><div class="small">${esc(t.symbol)} · ${Number(t.volume).toFixed(4)} lot · pos ${esc(t.position_id)}</div></div><div><div class="small">ENTRADA / ACTUAL</div><strong>${Number(t.open_price).toFixed(2)} / ${Number(t.current_price).toFixed(2)}</strong><div class="small">SL ${Number(t.sl).toFixed(2)} · riesgo ${money(t.risk)}</div></div><div><div class="small">OBJETIVO</div><strong>${Number(t.tp).toFixed(2)}</strong><div class="small">P/L flotante ${money(t.floating_pnl)}</div></div><button onclick="toggle('activeReason${i}')">Abrir explicación</button><div id="activeReason${i}" class="reason" style="grid-column:1/-1">Signal ${esc(t.signal_event_id||'—')} · ${esc(t.comment||'')}</div></div>`).join('')}
+ if(!positions.length){
+   $('active').innerHTML=`<div class="trade-empty">
+     <div class="trade-empty-mark">◇</div>
+     <div><strong>SIN POSICIONES ABIERTAS</strong><p>Hali está monitoreando el mercado. Las señales PAPER no se muestran como posiciones reales.</p></div>
+   </div>`;
+ } else {
+   $('active').innerHTML=positions.map((t,i)=>{
+     const dir=String(t.direction||'').toUpperCase();
+     const side=dir==='LONG'?1:-1;
+     const entry=Number(t.open_price||0), current=Number(t.current_price||0), sl=Number(t.sl||0), tp=Number(t.tp||0);
+     const pnl=Number(t.floating_pnl||0), riskMoney=Number(t.risk||0);
+     const riskDist=entry>0&&sl>0?side*(entry-sl):0;
+     const rewardDist=entry>0&&tp>0?side*(tp-entry):0;
+     const currentMove=entry>0&&current>0?side*(current-entry):0;
+     const currentR=riskDist>0?currentMove/riskDist:null;
+     const targetR=riskDist>0&&rewardDist>0?rewardDist/riskDist:null;
+     const railMax=targetR!=null?targetR:1;
+     const entryPct=100/(railMax+1);
+     const currentPct=currentR!=null?Math.max(0,Math.min(100,(currentR+1)/(railMax+1)*100)):entryPct;
+     const pnlClass=pnl>0?'buy':pnl<0?'sell':'';
+     const rClass=currentR==null?'':currentR>=0?'buy':'sell';
+     const stopGap=sl>0&&current>0?Math.abs(current-sl):null;
+     const targetGap=tp>0&&current>0?Math.abs(tp-current):null;
+     return `<article class="live-trade-card">
+       <div class="live-trade-head">
+         <div>
+           <div class="live-trade-symbol">${esc(t.symbol||'XAUUSD')} <span class="direction-badge ${dir==='LONG'?'long':'short'}">${dir==='LONG'?'↗':'↘'} ${esc(dir||'—')}</span></div>
+           <div class="live-trade-tags"><span>${esc(t.class||'—')}</span><span>${esc(t.setup||'—')}</span><span>Score ${Number(t.score||0)}</span></div>
+         </div>
+         <div class="live-state"><i></i> ABIERTA</div>
+       </div>
+       <div class="live-trade-pnl">
+         <div><small>P/L FLOTANTE</small><strong class="${pnlClass}">${money(pnl)}</strong></div>
+         <div><small>R ACTUAL</small><strong class="${rClass}">${currentR==null?'—':(currentR>=0?'+':'')+currentR.toFixed(2)+'R'}</strong></div>
+       </div>
+       <div class="live-price-grid">
+         <div><small>ENTRADA</small><b>${entry>0?entry.toFixed(2):'—'}</b></div>
+         <div><small>ACTUAL</small><b>${current>0?current.toFixed(2):'—'}</b></div>
+         <div><small>SL</small><b class="sell">${sl>0?sl.toFixed(2):'—'}</b></div>
+         <div><small>TP</small><b class="buy">${tp>0?tp.toFixed(2):'—'}</b></div>
+       </div>
+       <div class="rr-rail-wrap">
+         <div class="rr-rail-labels"><span>SL · -1R</span><span>ENTRY</span><span>TP · ${targetR==null?'—':targetR.toFixed(2)+'R'}</span></div>
+         <div class="rr-rail">
+           <span class="rail-loss"></span><span class="rail-win" style="left:${entryPct.toFixed(2)}%"></span>
+           <i class="entry-marker" style="left:${entryPct.toFixed(2)}%"></i>
+           <i class="current-marker ${pnlClass}" style="left:${currentPct.toFixed(2)}%"></i>
+         </div>
+       </div>
+       <div class="live-trade-meta">
+         <span><small>RIESGO</small><b>${riskMoney>0?money(riskMoney):'—'}</b></span>
+         <span><small>LOTAJE</small><b>${Number(t.volume||0).toFixed(4)}</b></span>
+         <span><small>A SL</small><b>${stopGap==null?'—':stopGap.toFixed(2)}</b></span>
+         <span><small>A TP</small><b>${targetGap==null?'—':targetGap.toFixed(2)}</b></span>
+       </div>
+       <button class="trade-detail-btn" onclick="toggle('activeReason${i}')">VER DETALLE</button>
+       <div id="activeReason${i}" class="reason trade-reason">Posición ${esc(t.position_id||'—')} · Signal ${esc(t.signal_event_id||'—')}<br><span class="small">${esc(t.comment||'Sin comentario de broker')}</span></div>
+     </article>`;
+   }).join('');
+ }
  const st=data.session_stats||{}; $('statsTrades').textContent=Number(st.trades||0); $('statsWL').textContent=`${Number(st.wins||0)} / ${Number(st.losses||0)}`; $('statsWinRate').textContent=Number(st.win_rate||0).toFixed(1)+'%'; $('statsNet').textContent=displayMoney(st.net_pnl||0); $('statsExpectancy').textContent=`Expectancy: ${Number(st.expectancy_r||0).toFixed(3)}R`; $('statsPF').textContent=`Profit factor: ${Number(st.profit_factor||0).toFixed(3)}`;
  const floating=positions.reduce((sum,p)=>sum+Number(p.floating_pnl||0),0);
  $('heroBalance').textContent=displayMoney(data.balance);
