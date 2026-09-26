@@ -696,9 +696,9 @@ function render(data){
  const maxSignal=Math.max(longFinal,shortFinal);
  const blocked=/bloque|block|spread|news|noticia|risk|riesgo|margin|margen/i.test(decisionText+' '+String(a.block_reason||''));
  const ready=!blocked && maxSignal>=74;
- const armed=!blocked && !ready && maxSignal>=58;
- $('signalDecision').textContent=blocked?'BLOQUEADO':ready?'LISTO / TRIGGER':armed?'ARMADO':'MONITOREANDO';
- $('signalDecision').className='signal-decision '+(blocked?'blocked':ready?'ready':armed?'armed':'neutral');
+ const isArmedCandidate=!blocked && !ready && maxSignal>=58;
+ $('signalDecision').textContent=blocked?'BLOQUEADO':ready?'LISTO / TRIGGER':isArmedCandidate?'ARMADO':'MONITOREANDO';
+ $('signalDecision').className='signal-decision '+(blocked?'blocked':ready?'ready':isArmedCandidate?'armed':'neutral');
  const trendClass=v=>/alcista|bull/i.test(String(v||''))?'bull':/bajista|bear/i.test(String(v||''))?'bear':'';
  const h4Card=$('aH4').closest('.signal-core-card'),h1Card=$('aH1').closest('.signal-core-card');
  h4Card.className='signal-core-card '+trendClass(a.h4_trend); h1Card.className='signal-core-card '+trendClass(a.h1_trend);
