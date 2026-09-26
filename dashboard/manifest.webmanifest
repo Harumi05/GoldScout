@@ -1,0 +1,24 @@
+{
+  "name": "Hali — XAUUSD Trading Intelligence",
+  "short_name": "Hali",
+  "description": "Private XAUUSD trading intelligence terminal.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#050607",
+  "theme_color": "#050607",
+  "icons": [
+    {
+      "src": "/assets/hali-logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/hali-logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
