@@ -43,6 +43,19 @@ except ValueError:
 TRADINGVIEW_RATE_LIMITER=SlidingWindowRateLimiter(_tv_rate_limit,60) if SlidingWindowRateLimiter else None
 
 ROOT = Path(__file__).resolve().parent
+STATIC_CONTENT_TYPES = {
+    '.html': 'text/html; charset=utf-8',
+    '.css': 'text/css; charset=utf-8',
+    '.js': 'application/javascript; charset=utf-8',
+    '.json': 'application/json; charset=utf-8',
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.webp': 'image/webp',
+    '.svg': 'image/svg+xml',
+    '.ico': 'image/x-icon',
+}
+
 CANDIDATES = []
 custom = os.environ.get('MT5_COMMON_FILES','').strip()
 if custom:
@@ -281,9 +294,14 @@ class H(BaseHTTPRequestHandler):
                         pass
             self.send_payload(200,'application/json; charset=utf-8',json.dumps(rows[-100:],ensure_ascii=False).encode()); return
         rel=self.path.split('?',1)[0]
-        file=ROOT/('index.html' if rel=='/' else rel.lstrip('/'))
+        requested='index.html' if rel=='/' else rel.lstrip('/')
+        file=(ROOT/requested).resolve()
+        try:
+            file.relative_to(ROOT.resolve())
+        except ValueError:
+            self.send_payload(403,'text/plain; charset=utf-8',b'403'); return
         if file.exists() and file.is_file():
-            ctype='text/html; charset=utf-8' if file.suffix.lower()=='.html' else 'text/plain; charset=utf-8'
+            ctype=STATIC_CONTENT_TYPES.get(file.suffix.lower(),'application/octet-stream')
             self.send_payload(200,ctype,file.read_bytes()); return
         self.send_payload(404,'text/plain; charset=utf-8',b'404')
 
@@ -326,7 +344,7 @@ class H(BaseHTTPRequestHandler):
         self.send_payload(code,'application/json; charset=utf-8',json.dumps(result).encode())
 
 if __name__=='__main__':
-    print('GoldScout dashboard: http://127.0.0.1:8787')
+    print('Hali dashboard: http://127.0.0.1:8787')
     threading.Thread(target=news_loop,daemon=True).start()
     threading.Thread(target=external_loop,daemon=True).start()
     ThreadingHTTPServer(('127.0.0.1',8787),H).serve_forever()
