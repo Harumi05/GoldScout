@@ -7,6 +7,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="icon" type="image/png" href="/assets/hali-logo.png">
 <link rel="apple-touch-icon" href="/assets/hali-logo.png">
+<link rel="manifest" href="/manifest.webmanifest">
 <title>HALI — XAUUSD Trading Intelligence</title>
 <style>
 :root{--bg:#efede3;--ink:#111;--muted:#66645f;--card:#f4f1e7;--line:#222;--orange:#f05223;--green:#27864a;--red:#c94633}
@@ -549,6 +550,35 @@ section[id]{scroll-margin-top:88px}
 .logout-button:hover{border-color:#6f2736;color:#e1919f;background:#160a0d}
 @media(max-width:900px){.user-chip{display:none}.logout-button{height:31px;padding:0 8px;font-size:7px}}
 
+
+/* ===== HALI SYSTEM HEALTH V11 ===== */
+.grid>.section-health{order:10;grid-column:span 12}
+.system-health-panel{overflow:visible}
+.health-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.health-overall{font-size:8px;letter-spacing:.10em;padding:7px 9px;border:1px solid #353c44;border-radius:8px;background:#090c0f;color:#858d97;white-space:nowrap}
+.health-overall.good{color:#2fd3a2;border-color:rgba(47,211,162,.34);background:rgba(47,211,162,.06)}
+.health-overall.warn{color:#d8ad66;border-color:rgba(216,173,102,.34);background:rgba(216,173,102,.06)}
+.health-overall.bad{color:#ef586e;border-color:rgba(239,88,110,.34);background:rgba(239,88,110,.06)}
+.health-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:14px}
+.health-component{padding:11px;border:1px solid #262d34;border-radius:10px;background:linear-gradient(145deg,#0b0f12,#080a0c);min-width:0}
+.health-component-head{display:flex;justify-content:space-between;gap:8px;align-items:center}
+.health-component-head span{font-size:7px;letter-spacing:.10em;color:#69717b}
+.health-component-head i{width:7px;height:7px;border-radius:50%;background:#606873;box-shadow:0 0 0 2px rgba(96,104,115,.08)}
+.health-component strong{display:block;margin-top:8px;font-size:12px;color:#cfd3d8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.health-component small{display:block;margin-top:4px;font-size:8px;color:#636b75;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.health-component.good{border-color:rgba(47,211,162,.18)}.health-component.good .health-component-head i{background:#2fd3a2;box-shadow:0 0 10px rgba(47,211,162,.38)}.health-component.good strong{color:#9fdec9}
+.health-component.warn{border-color:rgba(216,173,102,.22)}.health-component.warn .health-component-head i{background:#d8ad66;box-shadow:0 0 10px rgba(216,173,102,.28)}.health-component.warn strong{color:#d7bd8e}
+.health-component.bad{border-color:rgba(239,88,110,.24)}.health-component.bad .health-component-head i{background:#ef586e;box-shadow:0 0 10px rgba(239,88,110,.30)}.health-component.bad strong{color:#e8919e}
+.health-footer{display:grid;grid-template-columns:.8fr 1.7fr auto;gap:10px;align-items:center;margin-top:10px;padding:10px;border:1px solid #252c33;border-radius:10px;background:#090c0f}
+.health-footer small{display:block;font-size:7px;color:#616a74;letter-spacing:.09em;margin-bottom:3px}.health-footer strong{font-size:9px;color:#c6cbd0}
+.health-footer button{height:34px;padding:0 10px;font-size:7px;letter-spacing:.09em}
+@media(max-width:900px){.health-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:560px){
+ .health-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.health-component{padding:9px}
+ .health-footer{grid-template-columns:1fr 1fr}.health-footer button{grid-column:1/-1;width:100%}
+ .health-head{align-items:center}.health-overall{font-size:7px}
+}
+
 </style>
 </head>
 <body>
@@ -581,6 +611,7 @@ section[id]{scroll-margin-top:88px}
     <a href="#riskpanel" data-nav="riskpanel">⬡ Riesgo</a>
     <a href="#news" data-nav="news">✦ Noticias</a>
     <a href="#history" data-nav="history">▣ Historial</a>
+    <a href="#health" data-nav="health">◆ Sistema</a>
   </nav>
   <div class="sidebar-mark">Disciplina<br>Datos<br>Resultados</div>
 </aside>
@@ -920,6 +951,56 @@ section[id]{scroll-margin-top:88px}
   <div id="historySummary" class="history-summary">0 operaciones</div>
   <div id="log" class="history-list"><div class="small">Cargando historial...</div></div>
 </section>
+<section id="health" class="card span12 section-health system-health-panel">
+  <div class="health-head">
+    <div>
+      <h2 class="section-title">ESTADO DEL SISTEMA</h2>
+      <div class="small">Heartbeat 24/7 de los componentes que mantienen Hali operativo.</div>
+    </div>
+    <div id="healthOverall" class="health-overall checking">COMPROBANDO</div>
+  </div>
+
+  <div class="health-grid">
+    <div class="health-component" data-health="https">
+      <div class="health-component-head"><span>HTTPS / CADDY</span><i></i></div>
+      <strong id="healthHttps">—</strong><small id="healthHttpsMeta">Conexión pública</small>
+    </div>
+    <div class="health-component" data-health="auth">
+      <div class="health-component-head"><span>AUTH GATEWAY</span><i></i></div>
+      <strong id="healthAuth">—</strong><small id="healthAuthMeta">Sesión privada</small>
+    </div>
+    <div class="health-component" data-health="backend">
+      <div class="health-component-head"><span>DASHBOARD</span><i></i></div>
+      <strong id="healthBackend">—</strong><small id="healthBackendMeta">127.0.0.1:8787</small>
+    </div>
+    <div class="health-component" data-health="ea">
+      <div class="health-component-head"><span>MT5 / EA</span><i></i></div>
+      <strong id="healthEa">—</strong><small id="healthEaMeta">Heartbeat —</small>
+    </div>
+    <div class="health-component" data-health="broker">
+      <div class="health-component-head"><span>BROKER</span><i></i></div>
+      <strong id="healthBroker">—</strong><small id="healthBrokerMeta">Capital.com DEMO</small>
+    </div>
+    <div class="health-component" data-health="execution">
+      <div class="health-component-head"><span>DEMO EXECUTION</span><i></i></div>
+      <strong id="healthExecution">—</strong><small id="healthExecutionMeta">Órdenes DEMO</small>
+    </div>
+    <div class="health-component" data-health="news">
+      <div class="health-component-head"><span>NEWS ENGINE</span><i></i></div>
+      <strong id="healthNews">—</strong><small id="healthNewsMeta">Snapshot —</small>
+    </div>
+    <div class="health-component" data-health="observer">
+      <div class="health-component-head"><span>MARKET OBSERVER</span><i></i></div>
+      <strong id="healthObserver">—</strong><small id="healthObserverMeta">Dataset causal</small>
+    </div>
+  </div>
+
+  <div class="health-footer">
+    <div><small>ÚLTIMA COMPROBACIÓN</small><strong id="healthLastCheck">—</strong></div>
+    <div><small>ESTADO</small><strong id="healthSummary">Esperando heartbeat…</strong></div>
+    <button type="button" onclick="loadSystemHealth(true)">COMPROBAR AHORA</button>
+  </div>
+</section>
 <section class="card span12 section-how advanced-section"><h2 class="section-title">MOTOR DE DECISIÓN HALI</h2><div class="timeline"><div><span class="tag">1. ESCANEA</span> H4 define sesgo; H1 define entrada; RSI, ADX, ATR, tick-volume y contexto de sesión filtran ruido.</div><div><span class="tag">2. DETECTA</span> Busca continuación, pullback, ruptura o momentum y usa la sesión Asia/Europa/EE. UU. como contexto. No asume que toda apertura termina en pullback.</div><div><span class="tag">3. PUNTÚA</span> Un score ≥ 74 habilita la señal. El tamaño se calcula con OrderCalcProfit para mantener el riesgo objetivo del 5% de equity.</div><div><span class="tag">4. REVISA</span> El calendario USD de alto impacto puede bloquear entradas alrededor del evento.</div><div><span class="tag">5. PROTEGE</span> Stop dinámico ATR + estructura, límite de pérdida diaria, drawdown, spread máximo, una entrada por vela H1 y PAPER por defecto.</div></div></section>
 </div></div>
 <div class="wrap" style="padding-top:0"><section class="card"><h2 class="section-title">ARMED STATUS</h2><div class="statusline"><strong id="armedStatus">DISABLED</strong><span class="small" id="armedDetail">Feature flag apagado.</span></div></section></div>
@@ -934,6 +1015,56 @@ section[id]{scroll-margin-top:88px}
 <script>
 const $=id=>document.getElementById(id);
 let chartTimeframe=localStorage.getItem('hali_chart_tf')||'H1', chartBars=[], latestStatus=null, performanceRows=[], historyFilter='ALL';
+function healthAge(seconds){
+  const n=Number(seconds);if(!Number.isFinite(n))return '—';
+  if(n<60)return Math.round(n)+' s';
+  if(n<3600)return Math.round(n/60)+' min';
+  if(n<86400)return (n/3600).toFixed(n<7200?1:0)+' h';
+  return (n/86400).toFixed(1)+' d';
+}
+function setHealthComponent(name,state,label,meta){
+  const card=document.querySelector('[data-health="'+name+'"]');
+  if(card)card.className='health-component '+state;
+  const key=name.charAt(0).toUpperCase()+name.slice(1);
+  const value=$('health'+key),detail=$('health'+key+'Meta');
+  if(value)value.textContent=label;
+  if(detail)detail.textContent=meta||'';
+}
+async function loadSystemHealth(manual=false){
+  try{
+    const [healthResponse,authResponse]=await Promise.all([
+      fetch('/api/health?t='+Date.now(),{cache:'no-store'}),
+      fetch('/api/auth/status?t='+Date.now(),{cache:'no-store'})
+    ]);
+    if(healthResponse.status===401||authResponse.status===401){location.replace('/login');return}
+    if(!healthResponse.ok)throw new Error('health HTTP '+healthResponse.status);
+    const h=await healthResponse.json(),auth=authResponse.ok?await authResponse.json():{};
+    const secure=location.protocol==='https:';
+    setHealthComponent('https',secure?'good':'bad',secure?'SEGURO':'NO SEGURO',secure?'TLS activo':'HTTPS requerido');
+    setHealthComponent('auth',auth.authenticated?'good':'bad',auth.authenticated?'AUTENTICADO':'SIN SESIÓN',auth.user?.display_name||'Gateway privado');
+    setHealthComponent('backend',h.backend?.status==='ONLINE'?'good':'bad',h.backend?.status||'NO DATA','API local');
+    const eaStatus=String(h.ea_feed?.status||'NO_DATA');
+    setHealthComponent('ea',eaStatus==='ONLINE'?'good':eaStatus==='STALE'?'warn':'bad',eaStatus,'Heartbeat '+healthAge(h.ea_feed?.age_seconds));
+    const brokerConnected=!!h.broker?.connected;
+    setHealthComponent('broker',brokerConnected?'good':'bad',brokerConnected?'CONECTADO':'DESCONECTADO',h.broker?.account_mode||'UNKNOWN');
+    const demoReady=!!h.demo_execution?.execution_allowed;
+    setHealthComponent('execution',demoReady?'good':'warn',demoReady?'READY':'BLOQUEADO','Solo cuenta DEMO');
+    const newsStatus=String(h.news_engine?.status||'NO_DATA');
+    setHealthComponent('news',newsStatus==='ONLINE'?'good':newsStatus==='STALE'?'warn':'bad',newsStatus,'Hace '+healthAge(h.news_engine?.age_seconds));
+    const observerAvailable=String(h.market_observer?.status||'NO_DATA')==='AVAILABLE';
+    setHealthComponent('observer',observerAvailable?'good':'warn',observerAvailable?'DISPONIBLE':'SIN DATOS','Último evento '+healthAge(h.market_observer?.age_seconds));
+    const criticalBad=!secure||!auth.authenticated||h.backend?.status!=='ONLINE'||eaStatus==='NO_DATA'||!brokerConnected;
+    const warnings=eaStatus==='STALE'||!demoReady||newsStatus!=='ONLINE'||!observerAvailable;
+    const overall=$('healthOverall');
+    overall.textContent=criticalBad?'INCIDENCIA':warnings?'ATENCIÓN':'TODO OPERATIVO';
+    overall.className='health-overall '+(criticalBad?'bad':warnings?'warn':'good');
+    $('healthSummary').textContent=criticalBad?'Hay un componente crítico que requiere revisión.':warnings?'Hali funciona, pero hay uno o más componentes en estado parcial.':'Gateway, dashboard, MT5, broker y servicios principales responden correctamente.';
+    $('healthLastCheck').textContent=new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  }catch(e){
+    const overall=$('healthOverall');if(overall){overall.textContent='SIN RESPUESTA';overall.className='health-overall bad'}
+    if($('healthSummary'))$('healthSummary').textContent='No se pudo completar el heartbeat: '+e.message;
+  }
+}
 async function loadIdentity(){
   try{
     const r=await fetch('/api/auth/status',{cache:'no-store'});
@@ -962,7 +1093,7 @@ function setActiveNav(id){
   });
 }
 function initNavObserver(){
-  const ids=['overview','market','trades','signal','riskpanel','news','history'];
+  const ids=['overview','market','trades','signal','riskpanel','news','history','health'];
   const sections=ids.map(id=>document.getElementById(id)).filter(Boolean);
   if(!('IntersectionObserver' in window)||!sections.length)return;
   const observer=new IntersectionObserver(entries=>{
@@ -1376,6 +1507,7 @@ async function tick(){
 }
 initNavObserver();
 loadIdentity();
+loadSystemHealth();setInterval(loadSystemHealth,15000);
 tick();setInterval(tick,2000);
 document.querySelectorAll('.chart-tabs button').forEach(b=>b.classList.toggle('active',b.dataset.tf===chartTimeframe));
 loadChart();setInterval(loadChart,15000);
