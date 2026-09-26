@@ -2,7 +2,11 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#050607">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="icon" type="image/png" href="/assets/hali-logo.png">
+<link rel="apple-touch-icon" href="/assets/hali-logo.png">
 <title>HALI — XAUUSD Trading Intelligence</title>
 <style>
 :root{--bg:#efede3;--ink:#111;--muted:#66645f;--card:#f4f1e7;--line:#222;--orange:#f05223;--green:#27864a;--red:#c94633}
@@ -491,6 +495,53 @@ section[id]{scroll-margin-top:88px}
   .hali-mobile-nav{padding-bottom:max(2px,env(safe-area-inset-bottom))}
 }
 
+
+/* ===== HALI PERFORMANCE V10 ===== */
+.performance-panel,.history-panel{overflow:visible}
+.performance-head,.history-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.data-quality{font-size:8px;letter-spacing:.08em;padding:6px 8px;border:1px solid #343b43;border-radius:8px;background:#090c0f;color:#858d97;white-space:nowrap}
+.data-quality.good{color:#2fd3a2;border-color:rgba(47,211,162,.34);background:rgba(47,211,162,.06)}
+.data-quality.warn{color:#d8ad66;border-color:rgba(216,173,102,.34);background:rgba(216,173,102,.06)}
+.data-quality.bad,.data-quality.legacy{color:#caa160;border-color:rgba(202,161,96,.30);background:rgba(202,161,96,.05)}
+.performance-kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-top:14px}
+.performance-kpis>div{padding:11px;border:1px solid #252c33;border-radius:10px;background:linear-gradient(145deg,#0b0e11,#080a0d);min-width:0}
+.performance-kpis small{display:block;font-size:7px;letter-spacing:.11em;color:#68707a;margin-bottom:6px}
+.performance-kpis strong{display:block;font-size:16px;color:#ded9d2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.performance-kpis span{display:block;margin-top:4px;font-size:8px;color:#646c76}
+.performance-body{display:grid;grid-template-columns:minmax(0,2.2fr) minmax(210px,.8fr);gap:10px;margin-top:11px}
+.equity-panel,.performance-side{border:1px solid #262d34;border-radius:11px;background:#080b0e}
+.equity-panel{padding:12px}.equity-head{display:flex;justify-content:space-between;align-items:flex-end;gap:12px}.equity-head small{display:block;font-size:7px;letter-spacing:.11em;color:#666e78}.equity-head strong{display:block;margin-top:4px;font-size:18px}.equity-head>span{font-size:8px;color:#616974}
+.equity-chart-wrap{position:relative;height:190px;margin-top:9px;border-top:1px solid #1f252b}
+#equityCurve{display:block;width:100%;height:100%}.performance-empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#616a74;font-size:9px}
+.performance-side{padding:7px 11px}.perf-row{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-top:1px solid #22282f}.perf-row:first-child{border-top:0}.perf-row span{font-size:8px;color:#727a84}.perf-row strong{font-size:10px;color:#ced2d7}
+.today-strip{display:grid;grid-template-columns:auto repeat(5,1fr);gap:7px;align-items:center;margin-top:10px;padding:9px;border:1px solid #252c33;border-radius:10px;background:#090c0f}.today-strip>span{font-size:8px;letter-spacing:.13em;color:#c59a57;padding:0 7px}.today-strip div{padding-left:9px;border-left:1px solid #252c33}.today-strip small{display:block;font-size:7px;color:#616974;margin-bottom:3px}.today-strip strong{font-size:10px;color:#cbd0d5}
+.quality-note{margin-top:9px;padding:9px 10px;border-left:2px solid #795a31;background:rgba(121,90,49,.06);color:#777f89;font-size:8px;line-height:1.55}
+.history-filters{display:flex;gap:5px;padding:3px;border:1px solid #282f36;border-radius:9px;background:#080a0d}.history-filters button{border:0;padding:6px 8px;font-size:7px;color:#707883}.history-filters button.active{color:#e7bd75;background:#241c13;box-shadow:inset 0 0 0 1px #5b4528}
+.history-summary{margin-top:10px;font-size:8px;color:#737b85}
+.history-list{display:grid;gap:8px;margin-top:8px}
+.history-trade{border:1px solid #262d34;border-radius:11px;background:linear-gradient(145deg,#0b0f12,#080a0c);overflow:hidden}
+.history-trade-main{display:grid;grid-template-columns:minmax(180px,1.3fr) .9fr .9fr auto;gap:10px;align-items:center;padding:12px}
+.history-symbol{font-family:Georgia,'Times New Roman',serif;font-size:15px;color:#e1bd7b}.history-meta{font-size:8px;color:#6b737d;margin-top:5px}.history-meta .pill{padding:3px 5px;font-size:7px}
+.history-num small{display:block;font-size:7px;color:#666e78;margin-bottom:4px}.history-num strong{font-size:12px}.history-num span{display:block;margin-top:3px;font-size:8px;color:#666e78}
+.history-result{text-align:right}.history-result strong{font-size:14px}
+.history-detail-btn{font-size:7px;padding:7px 8px}
+.history-trade .reason{margin:0 12px 12px;padding:10px;font-size:8px}
+.history-empty{padding:18px;border:1px dashed #2a3139;border-radius:10px;text-align:center;color:#6a727c;font-size:9px}
+@media(max-width:1100px){.performance-kpis{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:900px){
+ .performance-body{grid-template-columns:1fr}.performance-side{display:grid;grid-template-columns:repeat(2,1fr);gap:0 14px}
+ .today-strip{grid-template-columns:auto repeat(3,1fr)}.today-strip div:nth-last-child(-n+2){display:none}
+ .history-trade-main{grid-template-columns:1fr 1fr}.history-result{text-align:left}.history-detail-btn{justify-self:start}
+}
+@media(max-width:560px){
+ .performance-head,.history-head{align-items:center}.data-quality{font-size:7px;max-width:145px;white-space:normal;text-align:right}
+ .performance-kpis{grid-template-columns:repeat(2,1fr);gap:7px}.performance-kpis>div{padding:9px}.performance-kpis strong{font-size:14px}
+ .equity-chart-wrap{height:165px}.performance-side{grid-template-columns:1fr 1fr}
+ .today-strip{grid-template-columns:auto repeat(2,1fr)}.today-strip div:nth-last-child(-n+3){display:none}
+ .history-head{display:grid;grid-template-columns:1fr}.history-filters{width:100%;display:grid;grid-template-columns:repeat(3,1fr)}.history-filters button{padding:8px 4px}
+ .history-trade-main{grid-template-columns:1fr 1fr;padding:10px}.history-trade-main>div:first-child{grid-column:1/-1}.history-detail-btn{grid-column:1/-1;width:100%}
+}
+
 </style>
 </head>
 <body>
@@ -544,7 +595,7 @@ section[id]{scroll-margin-top:88px}
   <div class="kpi"><div class="kpi-label">Equity</div><div class="kpi-value" id="heroEquity">—</div><div class="kpi-note">Equity en tiempo real</div></div>
   <div class="kpi"><div class="kpi-label">PnL hoy</div><div class="kpi-value" id="heroDailyPnl">—</div><div class="kpi-note">Realizado sesión</div></div>
   <div class="kpi"><div class="kpi-label">PnL flotante</div><div class="kpi-value" id="heroFloating">—</div><div class="kpi-note">Posiciones abiertas</div></div>
-  <div class="kpi"><div class="kpi-label">Win rate</div><div class="kpi-value" id="heroWinRate">—</div><div class="kpi-note">Trades reconciliados</div></div>
+  <div class="kpi"><div class="kpi-label">Win rate hoy</div><div class="kpi-value" id="heroWinRate">—</div><div class="kpi-note">Sesión actual</div></div>
   <div class="kpi"><div class="kpi-label">Score actual</div><div class="kpi-value" id="heroScore">—</div><div class="kpi-note">Señal Hali</div></div>
 </section>
 <div class="grid">
@@ -793,8 +844,73 @@ section[id]{scroll-margin-top:88px}
 <section class="card span12 section-tp advanced-section"><h2 class="section-title">TAKE PROFIT · CURRENT vs V2</h2><div class="analysis-grid"><div class="analysis-box"><h4>Selección</h4><div class="analysis-row"><span>Modo</span><strong id="tpMode">CURRENT</strong></div><div class="analysis-row"><span>Clase</span><strong id="tpClass">—</strong></div><div class="analysis-row"><span>Setup</span><strong id="tpSetup">—</strong></div><div class="analysis-row"><span>Dirección</span><strong id="tpDirection">—</strong></div></div><div class="analysis-box"><h4>CURRENT</h4><div class="analysis-row"><span>TP</span><strong id="tpCurrent">—</strong></div><div class="analysis-row"><span>R:R</span><strong id="tpCurrentRR">—</strong></div></div><div class="analysis-box"><h4>V2 shadow</h4><div class="analysis-row"><span>TP</span><strong id="tpV2">—</strong></div><div class="analysis-row"><span>R:R</span><strong id="tpV2RR">—</strong></div><div class="analysis-row"><span>Nivel</span><strong id="tpLevel">—</strong></div><div class="analysis-row"><span>Confidence</span><strong id="tpConfidence">NONE</strong></div></div><div class="analysis-box"><h4>Utilizado</h4><div class="analysis-row"><span>TP</span><strong id="tpSelected">—</strong></div><div class="analysis-row"><span>R:R</span><strong id="tpSelectedRR">—</strong></div><div class="analysis-row"><span>Motivo</span><strong id="tpReason">—</strong></div></div></div><div class="muted-box small">Comparación PAPER CURRENT vs V2. V2 no modifica score, SL, lotaje ni riesgo y queda bloqueado en LIVE.</div></section>
 <section class="card span12 section-execution advanced-section"><h2 class="section-title">EJECUCIÓN DEMO</h2><div class="analysis-grid"><div class="analysis-box"><h4>Cuenta</h4><div class="analysis-row"><span>Modo</span><strong id="execAccountMode">UNKNOWN</strong></div><div class="analysis-row"><span>Broker</span><strong id="execConnected">DESCONECTADO</strong></div></div><div class="analysis-box"><h4>Permiso</h4><div class="analysis-row"><span>Input habilitado</span><strong id="execEnabled">NO</strong></div><div class="analysis-row"><span>Ejecución permitida</span><strong id="execAllowed">NO</strong></div><div class="analysis-row"><span>Autorización</span><strong id="execAuthorization">—</strong></div></div><div class="analysis-box"><h4>Estado</h4><div class="analysis-row"><span>Ciclo</span><strong id="execState">PAPER</strong></div><div class="analysis-row"><span>Resultado</span><strong id="execReason">—</strong></div></div><div class="analysis-box"><h4>Último resultado</h4><div class="analysis-row"><span>Order / Deal</span><strong id="execIds">—</strong></div><div class="analysis-row"><span>Fill</span><strong id="execFill">—</strong></div></div></div><div class="muted-box small">Las órdenes reales solo se permiten en ACCOUNT_TRADE_MODE_DEMO. Una cuenta REAL queda bloqueada sin excepción.</div></section>
 <section id="trades" class="card span12 section-active"><h2 class="section-title">OPERACIONES ACTIVAS</h2><div id="active">No hay posiciones abiertas del MagicNumber de Hali.</div></section>
-<section class="card span12 section-stats"><h2 class="section-title">RENDIMIENTO DE SESIÓN</h2><div class="stats"><div class="stat"><span class="small">TRADES</span><div class="value" id="statsTrades">0</div></div><div class="stat"><span class="small">W / L</span><div class="value" id="statsWL">0 / 0</div></div><div class="stat"><span class="small">WIN RATE</span><div class="value" id="statsWinRate">0%</div></div><div class="stat"><span class="small">NET P/L</span><div class="value" id="statsNet">—</div></div></div><div class="statusline small"><span id="statsExpectancy">Expectancy: 0R</span><span id="statsPF">Profit factor: 0</span></div></section>
-<section id="history" class="card span12 section-history"><h2 class="section-title">ÚLTIMAS OPERACIONES</h2><div id="log"><div class="small">Cargando historial...</div></div></section>
+<section class="card span12 section-stats performance-panel">
+  <div class="performance-head">
+    <div>
+      <h2 class="section-title">RENDIMIENTO</h2>
+      <div class="small">Historial reciente del broker · hasta 25 cierres / 30 días</div>
+    </div>
+    <div id="statsQuality" class="data-quality legacy">BROKER HISTORY · PRE-LEDGER V2</div>
+  </div>
+
+  <div class="performance-kpis">
+    <div><small>TRADES</small><strong id="statsTrades">0</strong><span id="statsWL">0W / 0L</span></div>
+    <div><small>WIN RATE</small><strong id="statsWinRate">0%</strong><span>reciente</span></div>
+    <div><small>NET P/L</small><strong id="statsNet">—</strong><span id="statsNetNote">cerrados</span></div>
+    <div><small>PROFIT FACTOR</small><strong id="statsPF">—</strong><span>net P/L</span></div>
+    <div><small>EXPECTANCY</small><strong id="statsExpectancy">—</strong><span>solo R conocido</span></div>
+    <div><small>R ACUMULADO</small><strong id="statsTotalR">—</strong><span id="statsRSamples">0 muestras</span></div>
+  </div>
+
+  <div class="performance-body">
+    <div class="equity-panel">
+      <div class="equity-head">
+        <div><small>CURVA DE RESULTADO</small><strong id="curveNet">—</strong></div>
+        <span id="curveLabel">PnL neto acumulado</span>
+      </div>
+      <div class="equity-chart-wrap">
+        <canvas id="equityCurve" aria-label="Curva acumulada de resultados de Hali"></canvas>
+        <div id="equityEmpty" class="performance-empty">Todavía no hay suficientes trades cerrados.</div>
+      </div>
+    </div>
+    <div class="performance-side">
+      <div class="perf-row"><span>Ganancia media</span><strong id="statsAvgWin">—</strong></div>
+      <div class="perf-row"><span>Pérdida media</span><strong id="statsAvgLoss">—</strong></div>
+      <div class="perf-row"><span>Mejor trade</span><strong id="statsBest">—</strong></div>
+      <div class="perf-row"><span>Peor trade</span><strong id="statsWorst">—</strong></div>
+      <div class="perf-row"><span>R medio válido</span><strong id="statsAvgR">—</strong></div>
+      <div class="perf-row"><span>Racha actual</span><strong id="statsStreak">—</strong></div>
+    </div>
+  </div>
+
+  <div class="today-strip">
+    <span>HOY</span>
+    <div><small>Trades</small><strong id="todayTrades">0</strong></div>
+    <div><small>W / L</small><strong id="todayWL">0 / 0</strong></div>
+    <div><small>Win rate</small><strong id="todayWinRate">0%</strong></div>
+    <div><small>Net</small><strong id="todayNet">—</strong></div>
+    <div><small>Expectancy</small><strong id="todayExpectancy">—</strong></div>
+  </div>
+
+  <div id="performanceQualityNote" class="quality-note">
+    Métricas actuales derivadas del historial del broker. Costes, partial fills y reconciliación fuerte pasarán al ledger V2; no se presenta esta vista como estadística reconciliada definitiva.
+  </div>
+</section>
+<section id="history" class="card span12 section-history history-panel">
+  <div class="history-head">
+    <div>
+      <h2 class="section-title">ÚLTIMAS OPERACIONES</h2>
+      <div class="small">Cierres recientes del broker · detalles expandibles</div>
+    </div>
+    <div class="history-filters">
+      <button type="button" class="active" data-filter="ALL" onclick="setHistoryFilter('ALL')">TODAS</button>
+      <button type="button" data-filter="WIN" onclick="setHistoryFilter('WIN')">GANADORAS</button>
+      <button type="button" data-filter="LOSS" onclick="setHistoryFilter('LOSS')">PERDEDORAS</button>
+    </div>
+  </div>
+  <div id="historySummary" class="history-summary">0 operaciones</div>
+  <div id="log" class="history-list"><div class="small">Cargando historial...</div></div>
+</section>
 <section class="card span12 section-how advanced-section"><h2 class="section-title">MOTOR DE DECISIÓN HALI</h2><div class="timeline"><div><span class="tag">1. ESCANEA</span> H4 define sesgo; H1 define entrada; RSI, ADX, ATR, tick-volume y contexto de sesión filtran ruido.</div><div><span class="tag">2. DETECTA</span> Busca continuación, pullback, ruptura o momentum y usa la sesión Asia/Europa/EE. UU. como contexto. No asume que toda apertura termina en pullback.</div><div><span class="tag">3. PUNTÚA</span> Un score ≥ 74 habilita la señal. El tamaño se calcula con OrderCalcProfit para mantener el riesgo objetivo del 5% de equity.</div><div><span class="tag">4. REVISA</span> El calendario USD de alto impacto puede bloquear entradas alrededor del evento.</div><div><span class="tag">5. PROTEGE</span> Stop dinámico ATR + estructura, límite de pérdida diaria, drawdown, spread máximo, una entrada por vela H1 y PAPER por defecto.</div></div></section>
 </div></div>
 <div class="wrap" style="padding-top:0"><section class="card"><h2 class="section-title">ARMED STATUS</h2><div class="statusline"><strong id="armedStatus">DISABLED</strong><span class="small" id="armedDetail">Feature flag apagado.</span></div></section></div>
@@ -808,7 +924,7 @@ section[id]{scroll-margin-top:88px}
 </nav>
 <script>
 const $=id=>document.getElementById(id);
-let chartTimeframe=localStorage.getItem('hali_chart_tf')||'H1', chartBars=[], latestStatus=null;
+let chartTimeframe=localStorage.getItem('hali_chart_tf')||'H1', chartBars=[], latestStatus=null, performanceRows=[], historyFilter='ALL';
 function setConnectionBanner(on,message='Reconectando con Hali…'){
   const el=$('connectionBanner'),txt=$('connectionBannerText');
   if(!el||!txt)return;
@@ -1089,7 +1205,7 @@ function render(data){
      </article>`;
    }).join('');
  }
- const st=data.session_stats||{}; $('statsTrades').textContent=Number(st.trades||0); $('statsWL').textContent=`${Number(st.wins||0)} / ${Number(st.losses||0)}`; $('statsWinRate').textContent=Number(st.win_rate||0).toFixed(1)+'%'; $('statsNet').textContent=displayMoney(st.net_pnl||0); $('statsExpectancy').textContent=`Expectancy: ${Number(st.expectancy_r||0).toFixed(3)}R`; $('statsPF').textContent=`Profit factor: ${Number(st.profit_factor||0).toFixed(3)}`;
+ const st=data.session_stats||{};
  const floating=positions.reduce((sum,p)=>sum+Number(p.floating_pnl||0),0);
  $('heroBalance').textContent=displayMoney(data.balance);
  $('heroEquity').textContent=displayMoney(data.equity);
@@ -1112,8 +1228,113 @@ function render(data){
  $('heroRisk').textContent=displayMoney(effectivePlannedRisk);
 }
 function toggle(id){$(id).classList.toggle('on')}
-function renderLog(rows){ lastLog=rows||[]; if(!rows.length){$('log').innerHTML='<div class="small">Todavía no hay operaciones cerradas registradas.</div>';return}
- $('log').innerHTML=rows.slice(0,30).map((r,i)=>`<div class="trade"><div><strong class="${r.direction==='LONG'?'buy':'sell'}">${esc(r.direction||'—')}</strong><div class="small">${esc(r.close_time||'')} · <span class="pill">${esc(r.class||'CHILL')}</span> ${esc(r.setup||'—')}</div></div><div><div class="small">ENTRADA / SALIDA</div><strong>${Number(r.entry||0).toFixed(2)} / ${Number(r.exit||0).toFixed(2)}</strong><div class="small">${esc(r.close_reason||'OTHER')} · ${Number(r.lots||0).toFixed(4)} lot</div></div><div><div class="small">RESULTADO NETO</div><strong>${money(r.net_pnl)}</strong><div class="small">${Number(r.realized_r||0).toFixed(3)}R · ${esc(lifecycle(r.status||'POSITION_CLOSED'))}</div></div><button onclick="toggle('r${i}')">Abrir detalle</button><div id="r${i}" class="reason" style="grid-column:1/-1">Posición ${esc(r.position_id)} · Deal ${esc(r.deal_id)} · SL ${Number(r.sl||0).toFixed(2)} · TP ${Number(r.tp||0).toFixed(2)}<br><span class="small">Bruto ${money(r.gross_pnl)} · comisión ${money(r.commission)} · swap ${money(r.swap)} · señal ${esc(r.signal_event_id||'—')}</span></div></div>`).join('')
+
+function tradeRowsValid(rows){
+ return (rows||[]).filter(r=>Number.isFinite(Number(r.net_pnl)) && r.close_time);
+}
+function streakLabel(rows){
+ const ordered=[...rows].sort((a,b)=>String(a.close_time).localeCompare(String(b.close_time)));
+ if(!ordered.length)return '—';
+ const last=Number(ordered[ordered.length-1].net_pnl);
+ if(last===0)return 'FLAT';
+ const win=last>0;let n=0;
+ for(let i=ordered.length-1;i>=0;i--){const v=Number(ordered[i].net_pnl);if((win&&v>0)||(!win&&v<0))n++;else break}
+ return (win?'W':'L')+n;
+}
+function renderPerformance(data){
+ const rows=tradeRowsValid(data.closed_trades||[]);
+ performanceRows=rows;
+ const ordered=[...rows].sort((a,b)=>String(a.close_time).localeCompare(String(b.close_time)));
+ const wins=rows.filter(r=>Number(r.net_pnl)>0), losses=rows.filter(r=>Number(r.net_pnl)<0);
+ const net=rows.reduce((s,r)=>s+Number(r.net_pnl||0),0);
+ const grossWin=wins.reduce((s,r)=>s+Number(r.net_pnl||0),0);
+ const grossLoss=Math.abs(losses.reduce((s,r)=>s+Number(r.net_pnl||0),0));
+ const pf=grossLoss>0?grossWin/grossLoss:(grossWin>0?Infinity:null);
+ const rRows=rows.filter(r=>Number(r.initial_risk)>0 && Number.isFinite(Number(r.realized_r)));
+ const totalR=rRows.reduce((s,r)=>s+Number(r.realized_r||0),0);
+ const avgR=rRows.length?totalR/rRows.length:null;
+ const avgWin=wins.length?grossWin/wins.length:null;
+ const avgLoss=losses.length?losses.reduce((s,r)=>s+Number(r.net_pnl||0),0)/losses.length:null;
+ const vals=rows.map(r=>Number(r.net_pnl));
+ const best=vals.length?Math.max(...vals):null,worst=vals.length?Math.min(...vals):null;
+ $('statsTrades').textContent=rows.length;
+ $('statsWL').textContent=`${wins.length}W / ${losses.length}L`;
+ $('statsWinRate').textContent=rows.length?(wins.length/rows.length*100).toFixed(1)+'%':'0%';
+ $('statsNet').textContent=displayMoney(net);
+ $('statsNet').className=net>0?'buy':net<0?'sell':'';
+ $('statsPF').textContent=pf===Infinity?'∞':pf==null?'—':pf.toFixed(2);
+ $('statsExpectancy').textContent=avgR==null?'—':(avgR>=0?'+':'')+avgR.toFixed(3)+'R';
+ $('statsTotalR').textContent=rRows.length?(totalR>=0?'+':'')+totalR.toFixed(2)+'R':'—';
+ $('statsTotalR').className=rRows.length?(totalR>=0?'buy':'sell'):'';
+ $('statsRSamples').textContent=`${rRows.length} muestras R`;
+ $('statsAvgWin').textContent=avgWin==null?'—':displayMoney(avgWin);
+ $('statsAvgLoss').textContent=avgLoss==null?'—':displayMoney(avgLoss);
+ $('statsBest').textContent=best==null?'—':displayMoney(best);
+ $('statsWorst').textContent=worst==null?'—':displayMoney(worst);
+ $('statsAvgR').textContent=avgR==null?'—':(avgR>=0?'+':'')+avgR.toFixed(3)+'R';
+ $('statsStreak').textContent=streakLabel(rows);
+ $('curveNet').textContent=displayMoney(net); $('curveNet').className=net>0?'buy':net<0?'sell':'';
+ const st=data.session_stats||{};
+ $('todayTrades').textContent=Number(st.trades||0);
+ $('todayWL').textContent=`${Number(st.wins||0)} / ${Number(st.losses||0)}`;
+ $('todayWinRate').textContent=Number(st.win_rate||0).toFixed(1)+'%';
+ $('todayNet').textContent=displayMoney(st.net_pnl||0);
+ $('todayNet').className=Number(st.net_pnl||0)>=0?'buy':'sell';
+ $('todayExpectancy').textContent=Number(st.trades||0)?Number(st.expectancy_r||0).toFixed(3)+'R':'—';
+ const ledger=data.demo_trade_ledger||data.ledger||{};
+ const conflicts=Number(data.ledger_conflicts||ledger.conflicts||0);
+ const reconciled=ledger.healthy===true && conflicts===0;
+ $('statsQuality').textContent=reconciled?'LEDGER V2 · RECONCILIADO':conflicts>0?`LEDGER · ${conflicts} CONFLICTO(S)`:'BROKER HISTORY · PRE-LEDGER V2';
+ $('statsQuality').className='data-quality '+(reconciled?'good':conflicts>0?'bad':'legacy');
+ $('performanceQualityNote').textContent=reconciled
+   ? 'Métricas derivadas del ledger reconciliado. Trades conflictivos quedan fuera de las estadísticas.'
+   : conflicts>0
+     ? `Hay ${conflicts} trade(s) conflictivos; no se consideran estadística fiable hasta reconciliarlos.`
+     : 'Métricas actuales derivadas del historial del broker. Costes, partial fills y reconciliación fuerte pasarán al ledger V2; esta vista no se presenta como estadística reconciliada definitiva.';
+ drawEquityCurve(ordered);
+}
+function drawEquityCurve(rows=performanceRows){
+ const canvas=$('equityCurve'),empty=$('equityEmpty');if(!canvas)return;
+ const ordered=[...rows].sort((a,b)=>String(a.close_time).localeCompare(String(b.close_time)));
+ const rect=canvas.getBoundingClientRect(),dpr=Math.max(1,Math.min(2,window.devicePixelRatio||1));
+ canvas.width=Math.max(1,Math.floor(rect.width*dpr));canvas.height=Math.max(1,Math.floor(rect.height*dpr));
+ const ctx=canvas.getContext('2d');ctx.setTransform(dpr,0,0,dpr,0,0);const w=rect.width,h=rect.height;ctx.clearRect(0,0,w,h);
+ if(ordered.length<2){if(empty)empty.style.display='flex';return} if(empty)empty.style.display='none';
+ let acc=0;const points=[0];ordered.forEach(r=>{acc+=Number(r.net_pnl||0);points.push(acc)});
+ let min=Math.min(...points,0),max=Math.max(...points,0);if(max===min){max+=1;min-=1}const pad=12,range=max-min;
+ const px=i=>pad+i*(w-2*pad)/(points.length-1),py=v=>pad+(max-v)/range*(h-2*pad);
+ const zero=py(0);ctx.strokeStyle='rgba(140,148,157,.14)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(pad,zero);ctx.lineTo(w-pad,zero);ctx.stroke();
+ const positive=points[points.length-1]>=0;const stroke=positive?'#2bd6a5':'#ef566d';
+ const grad=ctx.createLinearGradient(0,pad,0,h-pad);grad.addColorStop(0,positive?'rgba(43,214,165,.22)':'rgba(239,86,109,.22)');grad.addColorStop(1,'rgba(10,12,15,0)');
+ ctx.beginPath();points.forEach((v,i)=>{const x=px(i),y=py(v);i?ctx.lineTo(x,y):ctx.moveTo(x,y)});ctx.strokeStyle=stroke;ctx.lineWidth=1.8;ctx.stroke();
+ ctx.lineTo(px(points.length-1),h-pad);ctx.lineTo(px(0),h-pad);ctx.closePath();ctx.fillStyle=grad;ctx.fill();
+ points.forEach((v,i)=>{if(i===0)return;ctx.beginPath();ctx.arc(px(i),py(v),2.2,0,Math.PI*2);ctx.fillStyle=Number(ordered[i-1].net_pnl)>=0?'#2bd6a5':'#ef566d';ctx.fill()});
+}
+function setHistoryFilter(filter){
+ historyFilter=filter;
+ document.querySelectorAll('.history-filters button').forEach(b=>b.classList.toggle('active',b.dataset.filter===filter));
+ renderLog(performanceRows);
+}
+function renderLog(rows){
+ const valid=tradeRowsValid(rows);
+ const filtered=valid.filter(r=>historyFilter==='ALL'||(historyFilter==='WIN'&&Number(r.net_pnl)>0)||(historyFilter==='LOSS'&&Number(r.net_pnl)<0));
+ $('historySummary').textContent=`${filtered.length} de ${valid.length} operaciones`;
+ if(!filtered.length){$('log').innerHTML='<div class="history-empty">No hay operaciones para este filtro.</div>';return}
+ $('log').innerHTML=[...filtered].sort((a,b)=>String(b.close_time).localeCompare(String(a.close_time))).map((r,i)=>{
+   const pnl=Number(r.net_pnl||0),rr=Number(r.initial_risk)>0?Number(r.realized_r):null,dir=String(r.direction||'—');
+   return `<article class="history-trade">
+     <div class="history-trade-main">
+       <div>
+         <div class="history-symbol">${esc(r.symbol||'XAUUSD')} <strong class="${dir==='LONG'?'buy':'sell'}">${esc(dir)}</strong></div>
+         <div class="history-meta">${esc(r.close_time||'')} · <span class="pill">${esc(r.class||'CHILL')}</span> ${esc(r.setup||'—')}</div>
+       </div>
+       <div class="history-num"><small>ENTRADA / SALIDA</small><strong>${Number(r.entry||0).toFixed(2)} → ${Number(r.exit||0).toFixed(2)}</strong><span>${Number(r.lots||0).toFixed(4)} lot</span></div>
+       <div class="history-num history-result"><small>RESULTADO NETO</small><strong class="${pnl>=0?'buy':'sell'}">${money(pnl)}</strong><span>${rr==null?'R desconocido':(rr>=0?'+':'')+rr.toFixed(3)+'R'} · ${esc(r.close_reason||'OTHER')}</span></div>
+       <button class="history-detail-btn" onclick="toggle('r${i}')">DETALLE</button>
+     </div>
+     <div id="r${i}" class="reason">Posición ${esc(r.position_id||'—')} · Deal ${esc(r.deal_id||'—')} · SL ${Number(r.sl||0).toFixed(2)} · TP ${Number(r.tp||0).toFixed(2)}<br><span class="small">Bruto ${money(r.gross_pnl)} · comisión ${money(r.commission)} · swap ${money(r.swap)} · señal ${esc(r.signal_event_id||'—')}</span></div>
+   </article>`;
+ }).join('');
 }
 let tickFailures=0;
 async function tick(){
@@ -1122,7 +1343,7 @@ async function tick(){
    if(!r.ok)throw new Error('HTTP '+r.status);
    const d=await r.json();
    tickFailures=0;setConnectionBanner(false);
-   render(d);renderLog(d.closed_trades||[]);
+   render(d);renderPerformance(d);renderLog(d.closed_trades||[]);
  }catch(e){
    tickFailures++;
    setConnectionBanner(true,tickFailures>2?'Hali no responde · reintentando conexión…':'Reconectando con Hali…');
@@ -1132,5 +1353,5 @@ initNavObserver();
 tick();setInterval(tick,2000);
 document.querySelectorAll('.chart-tabs button').forEach(b=>b.classList.toggle('active',b.dataset.tf===chartTimeframe));
 loadChart();setInterval(loadChart,15000);
-window.addEventListener('resize',()=>{clearTimeout(window.__haliChartResize);window.__haliChartResize=setTimeout(drawPriceChart,120)});
+window.addEventListener('resize',()=>{clearTimeout(window.__haliChartResize);window.__haliChartResize=setTimeout(()=>{drawPriceChart();drawEquityCurve()},120)});
 </script></main></div></body></html>
