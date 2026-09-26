@@ -398,6 +398,40 @@ hr{border:0;border-top:1px solid #282e36}
  .risk-overview-copy strong{font-size:21px}.risk-metrics{grid-template-columns:repeat(2,1fr)}
 }
 
+
+/* ===== HALI NEWS PANEL V8 ===== */
+.news-panel{overflow:visible}
+.news-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.news-fresh{font-size:8px;letter-spacing:.09em;padding:6px 8px;border-radius:8px;border:1px solid #343b43;background:#090c0f;color:#7e8690;white-space:nowrap}
+.news-fresh.ok{color:#2fd3a2;border-color:rgba(47,211,162,.34);background:rgba(47,211,162,.06)}
+.news-fresh.warn{color:#d8ad66;border-color:rgba(216,173,102,.34);background:rgba(216,173,102,.06)}
+.news-fresh.bad{color:#ef586e;border-color:rgba(239,88,110,.34);background:rgba(239,88,110,.06)}
+.news-overview{display:grid;grid-template-columns:1.15fr 1.5fr 1fr 1fr;gap:9px;margin-top:14px}
+.news-direction-card,.news-bias-card,.news-metric-card{border:1px solid #272e36;border-radius:11px;background:linear-gradient(145deg,#0c1013,#080a0d);padding:12px;min-width:0}
+.news-direction-card small,.news-metric-card small{display:block;font-size:7px;letter-spacing:.11em;color:#68707a;margin-bottom:7px}
+.news-direction-card strong{display:block;font-size:19px;color:#d9dce0}.news-direction-card strong.bull{color:#2fd3a2}.news-direction-card strong.bear{color:#ef586e}
+.news-direction-card span,.news-metric-card span{display:block;font-size:8px;color:#68717b;margin-top:4px}
+.news-metric-card strong{font-size:17px;color:#d9dce0}
+.news-bias-top{display:flex;justify-content:space-between;align-items:baseline}.news-bias-top span{font-size:7px;letter-spacing:.11em;color:#68707a}.news-bias-top strong{font-size:19px;color:#ddd8d1}
+.news-bias-scale{height:8px;position:relative;margin-top:13px;border-radius:999px;background:#12171c;border:1px solid #282f37;overflow:visible}
+.news-bias-scale span{position:absolute;top:0;bottom:0}.bear-zone{left:0;width:40%;background:linear-gradient(90deg,rgba(164,27,48,.65),rgba(164,27,48,.08))}.neutral-zone{left:40%;width:20%;background:rgba(122,122,122,.11)}.bull-zone{right:0;width:40%;background:linear-gradient(90deg,rgba(37,154,119,.08),rgba(37,154,119,.62))}
+.news-bias-scale i{position:absolute;top:-4px;width:2px;height:16px;background:#eadab9;box-shadow:0 0 8px rgba(234,218,185,.4);transform:translateX(-1px);z-index:2;transition:left .35s ease}
+.news-bias-labels{display:flex;justify-content:space-between;margin-top:6px;font-size:7px;color:#5f6771}
+.news-summary-card{display:flex;gap:12px;margin-top:11px;padding:13px;border:1px solid #2a3037;border-radius:11px;background:linear-gradient(90deg,rgba(93,61,28,.09),rgba(134,17,37,.05),#090c0f)}
+.news-summary-icon{width:34px;height:34px;display:grid;place-items:center;border:1px solid #4c3a25;border-radius:9px;color:#d4aa63;flex:0 0 auto}.news-summary-card small{display:block;font-size:7px;letter-spacing:.11em;color:#6b737d;margin-bottom:5px}.news-summary-card strong{display:block;font-size:11px;line-height:1.5;color:#d6dade}.news-summary-card p{margin:5px 0 0;font-size:9px;color:#727a84;line-height:1.5}
+.news-source-section,.news-headline-section{margin-top:13px}.news-section-head{display:flex;justify-content:space-between;gap:10px;align-items:center;padding-bottom:7px;border-bottom:1px solid #252b32}.news-section-head span{font-size:8px;letter-spacing:.11em;color:#707883}.news-section-head strong{font-size:8px;color:#8d959f;font-weight:600}
+.news-sources{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:8px}.news-source-card{padding:9px;border:1px solid #252c33;border-radius:9px;background:#090c0f;min-width:0}.news-source-card .source-name{display:flex;align-items:center;justify-content:space-between;gap:7px;font-size:9px;color:#bfc4ca}.news-source-card .source-status{width:7px;height:7px;border-radius:50%;background:#6a717b;flex:0 0 auto}.news-source-card.ok .source-status{background:#2fd3a2;box-shadow:0 0 8px rgba(47,211,162,.35)}.news-source-card.bad .source-status{background:#ef586e}.news-source-card .source-meta{margin-top:5px;font-size:8px;color:#626a74}.news-source-card .source-error{margin-top:4px;font-size:7px;color:#a75b65;overflow-wrap:anywhere}
+.news-headlines{display:grid;gap:7px;margin-top:8px}.news-item{display:grid;grid-template-columns:36px 1fr auto;gap:9px;align-items:start;padding:10px;border:1px solid #252c33;border-radius:9px;background:#090c0f}.impact-badge{width:34px;height:34px;border-radius:8px;display:grid;place-items:center;font-size:9px;font-weight:800;border:1px solid #303740;color:#8a929c;background:#0d1115}.impact-badge.pos{color:#2fd3a2;border-color:rgba(47,211,162,.28);background:rgba(47,211,162,.05)}.impact-badge.neg{color:#ef586e;border-color:rgba(239,88,110,.28);background:rgba(239,88,110,.05)}
+.news-item a{color:#d6dade;text-decoration:none;font-size:10px;line-height:1.45}.news-item a:hover{color:#e8bf78}.news-item .meta{font-size:7px;color:#626a74;margin-top:4px}.news-item .category{font-size:7px;color:#8d6f40;border:1px solid #3c3122;padding:3px 5px;border-radius:5px;white-space:nowrap}
+.news-empty{padding:14px;border:1px dashed #2a3138;border-radius:9px;color:#69717b;font-size:9px;text-align:center}
+@media(max-width:900px){.news-overview{grid-template-columns:repeat(2,1fr)}.news-sources{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:560px){
+ .news-overview{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.news-direction-card,.news-bias-card,.news-metric-card{padding:10px}
+ .news-direction-card strong{font-size:17px}.news-metric-card strong{font-size:15px}
+ .news-sources{grid-template-columns:1fr 1fr}
+ .news-item{grid-template-columns:32px 1fr;gap:8px;padding:9px}.impact-badge{width:30px;height:30px}.news-item .category{grid-column:2;justify-self:start}
+}
+
 </style>
 </head>
 <body>
@@ -629,7 +663,66 @@ hr{border:0;border-top:1px solid #282e36}
   <div class="signal-disclaimer small">Score y sesgo son señales del sistema; no representan una probabilidad garantizada de acierto. Champion actual: armado 58 · ejecución 74.</div>
 </section>
 <section class="card span12 section-monitor"><h2 class="section-title">MONITOREO DE EJECUCIÓN · H1</h2><div class="analysis-grid"><div class="analysis-box"><h4>Estado</h4><div class="analysis-row"><span>Estado</span><strong id="mState">—</strong></div><div class="analysis-row"><span>Candidato</span><strong id="mCandidate">—</strong></div></div><div class="analysis-box"><h4>Trigger</h4><div class="analysis-row"><span>Score</span><strong id="mScore">—</strong></div><div class="analysis-row"><span>Boost L / S</span><strong id="mBoost">—</strong></div></div><div class="analysis-box"><h4>Tiempo</h4><div class="analysis-row"><span>Vigilando</span><strong id="mAge">—</strong></div><div class="analysis-row"><span>Entrada usada H1</span><strong id="mUsed">—</strong></div></div><div class="analysis-box"><h4>Lectura</h4><div class="analysis-row"><span>Estado</span><strong id="mReason">—</strong></div></div></div><div class="decision-box"><strong>MONITOR</strong><div class="small" id="mReasonLong">—</div></div></section><section class="card span12 section-session"><h2 class="section-title">SESIÓN Y LIQUIDEZ · ORO</h2><div class="session-grid"><div class="session-box"><div class="label">Sesión regional</div><div class="big" id="sessionName">—</div></div><div class="session-box"><div class="label">Fase</div><div class="big" id="sessionPhase">—</div></div><div class="session-box"><div class="label">Volatilidad</div><div class="big" id="sessionVol">—</div></div><div class="session-box"><div class="label">Impulso apertura</div><div class="big" id="sessionImpulse">—</div></div><div class="session-box"><div class="label">Puntos L / S</div><div class="big" id="sessionPts">—</div></div></div><div class="session-note small" id="sessionContext">Esperando contexto de mercado...</div><div class="centers" id="marketCenters"></div><div class="small" style="margin-top:10px">Contexto por centros: Tokio, Shanghai/HK, Singapur, Mumbai, Londres, Nueva York/COMEX y ventanas LBMA. Hali usa estas ventanas como contexto de liquidez/volatilidad; no asume que cada apertura produzca un pullback.</div></section>
-<section id="news" class="card span12 section-news"><h2 class="section-title">NOTICIAS Y CONTEXTO</h2><div class="stats"><div class="stat"><span class="small">SESGO</span><div class="value" id="newsDir">NEUTRO</div></div><div class="stat"><span class="small">BIAS</span><div class="score" style="font-size:34px" id="newsBias">0</div></div><div class="stat"><span class="small">CONFIANZA</span><div class="value" id="newsConf">0%</div></div><div class="stat"><span class="small">RIESGO</span><div class="value" id="newsRisk">UNKNOWN</div></div></div><p class="small" id="newsDataRisk">Riesgo de datos: UNKNOWN</p><p class="small" id="newsSummary">Esperando análisis de noticias...</p><div id="newsSources" class="sources"></div><h3 style="margin-top:18px">Titulares recientes</h3><div id="newsHeadlines" class="timeline"></div><p class="small" id="newsSource">Motor multi-fuente: GDELT + Google News RSS + Bing News RSS. GDELT es opcional; las fuentes RSS funcionan como respaldo.</p></section>
+<section id="news" class="card span12 section-news news-panel">
+  <div class="news-head">
+    <div>
+      <h2 class="section-title">NOTICIAS Y CONTEXTO</h2>
+      <div class="small">Contexto macro para XAUUSD · no genera órdenes por sí solo</div>
+    </div>
+    <div id="newsFreshState" class="news-fresh unknown">SIN DATOS</div>
+  </div>
+
+  <div class="news-overview">
+    <div class="news-direction-card">
+      <small>SESGO DEL ORO</small>
+      <strong id="newsDir">NEUTRO</strong>
+      <span id="newsBiasLabel">Bias 0</span>
+    </div>
+    <div class="news-bias-card">
+      <div class="news-bias-top"><span>BIAS</span><strong id="newsBias">0</strong></div>
+      <div class="news-bias-scale">
+        <i id="newsBiasNeedle" style="left:50%"></i>
+        <span class="bear-zone"></span><span class="neutral-zone"></span><span class="bull-zone"></span>
+      </div>
+      <div class="news-bias-labels"><span>-100</span><span>NEUTRO</span><span>+100</span></div>
+    </div>
+    <div class="news-metric-card">
+      <small>CONFIANZA</small>
+      <strong id="newsConf">0%</strong>
+      <span id="newsConfLabel">Señal agregada</span>
+    </div>
+    <div class="news-metric-card">
+      <small>RIESGO MACRO</small>
+      <strong id="newsRisk">UNKNOWN</strong>
+      <span id="newsDataRisk">Datos: UNKNOWN</span>
+    </div>
+  </div>
+
+  <div class="news-summary-card">
+    <div class="news-summary-icon">✦</div>
+    <div>
+      <small>LECTURA ACTUAL</small>
+      <strong id="newsSummary">Esperando análisis de noticias...</strong>
+      <p id="newsRationale">Sin contexto adicional disponible.</p>
+    </div>
+  </div>
+
+  <div class="news-source-section">
+    <div class="news-section-head">
+      <span>FUENTES</span>
+      <strong id="newsSource">0/0 activas</strong>
+    </div>
+    <div id="newsSources" class="news-sources"></div>
+  </div>
+
+  <div class="news-headline-section">
+    <div class="news-section-head">
+      <span>TITULARES RECIENTES</span>
+      <strong id="newsArticleCount">0 artículos</strong>
+    </div>
+    <div id="newsHeadlines" class="news-headlines"></div>
+  </div>
+</section>
 <section class="card span12 section-external advanced-section"><h2 class="section-title">CONSENSO EXTERNO · SOLO DIAGNÓSTICO</h2><div class="stats"><div class="stat"><span class="small">LONG</span><div class="value buy" id="extLong">0%</div></div><div class="stat"><span class="small">SHORT</span><div class="value sell" id="extShort">0%</div></div><div class="stat"><span class="small">NEUTRAL</span><div class="value" id="extNeutral">0%</div></div><div class="stat"><span class="small">TRADERS VÁLIDOS</span><div class="value" id="extTraders">0</div></div></div><div class="statusline small"><span id="extQuality">Calidad: 0</span><span id="extFresh">Frescura: —</span><span id="extApi">API: SIN DATOS</span></div><div class="muted-box small" id="extReadOnly">Solo diagnóstico · score_effect=0 · sin copy trading ni ejecución.</div></section>
 <section class="card span12 section-tv advanced-section"><h2 class="section-title">TRADINGVIEW · OBSERVACIÓN</h2><div class="stats"><div class="stat"><span class="small">DIRECCIÓN</span><div class="value" id="tvDirection">—</div></div><div class="stat"><span class="small">TIMEFRAME</span><div class="value" id="tvTimeframe">—</div></div><div class="stat"><span class="small">EVENTO</span><div class="value" id="tvEvent">—</div></div><div class="stat"><span class="small">PRECIO</span><div class="value" id="tvPrice">—</div></div></div><div class="statusline small"><span id="tvStatus">Estado: NO_DATA</span><span id="tvLast">Última señal: —</span><span id="tvFresh">Frescura: —</span><span id="tvCount">Eventos: 0</span></div><div class="muted-box small">Solo observación · score_effect=0</div></section>
 <section class="card span12 section-observer advanced-section"><h2 class="section-title">MARKET OBSERVER · MT5</h2><div class="stats"><div class="stat"><span class="small">ÚLTIMO M15</span><div id="observerM15">—</div></div><div class="stat"><span class="small">ÚLTIMO H1</span><div id="observerH1">—</div></div><div class="stat"><span class="small">ÚLTIMO H4</span><div id="observerH4">—</div></div><div class="stat"><span class="small">OBSERVACIONES</span><div class="value" id="observerCount">0</div></div></div><div class="statusline small"><span id="observerStatus">Estado: NO_DATA</span><span id="observerFresh">Frescura: —</span></div><div class="decision-box"><strong>ÚLTIMA DECISIÓN HALI</strong><div class="small" id="observerDecision">—</div></div><div class="muted-box small">Solo observación · score_effect=0</div></section>
@@ -797,9 +890,29 @@ function render(data){
  $('sessionPts').textContent=(a.session_long_points!=null&&a.session_short_points!=null)?`${a.session_long_points>0?'+':''}${a.session_long_points} / ${a.session_short_points>0?'+':''}${a.session_short_points}`:'Pendiente de la evaluación H1';
  $('sessionContext').textContent=(a.session_context||sess.note) + (a.active_market_centers?` · MT5 activos: ${esc(a.active_market_centers)}`:'');
  $('marketCenters').innerHTML=sess.cards.map(c=>{const open=String(Math.floor(c.open/60)).padStart(2,'0')+':'+String(c.open%60).padStart(2,'0');return `<div class="center-card ${c.opening?'center-open':(c.state==='ACTIVO'?'center-active':'')}"><strong><span>${esc(c.name)}</span><span class="center-open-time">ABRE ${open}</span></strong><div class="small">${c.state}</div></div>`}).join('');
- const n=data.news||{}; $('newsDataRisk').textContent='Riesgo de datos: '+(n.data_risk||'UNKNOWN'); $('newsDir').textContent=n.direction||'NEUTRO'; $('newsBias').textContent=n.bias??0; $('newsConf').textContent=(Number(n.confidence||0)).toFixed(0)+'%'; $('newsRisk').textContent=n.risk||'UNKNOWN'; $('newsSummary').textContent=n.summary||'—'; $('newsSource').textContent=`Fuentes OK: ${n.sources_ok||0}/${n.source_count||0} · ${n.article_count||0} titulares · actualización ${n.updated_at||'—'}`;
- const health=n.source_health||{}; $('newsSources').innerHTML=Object.entries(health).map(([name,v])=>`<div class="source-box"><strong class="${v.status==='OK'?'ok':'bad'}">${v.status==='OK'?'✓':'✕'} ${esc(name)}</strong><div class="small">${Number(v.articles||0)} titulares · ${Number(v.latency_ms||0)}ms</div>${v.error?`<div class="small bad">${esc(v.error)}</div>`:''}</div>`).join('')||'<div class="small">Sin estado de fuentes.</div>';
- $('newsHeadlines').innerHTML=(n.top_headlines||[]).slice(0,10).map((h,i)=>`<div><span class="tag">${esc(h.category||'NEWS')}</span> <a class="headline-link" href="${esc(h.url||'#')}" target="_blank" rel="noopener"><strong>${esc(h.title||'')}</strong></a><div class="small">${esc(h.domain||'')} · ${esc(h.source||'')} · impacto ${Number(h.impact||0)}</div></div>`).join('')||'<div class="small">No hay titulares recientes disponibles.</div>';
+ const n=data.news||{};
+ const newsBias=Number(n.bias||0), newsConf=Number(n.confidence||0), newsDirection=String(n.direction||'NEUTRO').toUpperCase(), newsRisk=String(n.risk||'UNKNOWN').toUpperCase(), dataRisk=String(n.data_risk||'UNKNOWN').toUpperCase();
+ $('newsDataRisk').textContent='Datos: '+dataRisk;
+ $('newsDir').textContent=newsDirection;
+ $('newsDir').className=newsDirection==='ALCISTA'?'bull':newsDirection==='BAJISTA'?'bear':'';
+ $('newsBias').textContent=(newsBias>0?'+':'')+Math.round(newsBias);
+ $('newsBiasLabel').textContent='Bias '+(newsBias>0?'+':'')+Math.round(newsBias);
+ $('newsBiasNeedle').style.left=Math.max(0,Math.min(100,(newsBias+100)/2))+'%';
+ $('newsConf').textContent=Math.max(0,Math.min(100,newsConf)).toFixed(0)+'%';
+ $('newsRisk').textContent=newsRisk;
+ $('newsRisk').className=newsRisk==='HIGH'?'sell':newsRisk==='LOW'?'buy':'';
+ $('newsSummary').textContent=n.summary||'—';
+ $('newsRationale').textContent=n.rationale||'Análisis agregado de titulares recientes.';
+ const sourcesOk=Number(n.sources_ok||0), sourceCount=Number(n.source_count||0), articleCount=Number(n.article_count||0);
+ $('newsSource').textContent=`${sourcesOk}/${sourceCount} activas · ${n.updated_at||'—'}`;
+ $('newsArticleCount').textContent=`${articleCount} artículos`;
+ const freshState=$('newsFreshState');
+ if(n.available && dataRisk==='LOW'){freshState.textContent='ACTUALIZADO';freshState.className='news-fresh ok'}
+ else if(n.available){freshState.textContent='DATOS PARCIALES';freshState.className='news-fresh warn'}
+ else {freshState.textContent='DESACTUALIZADO';freshState.className='news-fresh bad'}
+ const health=n.source_health||{};
+ $('newsSources').innerHTML=Object.entries(health).map(([name,v])=>`<div class="news-source-card ${v.status==='OK'?'ok':'bad'}"><div class="source-name"><span>${esc(name)}</span><i class="source-status"></i></div><div class="source-meta">${Number(v.articles||0)} titulares · ${Number(v.latency_ms||0)}ms</div>${v.error?`<div class="source-error">${esc(v.error)}</div>`:''}</div>`).join('')||'<div class="news-empty">Sin estado de fuentes.</div>';
+ $('newsHeadlines').innerHTML=(n.top_headlines||[]).slice(0,8).map(h=>{const impact=Number(h.impact||0);return `<div class="news-item"><div class="impact-badge ${impact>0?'pos':impact<0?'neg':''}">${impact>0?'+':''}${impact}</div><div><a href="${esc(h.url||'#')}" target="_blank" rel="noopener">${esc(h.title||'')}</a><div class="meta">${esc(h.domain||'')} · ${esc(h.source||'')}</div></div><div class="category">${esc(h.category||'NEWS')}</div></div>`}).join('')||'<div class="news-empty">No hay titulares recientes disponibles.</div>';
  const x=data.external_signal||{}; const pct=v=>(Number(v||0)*100).toFixed(0)+'%'; $('extLong').textContent=pct(x.long_weight); $('extShort').textContent=pct(x.short_weight); $('extNeutral').textContent=pct(x.neutral_weight); $('extTraders').textContent=Number(x.valid_traders||0); $('extQuality').textContent=`Calidad: ${Number(x.quality||0)}/100 · ${esc(x.data_quality||'LOW')}`; $('extFresh').textContent=x.freshness_sec==null?'Frescura: —':`Frescura: ${Math.max(0,Number(x.freshness_sec)).toFixed(0)}s`; $('extApi').textContent=`API: ${esc(x.api_status||'NO_DATA')}`; $('extReadOnly').textContent=`Solo diagnóstico · score_effect=${Number(x.score_effect||0)} · lectura ${x.read_only===false?'NO SEGURA':'READ-ONLY'} · ${esc(x.message||'sin copy trading ni ejecución')}`;
  const tv=data.tradingview||{}; const tvLast=tv.last_signal||{}; $('tvStatus').textContent=`Estado: ${esc(tv.api_status||'NO_DATA')}`; $('tvLast').textContent=`Última señal: ${esc(tvLast.received_at||'—')}`; $('tvTimeframe').textContent=tvLast.timeframe?`${esc(tvLast.timeframe)}m`:'—'; $('tvDirection').textContent=esc(tvLast.direction||'—'); $('tvEvent').textContent=esc(tvLast.event||'—'); $('tvPrice').textContent=tvLast.price==null?'—':Number(tvLast.price).toFixed(2); $('tvFresh').textContent=tv.freshness_sec==null?'Frescura: —':`Frescura: ${Math.max(0,Number(tv.freshness_sec)).toFixed(0)}s`; $('tvCount').textContent=`Eventos: ${Number(tv.event_count||0)}`;
  const observer=data.market_observer||{}; const latest=observer.latest_by_timeframe||{}; $('observerStatus').textContent=`Estado: ${esc(observer.status||'NO_DATA')}`; $('observerM15').textContent=observerStamp(latest.M15); $('observerH1').textContent=observerStamp(latest.H1); $('observerH4').textContent=observerStamp(latest.H4); $('observerCount').textContent=Number(observer.observation_count||0); $('observerFresh').textContent=observer.freshness_sec==null?'Frescura: —':`Frescura: ${Math.max(0,Number(observer.freshness_sec)).toFixed(0)}s`; $('observerDecision').textContent=observer.last_decision||'—';
