@@ -47,6 +47,7 @@ STATIC_CONTENT_TYPES = {
     ".webp": "image/webp",
     ".svg": "image/svg+xml",
     ".ico": "image/x-icon",
+    ".webmanifest": "application/manifest+json; charset=utf-8",
 }
 
 CONFIG_CACHE = None
