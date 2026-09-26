@@ -31,6 +31,13 @@ try:
     from market_observer_service import observation_snapshot as read_market_observer_snapshot
 except Exception:
     read_market_observer_snapshot = None
+try:
+    from .demo_trade_ledger import read_ledger as read_demo_ledger
+except ImportError:
+    try:
+        from demo_trade_ledger import read_ledger as read_demo_ledger
+    except ImportError:
+        read_demo_ledger = None
 
 try:
     _tv_rate_limit=max(1,int(os.environ.get('GOLDSCOUT_TRADINGVIEW_RATE_LIMIT_PER_MINUTE','120')))
@@ -76,6 +83,7 @@ OFFLINE={"updated_at":None,"symbol":"XAUUSD","timeframe":"H1","live_trading":Fal
 "current_lot":None,"adaptive_lot":None,"selected_lot":None,"risk_amount":None,
 "account_currency":"USD","selection_reason":"NOT_EVALUATED","paper_demo_only":True},
 "active_trade":None,"open_positions_count":0,"open_positions":[],"closed_trades":[],
+"demo_ledger":{"status":"NO_DATA"},"trade_stats":{},"trade_segments":{},
 "session_stats":{"trades":0,"wins":0,"losses":0,"win_rate":0.0,"net_pnl":0.0,"expectancy_r":0.0,"profit_factor":0.0},
 "news":{"available":False,"bias":0,"confidence":0,"risk":"UNKNOWN",
 "data_risk":"HIGH","direction":"NEUTRO","summary":"Esperando análisis de noticias...","article_count":0,"top_headlines":[],"source_health":{}},
@@ -166,6 +174,20 @@ def read_market_observer():
     except Exception:
         return {**OFFLINE['market_observer'],'status':'PERSISTENCE_ERROR'}
 
+def read_demo_execution_ledger(day=None, account_login=None):
+    if not isinstance(account_login,int) or account_login<=0:
+        return {"status":"ACCOUNT_UNAVAILABLE","closed_trades":[],"session_stats":{}}
+    if read_demo_ledger is None:
+        return {"status":"SERVICE_UNAVAILABLE","closed_trades":[],"session_stats":{}}
+    try:
+        return read_demo_ledger(
+            [candidate/'market_execution_events.jsonl' for candidate in CANDIDATES],
+            day=day,
+            account_login=account_login,
+        )
+    except Exception:
+        return {"status":"READ_ERROR","closed_trades":[],"session_stats":{}}
+
 def request_token(headers):
     token=(headers.get('X-GoldScout-Token') or '').strip()
     if token:
@@ -240,6 +262,14 @@ class H(BaseHTTPRequestHandler):
             d['external_signal']=read_external()
             d['tradingview']=read_tradingview()
             d['market_observer']=read_market_observer()
+            ledger_day=(d.get('updated_at') or '')[:10].replace('.','-') or None
+            ledger=read_demo_execution_ledger(ledger_day,d.get('account_login'))
+            d['demo_ledger']={key:value for key,value in ledger.items() if key not in
+                ('closed_trades','session_stats','trade_stats','segments')}
+            d['closed_trades']=ledger.get('closed_trades',[])
+            d['session_stats']=ledger.get('session_stats',{})
+            d['trade_stats']=ledger.get('trade_stats',{})
+            d['trade_segments']=ledger.get('segments',{})
             d=canonical_lifecycle_value(d)
             self.send_payload(200,'application/json; charset=utf-8',json.dumps(d,ensure_ascii=False).encode()); return
         if self.path.startswith('/api/health'):
