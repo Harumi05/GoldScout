@@ -542,6 +542,13 @@ section[id]{scroll-margin-top:88px}
  .history-trade-main{grid-template-columns:1fr 1fr;padding:10px}.history-trade-main>div:first-child{grid-column:1/-1}.history-detail-btn{grid-column:1/-1;width:100%}
 }
 
+
+/* ===== HALI AUTH CONTROLS ===== */
+.user-chip{color:#c8a66a;border-color:#413622}
+.logout-button{height:34px;padding:0 10px;border:1px solid #3a2b30;border-radius:8px;background:#0c090a;color:#9e747b;font-size:8px;letter-spacing:.09em;cursor:pointer}
+.logout-button:hover{border-color:#6f2736;color:#e1919f;background:#160a0d}
+@media(max-width:900px){.user-chip{display:none}.logout-button{height:31px;padding:0 8px;font-size:7px}}
+
 </style>
 </head>
 <body>
@@ -554,6 +561,8 @@ section[id]{scroll-margin-top:88px}
     <span id="topStatus" class="top-chip offline">● OFFLINE</span>
     <span id="topMode" class="top-chip mode-chip">PAPER</span>
     <span class="top-chip">Cuenta: <b id="topAccount">—</b></span>
+    <span id="userChip" class="top-chip user-chip">◈ <b id="authUser">—</b></span>
+    <button id="logoutButton" class="logout-button" type="button" onclick="logoutHali()" aria-label="Cerrar sesión">SALIR</button>
     <span class="top-chip terminal-chip">XAUUSD · H1/H4/M15</span>
     <span class="top-chip update-chip">Actualizado: <b id="topUpdated">—</b></span>
   </div>
@@ -925,6 +934,21 @@ section[id]{scroll-margin-top:88px}
 <script>
 const $=id=>document.getElementById(id);
 let chartTimeframe=localStorage.getItem('hali_chart_tf')||'H1', chartBars=[], latestStatus=null, performanceRows=[], historyFilter='ALL';
+async function loadIdentity(){
+  try{
+    const r=await fetch('/api/auth/status',{cache:'no-store'});
+    const d=await r.json();
+    if(!d.authenticated){location.replace('/login');return}
+    const label=d.user?.display_name||d.user?.username||'Usuario';
+    if($('authUser'))$('authUser').textContent=label;
+  }catch(_){}
+}
+async function logoutHali(){
+  const button=$('logoutButton');
+  if(button){button.disabled=true;button.textContent='SALIENDO…'}
+  try{await fetch('/api/logout',{method:'POST',cache:'no-store'})}catch(_){}
+  location.replace('/login');
+}
 function setConnectionBanner(on,message='Reconectando con Hali…'){
   const el=$('connectionBanner'),txt=$('connectionBannerText');
   if(!el||!txt)return;
@@ -1048,7 +1072,8 @@ function drawPriceChart(){
 async function loadChart(force=false){
   try{
     const r=await fetch('/api/chart?timeframe='+encodeURIComponent(chartTimeframe)+'&limit=120&t='+Date.now());
-    if(!r.ok)throw new Error('HTTP '+r.status);
+    if(r.status===401){location.replace('/login');return}
+   if(!r.ok)throw new Error('HTTP '+r.status);
     const d=await r.json(); chartBars=Array.isArray(d.bars)?d.bars:[]; drawPriceChart();
   }catch(e){const empty=$('chartEmpty');if(empty){empty.textContent='Gráfico no disponible · '+e.message;empty.style.display='flex'}}
 }
@@ -1350,6 +1375,7 @@ async function tick(){
  }
 }
 initNavObserver();
+loadIdentity();
 tick();setInterval(tick,2000);
 document.querySelectorAll('.chart-tabs button').forEach(b=>b.classList.toggle('active',b.dataset.tf===chartTimeframe));
 loadChart();setInterval(loadChart,15000);
