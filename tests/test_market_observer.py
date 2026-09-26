@@ -143,6 +143,105 @@ class MarketObserverServiceTests(unittest.TestCase):
         self.assertEqual(result["last_decision"], "TRADE_TAKEN")
         self.assertEqual(after, payload)
 
+    def test_recent_bar_series_uses_only_closed_bars(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "market_observations.jsonl"
+            rows = [
+                record(
+                    "closed",
+                    "H1",
+                    1_789_052_400,
+                    bar_closed=True,
+                    open=4300.0,
+                    high=4310.0,
+                    low=4290.0,
+                    close=4305.0,
+                ),
+                record(
+                    "state-change",
+                    "H1",
+                    1_789_052_500,
+                    snapshot_type="STATE_CHANGE",
+                    bar_closed=False,
+                    open=4305.0,
+                    high=4320.0,
+                    low=4300.0,
+                    close=4318.0,
+                ),
+            ]
+            path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+            result = observer_service.recent_bar_series([path], timeframe="H1", limit=20)
+        self.assertEqual(result["count"], 1)
+        self.assertEqual(result["bars"][0]["close"], 4305.0)
+        self.assertIs(result["observer_only"], True)
+        self.assertEqual(result["score_effect"], 0)
+
+    def test_recent_bar_series_drops_old_gap_before_latest_window(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "market_observations.jsonl"
+            old = record(
+                "old",
+                "H1",
+                1_700_000_000,
+                bar_closed=True,
+                timestamp=1_700_000_000,
+                open=1900.0,
+                high=1910.0,
+                low=1890.0,
+                close=1905.0,
+            )
+            recent_one = record(
+                "recent-one",
+                "H1",
+                1_789_050_000,
+                bar_closed=True,
+                timestamp=1_789_050_000,
+                open=4300.0,
+                high=4310.0,
+                low=4295.0,
+                close=4305.0,
+            )
+            recent_two = record(
+                "recent-two",
+                "H1",
+                1_789_053_600,
+                bar_closed=True,
+                timestamp=1_789_053_600,
+                open=4305.0,
+                high=4320.0,
+                low=4300.0,
+                close=4315.0,
+            )
+            path.write_text(
+                "".join(json.dumps(row) + "\n" for row in (old, recent_one, recent_two)),
+                encoding="utf-8",
+            )
+            result = observer_service.recent_bar_series([path], timeframe="H1", limit=20)
+        self.assertEqual(result["count"], 2)
+        self.assertEqual([row["close"] for row in result["bars"]], [4305.0, 4315.0])
+
+    def test_recent_bar_series_rejects_unsupported_timeframe(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "market_observations.jsonl"
+            path.write_text(
+                json.dumps(
+                    record(
+                        "h1",
+                        "H1",
+                        1_789_052_400,
+                        bar_closed=True,
+                        open=4300.0,
+                        high=4310.0,
+                        low=4290.0,
+                        close=4305.0,
+                    )
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            result = observer_service.recent_bar_series([path], timeframe="M30", limit=20)
+        self.assertEqual(result["timeframe"], "H1")
+
     def test_new_bar_is_saved_once_and_failed_persistence_is_retried(self):
         cadence = ClosedBarCadence()
         calls: list[tuple[str, int]] = []
@@ -273,10 +372,12 @@ class MarketObserverSourceTests(unittest.TestCase):
         self.assertIn("input double RiskPercent             = 5.0", self.ea)
 
     def test_dashboard_exposes_observer_without_removing_tradingview(self):
-        self.assertIn("MARKET OBSERVER — MT5", self.index)
+        self.assertIn("MARKET OBSERVER", self.index)
         self.assertIn("Solo observación · score_effect=0", self.index)
         self.assertIn("TRADINGVIEW — OBSERVACIÓN", self.index)
         self.assertIn("read_market_observer_snapshot", self.server)
+        self.assertIn("read_market_bar_series", self.server)
+        self.assertIn("/api/chart", self.server)
         self.assertIn("d['tradingview']=read_tradingview()", self.server)
 
 
