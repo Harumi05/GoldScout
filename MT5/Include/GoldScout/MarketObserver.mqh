@@ -46,6 +46,8 @@ struct GoldScoutObserverContext
    string executionReason;
    uint   executionRetcode;
    string signalEventId;
+   string riskBudgetJson;
+   string riskBlockCode;
 };
 
 string GSMO_JsonEscape(string value)
@@ -117,6 +119,8 @@ string GSMO_DecisionOutcome(const GoldScoutObserverContext &context)
    if(StringFind(text,"noticia")>=0 || StringFind(text,"calendario")>=0 ||
       StringFind(text,"news")>=0)
       return "BLOCKED_NEWS";
+   if(context.riskBlockCode!="" && context.riskBlockCode!="NONE")
+      return context.riskBlockCode=="MARGIN_CHECK_FAILED"?"BLOCKED_MARGIN":"BLOCKED_RISK";
    if(StringFind(text,"riesgo")>=0 || StringFind(text,"drawdown")>=0 ||
       StringFind(text,"pérdida diaria")>=0 || StringFind(text,"perdida diaria")>=0 ||
       StringFind(text,"spread")>=0 || StringFind(text,"presupuesto")>=0)
@@ -398,6 +402,8 @@ private:
       json+="\"execution_reason\":\""+GSMO_JsonEscape(context.executionReason)+"\",";
       json+=StringFormat("\"execution_retcode\":%u,",context.executionRetcode);
       json+="\"signal_event_id\":\""+GSMO_JsonEscape(context.signalEventId)+"\",";
+      json+="\"risk_budget\":"+(context.riskBudgetJson!=""?context.riskBudgetJson:"null")+",";
+      json+="\"risk_block_code\":\""+GSMO_JsonEscape(context.riskBlockCode)+"\",";
       json+="\"future_return_15m\":null,\"future_return_1h\":null,\"future_return_4h\":null,";
       json+="\"mfe_15m\":null,\"mae_15m\":null,\"mfe_1h\":null,\"mae_1h\":null,";
       json+="\"mfe_4h\":null,\"mae_4h\":null";
@@ -539,7 +545,7 @@ public:
          context.direction+"|"+context.signalEventId+"|"+
          IntegerToString((long)context.executionRetcode)+"|"+
          context.previousArmedDirection+"|"+context.previousArmedSetup+"|"+
-         context.armedInvalidationReason;
+         context.armedInvalidationReason+"|"+context.riskBlockCode;
       if(identity==m_lastStateIdentity) return;
       if(Capture(1,0,snapshotType,identity,context))
          m_lastStateIdentity=identity;

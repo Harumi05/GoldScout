@@ -1,82 +1,43 @@
 # GoldScout — Current Task
 
 ## Status
-READY
+IMPLEMENTED_PENDING_HUMAN_REVIEW — Risk Budget V2 Phase 1.
+Acceptance/merge is not implied by this status.
 
-## Owner
-Claude
+## Owner / Reviewer
+Implementer: Codex. Reviewer: Human / ChatGPT.
 
-## Reviewer
-Codex
+## Objective
+Expose the CURRENT risk decomposition and precise block diagnostics in one
+read-only snapshot, dashboard and Market Observer. Characterize existing
+acceptance behavior before any risk-policy change.
 
-## Task
-Promote Take Profit V2 from shadow comparison to the TP selected for DEMO/PAPER execution, while keeping CURRENT as the shadow comparator.
+## Implemented contract
+- Daily budget uses persisted start-of-day equity, not current profitable equity.
+- Remaining = max(0, daily budget - persistent negative net deal losses - account open risk).
+- Planned = max(0, min(current-equity target risk, remaining)).
+- Open risk covers all account positions; a position without a valid SL fails closed.
+- Pending monetary risk is NOT_SUPPORTED; amount is null, not a fabricated zero.
+- Account/server H1 reservation remains NONE / PENDING / CONFIRMED, independent of MagicNumber.
+- Unknown snapshot amounts are null; risk health is UNKNOWN, not HEALTHY.
+- Observer-only telemetry has score_effect=0 and does not grant authorization.
+- Exact source defaults are recorded in CONTEXT.md, not asserted as VPS inputs.
 
-## Required behavior
-CHILL:
-- selected TP = 0.75R
+## Protected behavior
+No change to risk percentages, daily-budget/loss/open-risk semantics, drawdown,
+H1 ownership/reservation, position gating, sizing, SL/Adaptive Stop, TP V2/CURRENT
+shadow, scoring/thresholds, M15, patterns, sessions/news, ledger or order authorization.
+REAL remains hard-blocked; EnableLiveTrading=false. No new strategy or capital reservation.
+UseArmedInvalidationV1=false remains the source default; not promoted here.
 
-GOD:
-- selected TP = Structure-Aware TP V2
-- baseline = 1.25R
-- HIGH/MEDIUM structural obstacle may cut TP
-- buffer = 0.20 ATR
-- LOW confidence does not cut
-- LOW_REWARD remains allowed according to validated V2 behavior
+## Required validation
+Risk/safety characterization (before/after allow-block equivalence), dashboard
+and Observer contracts, full Python suite, main EA and Market Observer harness
+compilation, and git diff --check. Report actual results and limitations in the PR.
+Compilation does not prove deployed behavior; request an actual VPS/MT5 snapshot.
 
-CURRENT:
-- continue calculating/logging as shadow
-- do not use CURRENT as selected TP in DEMO when V2 is enabled by this task
-
-## Scope
-May modify only files required for:
-- TP selection
-- DEMO/PAPER execution plumbing
-- TP shadow telemetry
-- dashboard display
-- tests/harnesses directly related to this behavior
-
-## Do not change
-- RiskPercent
-- DailyLossLimitPercent
-- scoring
-- ArmScoreThreshold
-- MinScoreToTrade
-- SL logic
-- Adaptive Stop behavior
-- M15 scoring
-- patterns
-- news
-- account-mode REAL hard block
-- EnableLiveTrading policy
-
-## Validation
-Required:
-- targeted TP tests
-- full test suite
-- main EA compile: 0 errors / 0 warnings
-- Market Observer harness compile: 0 errors / 0 warnings
-- CURRENT shadow values still emitted
-- selected TP demonstrably V2 in DEMO/PAPER
-- REAL-account execution remains blocked
-
-## Runtime examples to verify
-CHILL:
-- selected RR approximately 0.75R
-
-GOD:
-- selected TP follows Structure-Aware V2 and can be below 1.25R only for validated structural reasons
-
-## Handoff
-Claude implements on a dedicated branch and reports:
-- files changed
-- tests
-- compile results
-- example CURRENT vs V2 vs selected output
-- limitations
-- commit hash
-
-Codex then reviews the branch/PR against this file.
-
-## Note
-Armed Invalidation V1 remains diagnostic and should not be enabled or mixed into this task.
+## Workflow / next task
+Dedicated branch codex/risk-budget-v2-phase1-observability; PR against main,
+human review required, NO automatic merge. Preserve the two untracked TP V2.1 files.
+After approval: define Risk Budget V2 Phase 2 policy/atomic pending-risk ownership
+with explicit approval and tests; do not implement it in Phase 1.

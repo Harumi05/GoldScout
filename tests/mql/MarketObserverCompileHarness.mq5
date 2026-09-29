@@ -2,6 +2,7 @@
 #property script_show_inputs
 
 #include <GoldScout/MarketObserver.mqh>
+#include <GoldScout/RiskBudgetSnapshot.mqh>
 
 // MetaEditor compile harness: it exercises the public observer types without
 // requiring a broker connection or invoking any trading API.
@@ -46,6 +47,13 @@ void OnStart()
    context.executionReason="DEMO_EXECUTION_DISABLED";
    context.executionRetcode=0;
    context.signalEventId="";
+   GoldScoutRiskSnapshot risk;
+   ZeroMemory(risk);
+   risk.accountCurrency="UNKNOWN";
+   risk.h1State="UNKNOWN";
+   risk.blockCode="RISK_STATE_UNKNOWN";
+   context.riskBudgetJson=GSRB_Json(risk);
+   context.riskBlockCode="NONE";
 
    GoldScoutMarketObserver observer;
    string outcome=GSMO_DecisionOutcome(context);
