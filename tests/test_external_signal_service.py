@@ -591,7 +591,8 @@ class EtoroIntegrationTests(unittest.TestCase):
             self.assertNotIn(mutation, source)
         self.assertNotIn("etoro", ea.lower())
         self.assertIn("external_signal", server)
-        self.assertIn("CONSENSO EXTERNO — ETORO", page)
+        self.assertIn("CONSENSO EXTERNO", page)
+        self.assertIn('id="extReadOnly"', page)
         self.assertIn("score_effect=0", page)
 
     def test_protected_trading_defaults_are_untouched(self):

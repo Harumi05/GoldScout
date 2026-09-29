@@ -125,7 +125,9 @@ class AdaptiveStopV2RecoveryTests(unittest.TestCase):
             "stop_evaluated",
         ):
             self.assertIn(token, OBSERVER)
-        self.assertIn("STOP MODE — PAPER/DEMO A/B", DASHBOARD)
+        self.assertIn('id="stopMode"', DASHBOARD)
+        self.assertIn('id="stopCurrent"', DASHBOARD)
+        self.assertIn('id="stopAdaptive"', DASHBOARD)
         self.assertIn('"stop_diagnostics"', SERVER)
 
     def test_tp_demo_lifecycle_and_safety_contracts_remain_present(self):
@@ -133,7 +135,8 @@ class AdaptiveStopV2RecoveryTests(unittest.TestCase):
             "UseTakeProfitV2",
             "StoreTakeProfitDiagnostics(tpDecision)",
             'AppendExecutionEvent("ORDER_REJECTED"',
-            'AppendExecutionEvent("POSITION_CLOSED"',
+            'AppendClosedTradeRecord(closedTrade,result.retcode)',
+            'json+="\\\"event\\\":\\\"POSITION_CLOSED\\\",";',
             "UseArmedInvalidationV1 = false;",
         ):
             self.assertIn(token, EA)

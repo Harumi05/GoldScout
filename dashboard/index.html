@@ -686,13 +686,13 @@ section[id]{scroll-margin-top:88px}
       <h3>RIESGO Y PROTECCIÓN</h3>
       <div class="small">Límites del Champion · solo lectura</div>
     </div>
-    <div id="riskState" class="risk-state safe">PROTEGIDO</div>
+    <div id="riskState" class="risk-state warn">UNKNOWN</div>
   </div>
 
   <div class="risk-overview">
     <div class="risk-ring" id="riskRing" style="--risk-pct:0%">
       <div>
-        <strong id="riskUsedPct">0%</strong>
+        <strong id="riskUsedPct">—</strong>
         <span>CAPACIDAD<br>COMPROMETIDA</span>
       </div>
     </div>
@@ -709,7 +709,7 @@ section[id]{scroll-margin-top:88px}
       <div class="risk-track"><i id="riskLossBar" class="loss" style="width:0%"></i></div>
     </div>
     <div class="risk-bar-row">
-      <div><span>Riesgo abierto reservado</span><strong id="openRisk">—</strong></div>
+      <div><span>Riesgo abierto de cuenta</span><strong id="openRisk">—</strong></div>
       <div class="risk-track"><i id="riskOpenBar" class="reserved" style="width:0%"></i></div>
     </div>
     <div class="risk-bar-row">
@@ -730,10 +730,20 @@ section[id]{scroll-margin-top:88px}
     <div><small>EQUITY ACTUAL</small><strong id="equity">—</strong></div>
   </div>
 
+  <div class="risk-metrics">
+    <div><small>RIESGO PENDIENTE</small><strong id="pendingRisk">NOT_SUPPORTED</strong></div>
+    <div><small>DRAWDOWN / MÁXIMO</small><strong id="riskDrawdown">—</strong></div>
+    <div><small>RESERVA H1</small><strong id="h1Reservation">UNKNOWN</strong></div>
+    <div><small>ESTADO DE RIESGO</small><strong id="riskHealth">UNKNOWN</strong></div>
+  </div>
+  <div class="small" id="riskBudgetStatus">RISK_STATE_UNKNOWN</div>
+  <div class="small" id="riskBlockCode">NO_DATA</div>
+  <p class="small" id="riskBlockReason">Sin snapshot de riesgo MT5.</p>
+
   <div class="risk-guard">
     <div class="guard-icon">◆</div>
     <div>
-      <strong id="riskGuardTitle">PROTECCIÓN ACTIVA</strong>
+      <strong id="riskGuardTitle">ESTADO DE RIESGO UNKNOWN</strong>
       <p id="riskNote">El presupuesto diario se fija con la equity de inicio del día y no aumenta por ganancias intradía. Pérdidas realizadas y riesgo abierto reducen el disponible.</p>
     </div>
   </div>
@@ -901,9 +911,10 @@ section[id]{scroll-margin-top:88px}
   <div class="performance-head">
     <div>
       <h2 class="section-title">RENDIMIENTO</h2>
-      <div class="small">Historial reciente del broker · hasta 25 cierres / 30 días</div>
+      <div class="small">Historial reconciliado del ledger MT5 · costes y R según evidencia</div>
     </div>
-    <div id="statsQuality" class="data-quality legacy">BROKER HISTORY · PRE-LEDGER V2</div>
+    <div id="statsQuality" class="data-quality legacy">LEDGER MT5 · NO_DATA</div>
+    <div class="small" id="ledgerStatus">Ledger MT5: NO_DATA</div>
   </div>
 
   <div class="performance-kpis">
@@ -946,7 +957,7 @@ section[id]{scroll-margin-top:88px}
   </div>
 
   <div id="performanceQualityNote" class="quality-note">
-    Métricas actuales derivadas del historial del broker. Costes, partial fills y reconciliación fuerte pasarán al ledger V2; no se presenta esta vista como estadística reconciliada definitiva.
+    Esperando ledger V2. Costes desconocidos permanecen desconocidos; trades conflictivos no aportan estadísticas.
   </div>
 </section>
 <section id="history" class="card span12 section-history history-panel">
@@ -1266,7 +1277,10 @@ const lifecycle=v=>String(v||'').toUpperCase()==='POSITION_CLOSE'?'POSITION_CLOS
 function render(data){
  latestStatus=data;
  const armed=data.armed_status||{}; const armedDirection=armed.status==='CANCELLED'?(armed.previous_direction||'—'):(armed.direction||'—'); $('armedStatus').textContent=armed.status==='CANCELLED'?`CANCELLED ${armedDirection}`:armed.status==='VALID'?`ARMED ${armedDirection} — VALID`:(armed.status||'DISABLED'); $('armedDetail').textContent=armed.status==='CANCELLED'?`reason: ${armed.reason||'—'} · RSI: ${Number(armed.rsi||0).toFixed(1)} · Impulse: ${Number(armed.impulse_atr||0).toFixed(2)} ATR`:(armed.reason||'Feature flag apagado.');
- accountCurrency=String(data.account_currency||'USD').toUpperCase(); const legacyRiskAmount=Number(data.risk_amount??data.risk_usd??0); const targetRisk=Number(data.target_risk??legacyRiskAmount); const dailyLossBudget=Number(data.daily_loss_budget??0); const dailyLossUsed=Number(data.daily_loss_used??0); const remainingDailyBudget=Number(data.remaining_daily_budget??Math.max(0,dailyLossBudget-dailyLossUsed)); const effectivePlannedRisk=Math.max(0,Number(data.effective_planned_risk??Math.min(targetRisk,remainingDailyBudget))); const riskAmount=effectivePlannedRisk;
+ accountCurrency=String(data.account_currency||'UNKNOWN').toUpperCase();
+ const riskSnapshot=data.risk_budget||{};
+ const targetRisk=riskSnapshot.target_risk_amount, remainingDailyBudget=riskSnapshot.remaining_daily_budget;
+ const effectivePlannedRisk=riskSnapshot.planned_risk_amount;
  const de=data.demo_execution||{};
  $('symbol').textContent=`${data.symbol||'XAUUSD'} · ${data.timeframe||'H1'}`;
  $('mode').textContent=de.execution_allowed?'DEMO EXECUTION':'PAPER MODE'; $('mode').className='pill paper';
@@ -1329,29 +1343,7 @@ function render(data){
  const observer=data.market_observer||{}; const latest=observer.latest_by_timeframe||{}; $('observerStatus').textContent=`Estado: ${esc(observer.status||'NO_DATA')}`; $('observerM15').textContent=observerStamp(latest.M15); $('observerH1').textContent=observerStamp(latest.H1); $('observerH4').textContent=observerStamp(latest.H4); $('observerCount').textContent=Number(observer.observation_count||0); $('observerFresh').textContent=observer.freshness_sec==null?'Frescura: —':`Frescura: ${Math.max(0,Number(observer.freshness_sec)).toFixed(0)}s`; $('observerDecision').textContent=observer.last_decision||'—';
  const sd=data.stop_diagnostics||{}; const stopPrice=v=>v==null||Number(v)<=0?'—':Number(v).toFixed(2); const stopAtr=v=>v==null||Number(v)<=0?'—':Number(v).toFixed(2)+' ATR'; const stopLot=v=>v==null||Number(v)<=0?'—':Number(v).toFixed(4)+' lot'; $('stopMode').textContent=esc(sd.mode||data.stop_mode||'NOT_EVALUATED'); $('stopSetup').textContent=esc(sd.setup||'—'); $('stopDirection').textContent=esc(sd.direction||'—'); $('stopCurrent').textContent=sd.evaluated?`${stopPrice(sd.current_sl)} · ${stopAtr(sd.current_sl_atr)}`:'—'; $('stopCurrentLot').textContent=stopLot(sd.current_lot); $('stopAdaptive').textContent=sd.evaluated?`${stopPrice(sd.adaptive_sl)} · ${stopAtr(sd.adaptive_sl_atr)}`:'—'; $('stopAdaptiveLot').textContent=stopLot(sd.adaptive_lot); $('stopSelected').textContent=sd.evaluated?`${stopPrice(sd.selected_sl)} · ${stopLot(sd.selected_lot)}`:'—'; $('stopRisk').textContent=sd.risk_amount==null?'—':displayMoney(sd.risk_amount,sd.account_currency||accountCurrency); $('stopReason').textContent=esc(sd.selection_reason||'NOT_EVALUATED');
  const tp=data.take_profit||{}; const tpPrice=v=>v==null||Number(v)<=0?'—':Number(v).toFixed(2); const tpRR=v=>v==null||Number(v)<=0?'—':Number(v).toFixed(2)+'R'; $('tpMode').textContent=esc(tp.mode||'CURRENT'); $('tpClass').textContent=esc(tp.class||'—'); $('tpSetup').textContent=esc(tp.setup||'—'); $('tpDirection').textContent=esc(tp.direction||'—'); $('tpCurrent').textContent=tpPrice(tp.current_tp); $('tpCurrentRR').textContent=tpRR(tp.current_rr); $('tpV2').textContent=tpPrice(tp.v2_tp); $('tpV2RR').textContent=tpRR(tp.v2_rr); $('tpSelected').textContent=tpPrice(tp.selected_tp); $('tpSelectedRR').textContent=tpRR(tp.selected_rr); $('tpLevel').textContent=tpPrice(tp.structure_level); $('tpConfidence').textContent=esc(tp.structure_confidence||'NONE'); $('tpReason').textContent=esc(tp.selection_reason||'—');
- $('balance').textContent=displayMoney(data.balance); $('equity').textContent=displayMoney(data.equity); $('startEquity').textContent=displayMoney(data.start_of_day_equity); $('tradeRiskPercent').textContent=Number(data.risk_percent||5).toFixed(1)+'%'; $('targetRisk').textContent=displayMoney(targetRisk); $('dailyLossPercent').textContent=Number(data.daily_loss_limit_percent||0).toFixed(1)+'%'; $('dailyBudget').textContent=displayMoney(dailyLossBudget); $('dailyLossUsed').textContent=displayMoney(dailyLossUsed); $('openRisk').textContent=displayMoney(data.open_risk||0); $('dailyRemaining').textContent=displayMoney(remainingDailyBudget); $('effectiveRisk').textContent=displayMoney(effectivePlannedRisk);
- const lim=Math.max(1,dailyLossBudget);
- const committed=Math.max(0,dailyLossBudget-remainingDailyBudget);
- const lossPct=Math.min(100,Math.max(0,dailyLossUsed)/lim*100);
- const openRiskValue=Math.max(0,Number(data.open_risk||0));
- const openPct=Math.min(100,openRiskValue/lim*100);
- const committedPct=Math.min(100,committed/lim*100);
- $('riskLossBar').style.width=lossPct+'%';
- $('riskOpenBar').style.width=openPct+'%';
- $('dailyMeter').style.width=committedPct+'%';
- $('riskCommitted').textContent=displayMoney(committed);
- $('riskUsedPct').textContent=committedPct.toFixed(0)+'%';
- $('riskRing').style.setProperty('--risk-pct',committedPct+'%');
- $('riskHeadroomText').textContent='de '+displayMoney(dailyLossBudget)+' disponibles';
- const startEq=Number(data.start_of_day_equity||0), eqNow=Number(data.equity||0);
- const eqDelta=startEq>0&&eqNow>0?eqNow-startEq:null;
- $('equityDelta').textContent=eqDelta==null?'—':(eqDelta>=0?'+':'')+displayMoney(eqDelta);
- $('equityDelta').className=eqDelta==null?'':eqDelta>=0?'buy':'sell';
- const riskDanger=remainingDailyBudget<=0.01 || committedPct>=95;
- const riskWarn=!riskDanger && committedPct>=70;
- $('riskState').textContent=riskDanger?'LÍMITE ALCANZADO':riskWarn?'CAPACIDAD BAJA':'PROTEGIDO';
- $('riskState').className='risk-state '+(riskDanger?'danger':riskWarn?'warn':'safe');
- $('riskGuardTitle').textContent=riskDanger?'NUEVAS ENTRADAS DEBEN QUEDAR BLOQUEADAS':riskWarn?'MARGEN DIARIO REDUCIDO':'PROTECCIÓN ACTIVA';
+ $('balance').textContent=displayMoney(data.balance);
  $('execAccountMode').textContent=esc(de.account_mode||'UNKNOWN'); $('execConnected').textContent=de.broker_connected?'CONECTADO':'DESCONECTADO'; $('execEnabled').textContent=de.enabled?'SÍ':'NO'; $('execAllowed').textContent=de.execution_allowed?'SÍ':'NO'; $('execAuthorization').textContent=esc(de.authorization_reason||'—'); $('execState').textContent=esc(lifecycle(de.state||'PAPER')); $('execReason').textContent=esc(de.reason||'—'); $('execIds').textContent=(de.order_id||de.deal_id)?`${de.order_id||0} / ${de.deal_id||0}`:'—'; $('execFill').textContent=de.executed_price?`${Number(de.filled_volume||0).toFixed(4)} @ ${Number(de.executed_price).toFixed(2)}`:'—';
  const positions=data.open_positions||[];
  if(!positions.length){
@@ -1410,7 +1402,7 @@ function render(data){
          <span><small>A TP</small><b>${targetGap==null?'—':targetGap.toFixed(2)}</b></span>
        </div>
        <button class="trade-detail-btn" onclick="toggle('activeReason${i}')">VER DETALLE</button>
-       <div id="activeReason${i}" class="reason trade-reason">Posición ${esc(t.position_id||'—')} · Signal ${esc(t.signal_event_id||'—')}<br><span class="small">${esc(t.comment||'Sin comentario de broker')}</span></div>
+       <div id="activeReason${i}" class="reason trade-reason">Trade ${esc(t.trade_id||'—')} · Posición ${esc(t.position_id||'—')} · Signal ${esc(t.signal_event_id||'—')}<br><span class="small">Riesgo inicial ${displayMoney(t.initial_risk)} · ${esc(t.comment||'Sin comentario de broker')}</span></div>
      </article>`;
    }).join('');
  }
@@ -1422,7 +1414,7 @@ function render(data){
  $('heroDailyPnl').className='kpi-value '+(Number(data.daily_pnl||0)>=0?'buy':'sell');
  $('heroFloating').textContent=displayMoney(floating);
  $('heroFloating').className='kpi-value '+(floating>=0?'buy':'sell');
- $('heroWinRate').textContent=Number(st.win_rate||0).toFixed(1)+'%';
+ $('heroWinRate').textContent=st.win_rate==null?'—':Number(st.win_rate).toFixed(1)+'%';
  $('heroScore').textContent=data.last_score??'—';
  $('topStatus').textContent=data.connected?'● ONLINE':'● OFFLINE';
  $('topStatus').className='top-chip '+(data.connected?'online':'offline');
@@ -1434,16 +1426,65 @@ function render(data){
  $('heroDirection').textContent=data.last_direction||'—';
  $('heroDirection').className=(String(data.last_direction||'').toUpperCase()==='LONG'?'buy':String(data.last_direction||'').toUpperCase()==='SHORT'?'sell':'');
  $('heroSetup').textContent=data.last_setup||'—';
- $('heroRisk').textContent=displayMoney(effectivePlannedRisk);
+ renderRiskSnapshot(data);
+}
+// MT5 is authoritative. Only scale its amounts for the Hali visual meters.
+function renderRiskSnapshot(data){
+ const r=data.risk_budget||{}, currency=r.account_currency||'UNKNOWN';
+ const known=v=>v!=null&&Number.isFinite(Number(v));
+ const number=v=>known(v)?Number(v).toFixed(2):'—';
+ const amount=v=>known(v)?displayMoney(v,currency):'—';
+ const fields={startEquity:'start_of_day_equity',equity:'current_equity',targetRisk:'target_risk_amount',dailyBudget:'daily_budget_amount',dailyLossUsed:'realized_daily_loss_used',openRisk:'account_open_risk',dailyRemaining:'remaining_daily_budget',effectiveRisk:'planned_risk_amount'};
+ Object.entries(fields).forEach(([id,key])=>{$(id).textContent=amount(r[key])});
+ $('tradeRiskPercent').textContent=number(r.configured_risk_percent)+'%';
+ $('dailyLossPercent').textContent=number(r.daily_loss_limit_percent)+'%';
+ $('pendingRisk').textContent=r.pending_risk_status||'NOT_SUPPORTED';
+ $('riskDrawdown').textContent=number(r.current_drawdown_percent)+'% / '+number(r.max_drawdown_percent)+'%';
+ $('h1Reservation').textContent=r.h1_reservation_state||'UNKNOWN';
+ $('riskHealth').textContent=r.risk_state_health||'UNKNOWN';
+ $('riskBudgetStatus').textContent=r.budget_status_code||'RISK_STATE_UNKNOWN';
+ $('riskBlockCode').textContent=r.block_code||'NO_DATA';
+ $('riskBlockReason').textContent=r.block_reason||'Sin bloqueo de riesgo evaluado para la decisión actual.';
+ const budget=r.daily_budget_amount, remaining=r.remaining_daily_budget;
+ const committed=known(budget)&&known(remaining)?Math.max(0,Number(budget)-Number(remaining)):null;
+ const pct=v=>known(v)&&known(budget)&&Number(budget)>0?Math.min(100,Math.max(0,Number(v))/Number(budget)*100):null;
+ const usedPct=pct(committed), lossPct=pct(r.realized_daily_loss_used), openPct=pct(r.account_open_risk);
+ $('dailyMeter').style.width=usedPct==null?'0%':usedPct+'%';
+ $('riskLossBar').style.width=lossPct==null?'0%':lossPct+'%';
+ $('riskOpenBar').style.width=openPct==null?'0%':openPct+'%';
+ $('riskCommitted').textContent=amount(committed);
+ $('riskUsedPct').textContent=usedPct==null?'—':usedPct.toFixed(0)+'%';
+ if($('riskRing').style.setProperty)$('riskRing').style.setProperty('--risk-pct',(usedPct??0)+'%');
+ $('riskHeadroomText').textContent='de '+amount(budget)+' disponibles';
+ const delta=known(r.current_equity)&&known(r.start_of_day_equity)?Number(r.current_equity)-Number(r.start_of_day_equity):null;
+ $('equityDelta').textContent=delta==null?'—':(delta>=0?'+':'')+amount(delta);
+ $('equityDelta').className=delta==null?'':delta>=0?'buy':'sell';
+ const healthy=r.risk_state_known===true&&r.risk_state_health==='HEALTHY';
+ const exhausted=String(r.budget_status_code||'').startsWith('DAILY_BUDGET_EXHAUSTED');
+ const reduced=healthy&&!exhausted&&usedPct!=null&&usedPct>=70;
+ $('riskState').textContent=!healthy?'UNKNOWN':exhausted?'PRESUPUESTO AGOTADO':reduced?'CAPACIDAD BAJA':'ESTADO CONOCIDO';
+ $('riskState').className='risk-state '+(!healthy?'warn':exhausted?'danger':reduced?'warn':'safe');
+ $('riskGuardTitle').textContent=!healthy?'ESTADO DE RIESGO UNKNOWN':r.block_code&&r.block_code!=='NONE'?r.block_code:'DIAGNÓSTICO MT5 · NO AUTORIZA ÓRDENES';
+ $('risk').textContent=amount(r.planned_risk_amount);
+ $('riskPct').textContent=number(r.configured_risk_percent)+'% equity';
+ $('riskBudget').textContent='Objetivo '+amount(r.target_risk_amount)+' · restante diario '+amount(remaining);
+ $('heroRisk').textContent=amount(r.planned_risk_amount);
 }
 function toggle(id){$(id).classList.toggle('on')}
 
 function tradeRowsValid(rows){
- return (rows||[]).filter(r=>Number.isFinite(Number(r.net_pnl)) && r.close_time);
+ return (rows||[]).filter(r=>r&&r.close_time).map(r=>({...r,
+   initial_risk:'initial_risk_account_currency' in r?r.initial_risk_account_currency:r.initial_risk,
+   realized_r:'realized_r_net' in r?r.realized_r_net:r.realized_r}));
+}
+function tradeCloseOrder(row){
+ const value=row.close_time;
+ return typeof value==='number'?value:Date.parse(String(value).replace(/^(\d{4})\.(\d{2})\.(\d{2})/,'$1-$2-$3'))/1000;
 }
 function streakLabel(rows){
- const ordered=[...rows].sort((a,b)=>String(a.close_time).localeCompare(String(b.close_time)));
+ const ordered=[...rows].sort((a,b)=>tradeCloseOrder(a)-tradeCloseOrder(b));
  if(!ordered.length)return '—';
+ if(ordered.some(r=>r.net_pnl==null))return 'UNKNOWN';
  const last=Number(ordered[ordered.length-1].net_pnl);
  if(last===0)return 'FLAT';
  const win=last>0;let n=0;
@@ -1453,22 +1494,23 @@ function streakLabel(rows){
 function renderPerformance(data){
  const rows=tradeRowsValid(data.closed_trades||[]);
  performanceRows=rows;
- const ordered=[...rows].sort((a,b)=>String(a.close_time).localeCompare(String(b.close_time)));
- const wins=rows.filter(r=>Number(r.net_pnl)>0), losses=rows.filter(r=>Number(r.net_pnl)<0);
- const net=rows.reduce((s,r)=>s+Number(r.net_pnl||0),0);
+ const knownRows=rows.filter(r=>r.net_pnl!=null&&Number.isFinite(Number(r.net_pnl)));
+ const ordered=[...knownRows].sort((a,b)=>tradeCloseOrder(a)-tradeCloseOrder(b));
+ const wins=knownRows.filter(r=>Number(r.net_pnl)>0), losses=knownRows.filter(r=>Number(r.net_pnl)<0);
+ const net=knownRows.length===rows.length?knownRows.reduce((s,r)=>s+Number(r.net_pnl),0):null;
  const grossWin=wins.reduce((s,r)=>s+Number(r.net_pnl||0),0);
  const grossLoss=Math.abs(losses.reduce((s,r)=>s+Number(r.net_pnl||0),0));
- const pf=grossLoss>0?grossWin/grossLoss:(grossWin>0?Infinity:null);
- const rRows=rows.filter(r=>Number(r.initial_risk)>0 && Number.isFinite(Number(r.realized_r)));
+ const pf=data.trade_stats&&'profit_factor' in data.trade_stats?data.trade_stats.profit_factor:(grossLoss>0?grossWin/grossLoss:null);
+ const rRows=knownRows.filter(r=>Number(r.initial_risk)>0 && r.realized_r!=null && Number.isFinite(Number(r.realized_r)));
  const totalR=rRows.reduce((s,r)=>s+Number(r.realized_r||0),0);
  const avgR=rRows.length?totalR/rRows.length:null;
  const avgWin=wins.length?grossWin/wins.length:null;
  const avgLoss=losses.length?losses.reduce((s,r)=>s+Number(r.net_pnl||0),0)/losses.length:null;
- const vals=rows.map(r=>Number(r.net_pnl));
+ const vals=knownRows.map(r=>Number(r.net_pnl));
  const best=vals.length?Math.max(...vals):null,worst=vals.length?Math.min(...vals):null;
  $('statsTrades').textContent=rows.length;
  $('statsWL').textContent=`${wins.length}W / ${losses.length}L`;
- $('statsWinRate').textContent=rows.length?(wins.length/rows.length*100).toFixed(1)+'%':'0%';
+ $('statsWinRate').textContent=knownRows.length?(wins.length/knownRows.length*100).toFixed(1)+'%':'—';
  $('statsNet').textContent=displayMoney(net);
  $('statsNet').className=net>0?'buy':net<0?'sell':'';
  $('statsPF').textContent=pf===Infinity?'∞':pf==null?'—':pf.toFixed(2);
@@ -1486,25 +1528,27 @@ function renderPerformance(data){
  const st=data.session_stats||{};
  $('todayTrades').textContent=Number(st.trades||0);
  $('todayWL').textContent=`${Number(st.wins||0)} / ${Number(st.losses||0)}`;
- $('todayWinRate').textContent=Number(st.win_rate||0).toFixed(1)+'%';
- $('todayNet').textContent=displayMoney(st.net_pnl||0);
+ $('todayWinRate').textContent=st.win_rate==null?'—':Number(st.win_rate).toFixed(1)+'%';
+ $('todayNet').textContent=displayMoney(st.net_pnl);
  $('todayNet').className=Number(st.net_pnl||0)>=0?'buy':'sell';
- $('todayExpectancy').textContent=Number(st.trades||0)?Number(st.expectancy_r||0).toFixed(3)+'R':'—';
- const ledger=data.demo_trade_ledger||data.ledger||{};
- const conflicts=Number(data.ledger_conflicts||ledger.conflicts||0);
- const reconciled=ledger.healthy===true && conflicts===0;
- $('statsQuality').textContent=reconciled?'LEDGER V2 · RECONCILIADO':conflicts>0?`LEDGER · ${conflicts} CONFLICTO(S)`:'BROKER HISTORY · PRE-LEDGER V2';
+ $('todayExpectancy').textContent=st.expectancy_r==null?'—':Number(st.expectancy_r).toFixed(3)+'R';
+ const ledger=data.demo_ledger||{};
+ const conflicts=Number(ledger.ledger_conflicts||0), unknownCosts=rows.length-knownRows.length;
+ const reconciled=ledger.status==='OK' && conflicts===0;
+ $('ledgerStatus').textContent=`Ledger MT5: ${ledger.status||'NO_DATA'} · ${Number(ledger.event_count||0)} eventos · conflictos: ${conflicts} · costes desconocidos: ${unknownCosts}`;
+ $('ledgerStatus').title=(ledger.conflicting_trade_ids||[]).join(', ');
+ $('statsQuality').textContent=reconciled?(unknownCosts?'LEDGER V2 · COSTES PARCIALES':'LEDGER V2 · RECONCILIADO'):conflicts>0?`LEDGER · ${conflicts} CONFLICTO(S)`:`LEDGER MT5 · ${ledger.status||'NO_DATA'}`;
  $('statsQuality').className='data-quality '+(reconciled?'good':conflicts>0?'bad':'legacy');
  $('performanceQualityNote').textContent=reconciled
-   ? 'Métricas derivadas del ledger reconciliado. Trades conflictivos quedan fuera de las estadísticas.'
+   ? `Métricas derivadas del ledger V2. Trades conflictivos excluidos; ${unknownCosts} cierre(s) con costes desconocidos no se convierten en cero ni aportan R neto.`
    : conflicts>0
      ? `Hay ${conflicts} trade(s) conflictivos; no se consideran estadística fiable hasta reconciliarlos.`
-     : 'Métricas actuales derivadas del historial del broker. Costes, partial fills y reconciliación fuerte pasarán al ledger V2; esta vista no se presenta como estadística reconciliada definitiva.';
- drawEquityCurve(ordered);
+     : 'Ledger sin evidencia completa disponible. No se afirma reconciliación ni se sustituyen costes desconocidos por cero.';
+ drawEquityCurve(unknownCosts?[]:ordered);
 }
 function drawEquityCurve(rows=performanceRows){
  const canvas=$('equityCurve'),empty=$('equityEmpty');if(!canvas)return;
- const ordered=[...rows].sort((a,b)=>String(a.close_time).localeCompare(String(b.close_time)));
+ const ordered=[...rows].sort((a,b)=>tradeCloseOrder(a)-tradeCloseOrder(b));
  const rect=canvas.getBoundingClientRect(),dpr=Math.max(1,Math.min(2,window.devicePixelRatio||1));
  canvas.width=Math.max(1,Math.floor(rect.width*dpr));canvas.height=Math.max(1,Math.floor(rect.height*dpr));
  const ctx=canvas.getContext('2d');ctx.setTransform(dpr,0,0,dpr,0,0);const w=rect.width,h=rect.height;ctx.clearRect(0,0,w,h);
@@ -1529,8 +1573,8 @@ function renderLog(rows){
  const filtered=valid.filter(r=>historyFilter==='ALL'||(historyFilter==='WIN'&&Number(r.net_pnl)>0)||(historyFilter==='LOSS'&&Number(r.net_pnl)<0));
  $('historySummary').textContent=`${filtered.length} de ${valid.length} operaciones`;
  if(!filtered.length){$('log').innerHTML='<div class="history-empty">No hay operaciones para este filtro.</div>';return}
- $('log').innerHTML=[...filtered].sort((a,b)=>String(b.close_time).localeCompare(String(a.close_time))).map((r,i)=>{
-   const pnl=Number(r.net_pnl||0),rr=Number(r.initial_risk)>0?Number(r.realized_r):null,dir=String(r.direction||'—');
+ $('log').innerHTML=[...filtered].sort((a,b)=>tradeCloseOrder(b)-tradeCloseOrder(a)).map((r,i)=>{
+   const pnl=r.net_pnl==null?null:Number(r.net_pnl),rr=Number(r.initial_risk)>0&&r.realized_r!=null?Number(r.realized_r):null,dir=String(r.direction||'—');
    return `<article class="history-trade">
      <div class="history-trade-main">
        <div>
@@ -1538,10 +1582,10 @@ function renderLog(rows){
          <div class="history-meta">${esc(r.close_time||'')} · <span class="pill">${esc(r.class||'CHILL')}</span> ${esc(r.setup||'—')}</div>
        </div>
        <div class="history-num"><small>ENTRADA / SALIDA</small><strong>${Number(r.entry||0).toFixed(2)} → ${Number(r.exit||0).toFixed(2)}</strong><span>${Number(r.lots||0).toFixed(4)} lot</span></div>
-       <div class="history-num history-result"><small>RESULTADO NETO</small><strong class="${pnl>=0?'buy':'sell'}">${money(pnl)}</strong><span>${rr==null?'R desconocido':(rr>=0?'+':'')+rr.toFixed(3)+'R'} · ${esc(r.close_reason||'OTHER')}</span></div>
+       <div class="history-num history-result"><small>RESULTADO NETO</small><strong class="${pnl==null?'':pnl>=0?'buy':'sell'}">${displayMoney(pnl)}</strong><span>${rr==null?'R desconocido':(rr>=0?'+':'')+rr.toFixed(3)+'R'} · ${esc(r.close_reason||'OTHER')}</span></div>
        <button class="history-detail-btn" onclick="toggle('r${i}')">DETALLE</button>
      </div>
-     <div id="r${i}" class="reason">Posición ${esc(r.position_id||'—')} · Deal ${esc(r.deal_id||'—')} · SL ${Number(r.sl||0).toFixed(2)} · TP ${Number(r.tp||0).toFixed(2)}<br><span class="small">Bruto ${displayMoney(r.gross_pnl)} · comisión ${displayMoney(r.commission)} · swap ${displayMoney(r.swap)} · señal ${esc(r.signal_event_id||'—')}</span></div>
+     <div id="r${i}" class="reason">Trade ${esc(r.trade_id||'—')} · Posición ${esc(r.position_identifier||r.position_id||'—')} · Deal ${esc(r.deal_ticket||r.deal_id||'—')} · SL ${Number(r.sl||0).toFixed(2)} · TP ${Number(r.tp||0).toFixed(2)}<br><span class="small">Bruto ${displayMoney(r.gross_pnl)} · comisión ${displayMoney(r.commission)} · swap ${displayMoney(r.swap)} · fees ${displayMoney(r.fees)} · costes ${esc(r.cost_quality||'UNKNOWN')} · señal ${esc(r.signal_event_id||'—')} · intento ${esc(r.execution_attempt_id||'—')}</span></div>
    </article>`;
  }).join('');
 }

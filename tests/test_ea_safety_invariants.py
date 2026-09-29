@@ -253,8 +253,10 @@ class SafetyInvariantTests(unittest.TestCase):
             self.assertIn(field, self.source)
         dashboard = EA.parents[2] / "dashboard" / "index.html"
         text = dashboard.read_text(encoding="utf-8")
-        self.assertIn("data.effective_planned_risk??Math.min(targetRisk,remainingDailyBudget)", text)
-        self.assertIn("Riesgo efectivo permitido", text)
+        self.assertIn("effectivePlannedRisk=riskSnapshot.planned_risk_amount", text)
+        self.assertIn("targetRisk=riskSnapshot.target_risk_amount", text)
+        self.assertIn("remainingDailyBudget=riskSnapshot.remaining_daily_budget", text)
+        self.assertIn('id="effectiveRisk"', text)
 
     def test_h1_reservation_transitions_pending_to_confirmed(self):
         reservation = H1Reservation()

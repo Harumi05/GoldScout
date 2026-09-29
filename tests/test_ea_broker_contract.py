@@ -148,7 +148,8 @@ class BrokerContractTests(unittest.TestCase):
     def test_dashboard_labels_amount_with_account_currency(self):
         self.assertIn('\\"account_currency\\":', self.ea)
         self.assertIn('\\"risk_amount\\":', self.ea)
-        self.assertIn("data.risk_amount??data.risk_usd", self.dashboard)
+        self.assertIn("effectivePlannedRisk=riskSnapshot.planned_risk_amount", self.dashboard)
+        self.assertIn("currency=r.account_currency||'UNKNOWN'", self.dashboard)
         self.assertIn('"account_currency":"USD"', self.server)
         self.assertIn('"risk_amount":0.0', self.server)
         self.assertIn('"daily_loss_limit_percent":5.0', self.server)

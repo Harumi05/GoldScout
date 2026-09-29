@@ -28,13 +28,26 @@ except Exception:
     read_tradingview_snapshot = None
     record_tradingview_status = None
 try:
-    from market_observer_service import (
+    from .market_observer_service import (
         observation_snapshot as read_market_observer_snapshot,
         recent_bar_series as read_market_bar_series,
     )
-except Exception:
-    read_market_observer_snapshot = None
-    read_market_bar_series = None
+except ImportError:
+    try:
+        from market_observer_service import (
+            observation_snapshot as read_market_observer_snapshot,
+            recent_bar_series as read_market_bar_series,
+        )
+    except Exception:
+        read_market_observer_snapshot = None
+        read_market_bar_series = None
+try:
+    from .demo_trade_ledger import read_ledger as read_demo_ledger
+except ImportError:
+    try:
+        from demo_trade_ledger import read_ledger as read_demo_ledger
+    except ImportError:
+        read_demo_ledger = None
 
 try:
     _tv_rate_limit=max(1,int(os.environ.get('GOLDSCOUT_TRADINGVIEW_RATE_LIMIT_PER_MINUTE','120')))
@@ -72,7 +85,22 @@ for p in CANDIDATES:
         _seen.add(s); _u.append(p)
 CANDIDATES=_u
 
+def unknown_risk_snapshot():
+    """No new/legacy runtime evidence: unknown is not zero or healthy."""
+    fields=('observed_at','broker_day','persistent_state_checked_at','h1_local_entry_used','start_of_day_equity','current_equity',
+        'configured_risk_percent','target_risk_amount','daily_loss_limit_percent',
+        'daily_budget_amount','realized_daily_loss_used','account_open_risk',
+        'remaining_daily_budget','planned_risk_amount','candidate_planned_risk_amount',
+        'candidate_evaluated_at','current_drawdown_percent','max_drawdown_percent','h1_bar')
+    return {**dict.fromkeys(fields), 'schema_version':1,'observer_only':True,'score_effect':0,
+        'account_currency':'UNKNOWN','persistent_state_known':False,'open_risk_known':False,
+        'risk_state_known':False,'risk_state_health':'UNKNOWN','h1_reservation_state':'UNKNOWN',
+        'pending_risk_supported':False,'pending_risk_status':'NOT_SUPPORTED','pending_risk_amount':None,
+        'realized_loss_semantics':'SUM_NEGATIVE_NET_DEALS_PERSISTENT_MAX',
+        'budget_status_code':'RISK_STATE_UNKNOWN','block_code':'NO_DATA','block_reason':'Sin snapshot de riesgo MT5.'}
+
 OFFLINE={"updated_at":None,"symbol":"XAUUSD","timeframe":"H1","live_trading":False,"connected":False,
+"risk_budget":unknown_risk_snapshot(),
 "account_currency":"USD","balance":None,"equity":None,"start_of_day_equity":None,"daily_pnl":None,
 "risk_amount":0.0,"target_risk":0.0,"daily_loss_limit_percent":5.0,"daily_loss_budget":0.0,
 "daily_loss_used":0.0,"open_risk":0.0,"remaining_daily_budget":0.0,"effective_planned_risk":0.0,"risk_percent":5.0,"last_score":None,
@@ -94,6 +122,7 @@ OFFLINE={"updated_at":None,"symbol":"XAUUSD","timeframe":"H1","live_trading":Fal
 "current_lot":None,"adaptive_lot":None,"selected_lot":None,"risk_amount":None,
 "account_currency":"USD","selection_reason":"NOT_EVALUATED","paper_demo_only":True},
 "active_trade":None,"open_positions_count":0,"open_positions":[],"closed_trades":[],
+"demo_ledger":{"status":"NO_DATA"},"trade_stats":{},"trade_segments":{},
 "session_stats":{"trades":0,"wins":0,"losses":0,"win_rate":0.0,"net_pnl":0.0,"expectancy_r":0.0,"profit_factor":0.0},
 "news":{"available":False,"bias":0,"confidence":0,"risk":"UNKNOWN",
 "data_risk":"HIGH","direction":"NEUTRO","summary":"Esperando análisis de noticias...","article_count":0,"top_headlines":[],"source_health":{}},
@@ -252,6 +281,20 @@ def read_market_observer():
     except Exception:
         return {**OFFLINE['market_observer'],'status':'PERSISTENCE_ERROR'}
 
+def read_demo_execution_ledger(day=None, account_login=None):
+    if not isinstance(account_login,int) or account_login<=0:
+        return {"status":"ACCOUNT_UNAVAILABLE","closed_trades":[],"session_stats":{}}
+    if read_demo_ledger is None:
+        return {"status":"SERVICE_UNAVAILABLE","closed_trades":[],"session_stats":{}}
+    try:
+        return read_demo_ledger(
+            [candidate/'market_execution_events.jsonl' for candidate in CANDIDATES],
+            day=day,
+            account_login=account_login,
+        )
+    except Exception:
+        return {"status":"READ_ERROR","closed_trades":[],"session_stats":{}}
+
 def request_token(headers):
     token=(headers.get('X-GoldScout-Token') or '').strip()
     if token:
@@ -322,10 +365,19 @@ class H(BaseHTTPRequestHandler):
                 d={**OFFLINE,'last_decision':f"Ignorando datos de {d.get('symbol','OTRO')}; esperando XAUUSD..."}
             else:
                 d={**d,'connected':True}
+            d.setdefault('risk_budget',unknown_risk_snapshot())
             d['news']=read_news()
             d['external_signal']=read_external()
             d['tradingview']=read_tradingview()
             d['market_observer']=read_market_observer()
+            ledger_day=(d.get('updated_at') or '')[:10].replace('.','-') or None
+            ledger=read_demo_execution_ledger(ledger_day,d.get('account_login'))
+            d['demo_ledger']={key:value for key,value in ledger.items() if key not in
+                ('closed_trades','session_stats','trade_stats','segments')}
+            d['closed_trades']=ledger.get('closed_trades',[])
+            d['session_stats']=ledger.get('session_stats',{})
+            d['trade_stats']=ledger.get('trade_stats',{})
+            d['trade_segments']=ledger.get('segments',{})
             d=canonical_lifecycle_value(d)
             self.send_payload(200,'application/json; charset=utf-8',json.dumps(d,ensure_ascii=False).encode()); return
         if self.path.startswith('/api/health'):

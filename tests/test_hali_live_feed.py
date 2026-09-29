@@ -45,8 +45,8 @@ class HaliLiveFeedSourceTests(unittest.TestCase):
             'BarJson(PERIOD_M15,"M15")',
             'BarJson(PERIOD_H1,"H1")',
             'BarJson(PERIOD_H4,"H4")',
-            '\"tick_epoch\"',
-            '\"tick_time_msc\"',
+            r'\"tick_epoch\"',
+            r'\"tick_time_msc\"',
             "EventSetMillisecondTimer",
             "hali_live_market.json",
         ):

@@ -266,7 +266,7 @@ class TakeProfitV2SourceContracts(unittest.TestCase):
         self.assertIn('\\"observer_only\\":true,\\"score_effect\\":0', self.observer)
 
     def test_dashboard_exposes_current_v2_and_selected_values(self):
-        self.assertIn("TP MODE — PAPER A/B", self.dashboard)
+        self.assertIn('id="tpMode"', self.dashboard)
         for identifier in (
             'id="tpMode"',
             'id="tpCurrent"',

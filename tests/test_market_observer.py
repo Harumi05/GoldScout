@@ -374,7 +374,7 @@ class MarketObserverSourceTests(unittest.TestCase):
     def test_dashboard_exposes_observer_without_removing_tradingview(self):
         self.assertIn("MARKET OBSERVER", self.index)
         self.assertIn("Solo observación · score_effect=0", self.index)
-        self.assertIn("TRADINGVIEW — OBSERVACIÓN", self.index)
+        self.assertRegex(self.index, r"TRADINGVIEW [·—] OBSERVACIÓN")
         self.assertIn("read_market_observer_snapshot", self.server)
         self.assertIn("read_market_bar_series", self.server)
         self.assertIn("/api/chart", self.server)

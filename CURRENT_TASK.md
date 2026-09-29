@@ -1,82 +1,58 @@
 # GoldScout — Current Task
 
 ## Status
-READY
+Risk Budget V2 Phase 1: MERGED / ACCEPTED via PR #12.
+Main merge: 968ad45d7b2b538e7164f14b9120b48bcf5b9e10.
+Current task: Hali + main integration validation, pending human review.
+No VPS deployment has been performed or validated by this integration task.
 
-## Owner
-Claude
+## Owner / Reviewer
+Implementer: Codex. Reviewer: Human / ChatGPT.
 
-## Reviewer
-Codex
+## Objective
+Merge current main into a Hali-derived integration branch without rewriting
+either history. Preserve Hali UI/auth/health/one-second read-only chart alongside
+DEMO Ledger / Recovery V2 and Risk Budget Phase 1. MT5 risk_budget remains the
+authoritative read-only source for the Hali risk panel; unknown is never healthy.
 
-## Task
-Promote Take Profit V2 from shadow comparison to the TP selected for DEMO/PAPER execution, while keeping CURRENT as the shadow comparator.
+## Implemented contract
+- Daily budget uses persisted start-of-day equity, not current profitable equity.
+- Remaining = max(0, daily budget - persistent negative net deal losses - account open risk).
+- Planned = max(0, min(current-equity target risk, remaining)).
+- Open risk covers all account positions; a position without a valid SL fails closed.
+- Pending monetary risk is NOT_SUPPORTED; amount is null, not a fabricated zero.
+- Account/server H1 reservation remains NONE / PENDING / CONFIRMED, independent of MagicNumber.
+- Unknown snapshot amounts are null; risk health is UNKNOWN, not HEALTHY.
+- Observer-only telemetry has score_effect=0 and does not grant authorization.
+- Exact source defaults are recorded in CONTEXT.md, not asserted as VPS inputs.
 
-## Required behavior
-CHILL:
-- selected TP = 0.75R
+## Protected behavior
+No change to risk percentages, daily-budget/loss/open-risk semantics, drawdown,
+H1 ownership/reservation, position gating, sizing, SL/Adaptive Stop, TP V2/CURRENT
+shadow, scoring/thresholds, M15, patterns, sessions/news, ledger or order authorization.
+REAL remains hard-blocked; EnableLiveTrading=false. No new strategy or capital reservation.
+UseArmedInvalidationV1=false remains the source default; not promoted here.
 
-GOD:
-- selected TP = Structure-Aware TP V2
-- baseline = 1.25R
-- HIGH/MEDIUM structural obstacle may cut TP
-- buffer = 0.20 ATR
-- LOW confidence does not cut
-- LOW_REWARD remains allowed according to validated V2 behavior
+## Required validation
+Hali auth/health/live chart, dashboard/Observer/ledger/risk compatibility tests,
+protected safety characterization and the full versioned Python suite. Compile
+the main EA, Observer/ledger harnesses and HaliLiveFeed with real MT5 includes.
+Run git diff --check and report actual results in the PR. Local validation is
+not evidence of VPS deployment, HTTPS/assets configuration or MT5 recovery there.
 
-CURRENT:
-- continue calculating/logging as shadow
-- do not use CURRENT as selected TP in DEMO when V2 is enabled by this task
+## Workflow / next task
+Dedicated branch codex/hali-main-integration-v1, based on codex/hali-dashboard-v1;
+merge origin/main, preserve provenance, then PR against main. Human review
+required, NO automatic merge or deployment. Preserve the two untracked TP V2.1
+files and all VPS assets/state/secrets. Do not implement Risk Budget Phase 2,
+pending monetary risk or new strategies. Capture actual DEMO runtime evidence
+only after a separately approved, controlled VPS deployment.
 
-## Scope
-May modify only files required for:
-- TP selection
-- DEMO/PAPER execution plumbing
-- TP shadow telemetry
-- dashboard display
-- tests/harnesses directly related to this behavior
-
-## Do not change
-- RiskPercent
-- DailyLossLimitPercent
-- scoring
-- ArmScoreThreshold
-- MinScoreToTrade
-- SL logic
-- Adaptive Stop behavior
-- M15 scoring
-- patterns
-- news
-- account-mode REAL hard block
-- EnableLiveTrading policy
-
-## Validation
-Required:
-- targeted TP tests
-- full test suite
-- main EA compile: 0 errors / 0 warnings
-- Market Observer harness compile: 0 errors / 0 warnings
-- CURRENT shadow values still emitted
-- selected TP demonstrably V2 in DEMO/PAPER
-- REAL-account execution remains blocked
-
-## Runtime examples to verify
-CHILL:
-- selected RR approximately 0.75R
-
-GOD:
-- selected TP follows Structure-Aware V2 and can be below 1.25R only for validated structural reasons
-
-## Handoff
-Claude implements on a dedicated branch and reports:
-- files changed
-- tests
-- compile results
-- example CURRENT vs V2 vs selected output
-- limitations
-- commit hash
-
-Codex then reviews the branch/PR against this file.
-
-## Note
-Armed Invalidation V1 remains diagnostic and should not be enabled or mixed into this task.
+## Integration review notes
+The inherited Hali gateway confines public assets to the dashboard root, not
+the assets subtree: /assets/../... can expose internal dashboard files without
+a session. Confirmed with a synthetic fixture, without reading real secrets.
+Auth code was preserved, not hardened here. Require separately authorized
+security review/fix before public deployment; passing integration tests does
+not certify that static-file boundary. VPS dashboard/assets is untracked and
+must be preserved, not replaced/deleted by deployment or cleanup commands.
