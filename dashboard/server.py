@@ -61,7 +61,22 @@ for p in CANDIDATES:
         _seen.add(s); _u.append(p)
 CANDIDATES=_u
 
+def unknown_risk_snapshot():
+    """No new/legacy runtime evidence: unknown is not zero or healthy."""
+    fields=('observed_at','broker_day','persistent_state_checked_at','h1_local_entry_used','start_of_day_equity','current_equity',
+        'configured_risk_percent','target_risk_amount','daily_loss_limit_percent',
+        'daily_budget_amount','realized_daily_loss_used','account_open_risk',
+        'remaining_daily_budget','planned_risk_amount','candidate_planned_risk_amount',
+        'candidate_evaluated_at','current_drawdown_percent','max_drawdown_percent','h1_bar')
+    return {**dict.fromkeys(fields), 'schema_version':1,'observer_only':True,'score_effect':0,
+        'account_currency':'UNKNOWN','persistent_state_known':False,'open_risk_known':False,
+        'risk_state_known':False,'risk_state_health':'UNKNOWN','h1_reservation_state':'UNKNOWN',
+        'pending_risk_supported':False,'pending_risk_status':'NOT_SUPPORTED','pending_risk_amount':None,
+        'realized_loss_semantics':'SUM_NEGATIVE_NET_DEALS_PERSISTENT_MAX',
+        'budget_status_code':'RISK_STATE_UNKNOWN','block_code':'NO_DATA','block_reason':'Sin snapshot de riesgo MT5.'}
+
 OFFLINE={"updated_at":None,"symbol":"XAUUSD","timeframe":"H1","live_trading":False,"connected":False,
+"risk_budget":unknown_risk_snapshot(),
 "account_currency":"USD","balance":None,"equity":None,"start_of_day_equity":None,"daily_pnl":None,
 "risk_amount":0.0,"target_risk":0.0,"daily_loss_limit_percent":5.0,"daily_loss_budget":0.0,
 "daily_loss_used":0.0,"open_risk":0.0,"remaining_daily_budget":0.0,"effective_planned_risk":0.0,"risk_percent":5.0,"last_score":None,
@@ -258,6 +273,7 @@ class H(BaseHTTPRequestHandler):
                 d={**OFFLINE,'last_decision':f"Ignorando datos de {d.get('symbol','OTRO')}; esperando XAUUSD..."}
             else:
                 d={**d,'connected':True}
+            d.setdefault('risk_budget',unknown_risk_snapshot())
             d['news']=read_news()
             d['external_signal']=read_external()
             d['tradingview']=read_tradingview()

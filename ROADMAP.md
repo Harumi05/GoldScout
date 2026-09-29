@@ -13,6 +13,8 @@ Legend:
 - ✅ Incremental historical processing
 - ✅ percentage risk
 - ✅ percentage daily loss budget
+- 🟡 Risk Budget V2 Phase 1: observability/characterization implemented, pending human review
+- ⬜ Risk Budget V2 Phase 2: approved policy and atomic pending-risk design
 - ✅ broker-aware sizing
 - ✅ TRAIN / VALIDATION / OOS research framework
 
@@ -38,6 +40,7 @@ Legend:
 - ✅ first DEMO order sent and filled
 - ✅ position survived reconnect/restart at broker level
 - 🟡 complete ENTRY → EXIT → RESULT telemetry
+- ✅ DEMO ledger + position recovery V2 implemented (PR #11); operational validation remains separate
 - ⬜ validate TP close
 - ⬜ validate SL close
 - ⬜ validate manual/other close classification
@@ -140,12 +143,13 @@ Initially diagnostic, score_effect=0:
 - ⬜ news/gap/restart behavior
 
 ## 24/7 infrastructure
-- ⬜ Windows VPS
-- ⬜ MT5 autostart
-- ⬜ dashboard autostart
+- 🟡 Windows VPS deployment: operationally reported by owner; not independently validated here
+- 🟡 MT5 running 24/7: operationally reported by owner
+- ⬜ MT5 autostart: UNKNOWN / unvalidated
+- ⬜ dashboard autostart: UNKNOWN / unvalidated
 - ⬜ watchdog
 - ⬜ heartbeat
-- ⬜ reconnect monitoring
+- 🟡 reconnect handling: terminal-connected authorization + position reconciliation exist; operational monitoring unvalidated
 - ⬜ log rotation
 - ⬜ backups
 
@@ -155,3 +159,13 @@ Initially diagnostic, score_effect=0:
 - ⬜ prop-firm-specific limits
 - ⬜ challenge/demo validation
 - ⬜ funded real only after stable DEMO evidence
+
+## Agreed multi-strategy sequence — future, not activation
+Risk Budget V2 → full DEMO lifecycle validation → Active Trade / Exit Engine
+→ broker clock/session validation → cost/execution model → baseline freeze
+→ robust backtesting / walk-forward / untouched OOS → Regime Router validation
+→ DAY Engine → SWING Engine → SCALP Engine only if net expectancy survives costs
+→ Cross-Engine Portfolio Risk Manager → combined DEMO → REAL only after evidence
+and explicit owner authorization changing the current REAL hard-block policy.
+Offline regime/Entry Quality diagnostics exist; broker clock remains UNKNOWN and
+session attribution is unverified. They do not activate these strategy engines.

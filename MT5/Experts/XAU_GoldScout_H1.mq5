@@ -8,6 +8,7 @@
 #include <GoldScout/TakeProfitPolicy.mqh>
 #include <GoldScout/DemoExecution.mqh>
 #include <GoldScout/DemoTradeLedger.mqh>
+#include <GoldScout/RiskBudgetSnapshot.mqh>
 #include <GoldScout/ContextScoring.mqh>
 #include <GoldScout/MarketObserver.mqh>
 
@@ -193,6 +194,12 @@ double   g_dailyLossUsed = 0.0;
 double   g_startOfDayEquity = 0.0;
 int      g_safetyStateDay = 0;
 datetime g_lastSafetyStateRefresh = 0;
+bool g_riskPersistentStateKnown=false;
+GoldScoutRiskSnapshot g_riskSnapshot;
+string g_riskBlockCode="NONE",g_riskBlockReason="";
+bool g_candidateRiskKnown=false;
+double g_candidatePlannedRisk=0.0;
+datetime g_candidateRiskEvaluatedAt=0;
 string   g_lastDecision = "Inicializando...";
 string   g_lastSetup = "-";
 int      g_lastScore = 0;
@@ -923,20 +930,24 @@ void BuildMarketObserverContext(GoldScoutObserverContext &context)
    context.executionReason=g_executionReason;
    context.executionRetcode=g_lastExecutionRetcode;
    context.signalEventId=g_observerSignalEventId;
+   context.riskBudgetJson=GSRB_Json(g_riskSnapshot);
+   context.riskBlockCode=g_riskBlockCode;
 }
 
 void PollMarketObserverClosedBars()
 {
    if(!EnableMarketObserver || !g_marketObserver.IsInitialized()) return;
+   RefreshRiskSnapshot();
    GoldScoutObserverContext context;
    BuildMarketObserverContext(context);
    g_marketObserver.PollClosedBars(context);
    g_marketObserver.PollOutcomes();
 }
 
-void CaptureMarketObserverState()
+void CaptureMarketObserverState(const bool riskAlreadyCaptured=false)
 {
    if(!EnableMarketObserver || !g_marketObserver.IsInitialized()) return;
+   if(!riskAlreadyCaptured) RefreshRiskSnapshot();
    GoldScoutObserverContext context;
    BuildMarketObserverContext(context);
    g_marketObserver.CaptureStateChange(context);
@@ -1744,8 +1755,9 @@ bool SafetyInputsValid(string &msg)
    return true;
 }
 
-// Gross realized loss/fees consume the daily budget and are never restored by
-// later gains. This is deliberately account-wide, matching the daily safety
+// Negative net deal results consume the budget; later positive deals do not
+// restore it. Costs are netted within each deal, not accumulated separately.
+// This is deliberately account-wide, matching the daily safety
 // invariant rather than only this symbol or MagicNumber.
 bool TodayAccountRealizedLoss(double &loss)
 {
@@ -1797,6 +1809,7 @@ int ServerDayId()
 
 bool RefreshPersistentSafetyState()
 {
+   g_riskPersistentStateKnown=false; // diagnostic only; all existing returns remain
    int day=ServerDayId();
    double equity=AccountInfoDouble(ACCOUNT_EQUITY);
    if(day<=0 || equity<=0.0) return false;
@@ -1852,6 +1865,7 @@ bool RefreshPersistentSafetyState()
    if(!FlushSafetyState()) return false;
    g_safetyStateDay=day;
    g_lastSafetyStateRefresh=TimeTradeServer();
+   g_riskPersistentStateKnown=true;
    return true;
 }
 
@@ -1914,6 +1928,56 @@ double RemainingDailyLossBudget()
 {
    double openRisk=0.0,remaining=0.0;
    return CurrentDailyBudgetState(openRisk,remaining)?remaining:0.0;
+}
+
+void SetRiskBlockDiagnostic(const string code,const string reason)
+{
+   g_riskBlockCode=code;
+   g_riskBlockReason=reason;
+}
+
+// Read-only projection. It never refreshes persistent state or authorizes an
+// order. Unknown values are null in the nested contract, not a safe zero.
+void RefreshRiskSnapshot()
+{
+   // A later non-risk decision must not inherit a previous candidate's block.
+   if(g_riskBlockCode!="NONE" && g_riskBlockReason!=g_lastDecision)
+      SetRiskBlockDiagnostic("NONE","");
+   ZeroMemory(g_riskSnapshot);
+   g_riskSnapshot.observedAt=TimeTradeServer();
+   g_riskSnapshot.brokerDay=ServerDayId();
+   g_riskSnapshot.accountCurrency=AccountInfoString(ACCOUNT_CURRENCY);
+   if(g_riskSnapshot.accountCurrency=="") g_riskSnapshot.accountCurrency="UNKNOWN";
+   g_riskSnapshot.equity=AccountInfoDouble(ACCOUNT_EQUITY);
+   g_riskSnapshot.equityKnown=MathIsValidNumber(g_riskSnapshot.equity) && g_riskSnapshot.equity>0.0;
+   g_riskSnapshot.persistentStateKnown=g_riskPersistentStateKnown &&
+      g_riskSnapshot.brokerDay>0 && g_safetyStateDay==g_riskSnapshot.brokerDay;
+   g_riskSnapshot.persistentStateCheckedAt=g_lastSafetyStateRefresh;
+   g_riskSnapshot.startEquity=g_startOfDayEquity;
+   g_riskSnapshot.riskPercent=RiskPercent;
+   g_riskSnapshot.targetRisk=PlannedRiskAmount();
+   g_riskSnapshot.dailyPercent=DailyLossLimitPercent;
+   g_riskSnapshot.dailyBudget=DailyLossBudgetAmount();
+   g_riskSnapshot.realizedLoss=g_dailyLossUsed;
+   g_riskSnapshot.openRiskKnown=CurrentDailyBudgetState(g_riskSnapshot.openRisk,g_riskSnapshot.remaining);
+   g_riskSnapshot.plannedRisk=MathMax(0.0,MathMin(g_riskSnapshot.targetRisk,g_riskSnapshot.remaining));
+   g_riskSnapshot.candidateRiskKnown=g_candidateRiskKnown;
+   g_riskSnapshot.candidatePlannedRisk=g_candidatePlannedRisk;
+   g_riskSnapshot.candidateEvaluatedAt=g_candidateRiskEvaluatedAt;
+   g_riskSnapshot.maxDrawdown=MaxDrawdownPercent;
+   g_riskSnapshot.drawdownKnown=g_riskSnapshot.persistentStateKnown &&
+      g_riskSnapshot.equityKnown && g_peakEquity>0.0;
+   if(g_riskSnapshot.drawdownKnown)
+      // Equity may rise between safety refreshes: gains are not negative drawdown.
+      g_riskSnapshot.drawdown=MathMax(0.0,100.0*(g_peakEquity-g_riskSnapshot.equity)/g_peakEquity);
+   g_riskSnapshot.h1Bar=iTime(_Symbol,PERIOD_H1,0);
+   g_riskSnapshot.h1LocalEntryUsed=g_entryUsedThisBar;
+   EntryReservationPhase phase=ENTRY_RESERVATION_NONE;
+   g_riskSnapshot.h1Known=g_riskSnapshot.h1Bar>0 && EntryReservationForBar(g_riskSnapshot.h1Bar,phase);
+   g_riskSnapshot.h1State=!g_riskSnapshot.h1Known?"UNKNOWN":
+      (phase==ENTRY_RESERVATION_PENDING?"PENDING":(phase==ENTRY_RESERVATION_CONFIRMED?"CONFIRMED":"NONE"));
+   g_riskSnapshot.blockCode=g_riskBlockCode;
+   g_riskSnapshot.blockReason=g_riskBlockReason;
 }
 
 double EncodeEntryReservation(const datetime bar,const EntryReservationPhase phase)
@@ -2021,11 +2085,13 @@ bool RiskGuardsPass()
    if(!SafetyInputsValid(configMsg))
    {
       g_lastDecision=configMsg;
+      SetRiskBlockDiagnostic("RISK_CONFIGURATION_INVALID",g_lastDecision);
       return false;
    }
    if(!RefreshPersistentSafetyState())
    {
       g_lastDecision="Bloqueado: no se pudo cargar el estado persistente de seguridad";
+      SetRiskBlockDiagnostic("RISK_STATE_UNKNOWN",g_lastDecision);
       return false;
    }
 
@@ -2036,22 +2102,35 @@ bool RiskGuardsPass()
       if(dd >= MaxDrawdownPercent)
       {
          g_lastDecision = "Bloqueado: drawdown máximo alcanzado";
+         SetRiskBlockDiagnostic("MAX_DRAWDOWN_REACHED",g_lastDecision);
          return false;
       }
    }
 
-   if(RemainingDailyLossBudget()<=0.0)
+   double openRisk=0.0,remaining=0.0;
+   bool openRiskKnown=CurrentDailyBudgetState(openRisk,remaining);
+   // Same decision as RemainingDailyLossBudget() <= 0: failure maps to zero.
+   if(!openRiskKnown || remaining<=0.0)
    {
-      g_lastDecision = "Bloqueado: pérdida diaria máxima";
+      string code=GSRB_DailyBlockCode(true,openRiskKnown,remaining,g_dailyLossUsed,openRisk);
+      g_lastDecision=StringFormat("Bloqueado: presupuesto diario de riesgo | %s | pérdidas netas utilizadas=%.2f | riesgo abierto=%s | restante=%.2f",
+         code,g_dailyLossUsed,openRiskKnown?DoubleToString(openRisk,2):"UNKNOWN",remaining);
+      SetRiskBlockDiagnostic(code,g_lastDecision);
       return false;
    }
 
    MqlTick tick;
-   if(!SymbolInfoTick(_Symbol, tick)) return false;
+   if(!SymbolInfoTick(_Symbol, tick))
+   {
+      g_lastDecision="Bloqueado: spread no verificable; cotización no disponible";
+      SetRiskBlockDiagnostic("SPREAD_UNKNOWN",g_lastDecision);
+      return false;
+   }
    double spread = tick.ask - tick.bid;
    if(spread > MaxSpreadUSD)
    {
       g_lastDecision = StringFormat("Bloqueado: spread %.2f > %.2f", spread, MaxSpreadUSD);
+      SetRiskBlockDiagnostic("SPREAD_TOO_HIGH",g_lastDecision);
       return false;
    }
 
@@ -3085,6 +3164,7 @@ bool CanOpenTrade()
    if(bar<=0)
    {
       g_lastDecision="Bloqueado: no se pudo identificar la vela H1 actual";
+      SetRiskBlockDiagnostic("H1_RESERVATION_UNKNOWN",g_lastDecision);
       g_diagBlockReason=g_lastDecision;
       return false;
    }
@@ -3093,6 +3173,7 @@ bool CanOpenTrade()
    {
       g_entryUsedThisBar=true;
       g_lastDecision="Bloqueado: no se pudo leer la reserva H1 persistente";
+      SetRiskBlockDiagnostic("H1_RESERVATION_UNKNOWN",g_lastDecision);
       g_diagBlockReason=g_lastDecision;
       return false;
    }
@@ -3102,6 +3183,9 @@ bool CanOpenTrade()
       g_lastDecision=reservation==ENTRY_RESERVATION_PENDING
          ? "Bloqueado: reserva H1 PENDING; posible orden previa sin confirmar"
          : "Bloqueado: entrada H1 ya CONFIRMED";
+      SetRiskBlockDiagnostic(reservation==ENTRY_RESERVATION_PENDING?
+         "H1_ENTRY_PENDING":(reservation==ENTRY_RESERVATION_CONFIRMED?
+         "H1_ENTRY_ALREADY_CONFIRMED":"H1_LOCAL_ENTRY_USED"),g_lastDecision);
       g_diagBlockReason=g_lastDecision;
       return false;
    }
@@ -3109,6 +3193,7 @@ bool CanOpenTrade()
    if(!PositionStateAllowsEntry(positionBlock,DemoMultiplePositionsAllowed()))
    {
       g_lastDecision=positionBlock;
+      SetRiskBlockDiagnostic("POSITION_STATE_BLOCKED",g_lastDecision);
       g_diagBlockReason=g_lastDecision;
       return false;
    }
@@ -3132,6 +3217,10 @@ void AppendDealLog(string direction, int score, string setup, double targetAmoun
 
 void TryTrade()
 {
+   SetRiskBlockDiagnostic("NONE","");
+   g_candidateRiskKnown=false;
+   g_candidatePlannedRisk=0.0;
+   g_candidateRiskEvaluatedAt=0;
    // Always build the technical/news diagnostic first, even when a guard later blocks execution.
    // TP/SL telemetry belongs only to the decision evaluated by this invocation.
    ResetTakeProfitDiagnostics();
@@ -3221,6 +3310,7 @@ void TryTrade()
    MqlTick tick; if(!SymbolInfoTick(_Symbol,tick))
    {
       g_lastDecision="Bloqueado: no se pudo leer precio de mercado";
+      SetRiskBlockDiagnostic("MARKET_PRICE_UNKNOWN",g_lastDecision);
       g_diagBlockReason=g_lastDecision;
       UpdateDashboard(); return;
    }
@@ -3231,6 +3321,7 @@ void TryTrade()
    if(!LoadBrokerContract(contract,contractMsg))
    {
       g_lastDecision="Bloqueado: "+contractMsg;
+      SetRiskBlockDiagnostic("BROKER_CONTRACT_UNKNOWN",g_lastDecision);
       g_diagBlockReason=g_lastDecision;
       UpdateDashboard(); return;
    }
@@ -3278,17 +3369,25 @@ void TryTrade()
    g_stopCurrentATR=g_stopCurrentDistance/atr;
    g_stopAdaptiveATR=adaptiveReady?g_stopAdaptiveDistance/atr:0.0;
 
-   double remainingDailyBudget=RemainingDailyLossBudget();
-   if(remainingDailyBudget<=0.0)
+   double candidateOpenRisk=0.0,remainingDailyBudget=0.0;
+   bool candidateBudgetKnown=CurrentDailyBudgetState(candidateOpenRisk,remainingDailyBudget);
+   if(!candidateBudgetKnown || remainingDailyBudget<=0.0)
    {
       g_lastDecision="Bloqueado: presupuesto de pérdida diaria agotado";
+      SetRiskBlockDiagnostic(GSRB_DailyBlockCode(g_riskPersistentStateKnown,
+         candidateBudgetKnown,remainingDailyBudget,g_dailyLossUsed,
+         candidateOpenRisk),g_lastDecision);
       g_diagBlockReason=g_lastDecision; UpdateDashboard(); return;
    }
    double targetRisk=PlannedRiskAmount();
    double plannedRisk=MathMax(0.0,MathMin(targetRisk,remainingDailyBudget)),lots=0.0;
+   g_candidateRiskKnown=true;
+   g_candidatePlannedRisk=plannedRisk;
+   g_candidateRiskEvaluatedAt=TimeTradeServer();
    if(plannedRisk<=0.0)
    {
       g_lastDecision="Bloqueado: riesgo planificado no válido";
+      SetRiskBlockDiagnostic("PLANNED_RISK_INVALID",g_lastDecision);
       g_diagBlockReason=g_lastDecision; UpdateDashboard(); return;
    }
    // Size against the worst entry price permitted by the existing 30-point
@@ -3305,6 +3404,7 @@ void TryTrade()
       LogSizingDiagnostic(type,price,worstCasePrice,sl,targetRisk,remainingDailyBudget,
          plannedRisk,contract,0.0,0.0,sizingBlockReason);
       g_lastDecision=StringFormat("Bloqueado: lote mínimo/step del broker impide arriesgar %.2f %s",plannedRisk,contract.accountCurrency);
+      SetRiskBlockDiagnostic("SIZING_"+sizingBlockReason,g_lastDecision);
       g_diagBlockReason=g_lastDecision; UpdateDashboard(); return;
    }
 
@@ -3314,6 +3414,7 @@ void TryTrade()
       LogSizingDiagnostic(type,price,worstCasePrice,sl,targetRisk,remainingDailyBudget,
          plannedRisk,contract,lots,0.0,"FINAL_RISK_UNAVAILABLE");
       g_lastDecision="Bloqueado: no se pudo calcular riesgo al SL";
+      SetRiskBlockDiagnostic("FINAL_RISK_UNAVAILABLE",g_lastDecision);
       g_diagBlockReason=g_lastDecision; UpdateDashboard(); return;
    }
    if(actualRisk>plannedRisk+1e-6 || actualRisk>remainingDailyBudget+1e-6)
@@ -3321,6 +3422,7 @@ void TryTrade()
       LogSizingDiagnostic(type,price,worstCasePrice,sl,targetRisk,remainingDailyBudget,
          plannedRisk,contract,lots,actualRisk,"FINAL_RISK_EXCEEDS_BUDGET");
       g_lastDecision="Bloqueado: riesgo real al SL excede el presupuesto de seguridad";
+      SetRiskBlockDiagnostic("FINAL_RISK_EXCEEDS_BUDGET",g_lastDecision);
       g_diagBlockReason=g_lastDecision; UpdateDashboard(); return;
    }
    LogSizingDiagnostic(type,price,worstCasePrice,sl,targetRisk,remainingDailyBudget,
@@ -3354,6 +3456,7 @@ void TryTrade()
    if(!MarginAllowsOrder(type,price,lots,contract,marginMsg))
    {
       g_lastDecision=marginMsg;
+      SetRiskBlockDiagnostic("MARGIN_CHECK_FAILED",g_lastDecision);
       g_diagBlockReason=g_lastDecision; UpdateDashboard(); return;
    }
 
@@ -3422,6 +3525,7 @@ void TryTrade()
    if(!PositionStateAllowsEntry(positionBlock,DemoMultiplePositionsAllowed()))
    {
       g_lastDecision=positionBlock;
+      SetRiskBlockDiagnostic("POSITION_STATE_BLOCKED",g_lastDecision);
       g_diagBlockReason=g_lastDecision; UpdateDashboard(); return;
    }
 
@@ -3472,12 +3576,19 @@ void TryTrade()
    // Re-read both realized loss and aggregate open risk immediately before the
    // H1 reservation. A concurrent/manual position can only reduce availability.
    double finalOpenRisk=0.0,finalRemainingBudget=0.0;
-   if(!RefreshPersistentSafetyState() ||
-      !CurrentDailyBudgetState(finalOpenRisk,finalRemainingBudget) ||
+   bool finalStateKnown=RefreshPersistentSafetyState();
+   bool finalOpenRiskKnown=finalStateKnown &&
+      CurrentDailyBudgetState(finalOpenRisk,finalRemainingBudget);
+   if(!finalStateKnown || !finalOpenRiskKnown ||
       actualRisk>finalRemainingBudget+1e-6)
    {
       g_lastDecision=StringFormat("Bloqueado: riesgo agregado excede presupuesto diario | openRisk=%.2f realizedLoss=%.2f remaining=%.2f requested=%.2f",
          finalOpenRisk,g_dailyLossUsed,finalRemainingBudget,actualRisk);
+      string finalCode=!finalStateKnown?"RISK_STATE_UNKNOWN":
+         (!finalOpenRiskKnown?"OPEN_RISK_UNKNOWN":(finalRemainingBudget<=0.0?
+         GSRB_DailyBlockCode(true,true,finalRemainingBudget,g_dailyLossUsed,finalOpenRisk):
+         "CANDIDATE_RISK_EXCEEDS_REMAINING_BUDGET"));
+      SetRiskBlockDiagnostic(finalCode,g_lastDecision);
       g_diagBlockReason=g_lastDecision; UpdateDashboard(); return;
    }
    AppendExecutionEvent("SIGNAL",g_activeSignalEventId,
@@ -3487,6 +3598,7 @@ void TryTrade()
    if(!ReserveH1EntryPending(entryBar))
    {
       g_lastDecision="Bloqueado: no se pudo crear reserva H1 PENDING persistente";
+      SetRiskBlockDiagnostic("H1_RESERVATION_FAILED",g_lastDecision);
       g_diagBlockReason=g_lastDecision; UpdateDashboard(); return;
    }
    if(executeDemo && !g_demoLedger.ClaimAttempt(g_activeSignalEventId,_Symbol,
@@ -4616,21 +4728,18 @@ void UpdateDashboard()
 {
    // Observation failures are deliberately ignored: dataset persistence must
    // never change an existing trading, scoring or risk decision.
-   CaptureMarketObserverState();
+   RefreshRiskSnapshot();
+   CaptureMarketObserverState(true);
    if(!WriteDashboard) return;
    double balance=AccountInfoDouble(ACCOUNT_BALANCE), equity=AccountInfoDouble(ACCOUNT_EQUITY);
    string accountCurrency=AccountInfoString(ACCOUNT_CURRENCY);
    if(accountCurrency=="") accountCurrency="UNKNOWN";
    RefreshExecutionAuthorizationDiagnostic();
    bool executionAllowed=g_executionAuthorizationReason=="DEMO_ACCOUNT_CONFIRMED";
-   double targetRisk=PlannedRiskAmount();
-   double dailyLossBudget=DailyLossBudgetAmount();
-   double openRisk=0.0,remainingDailyBudget=0.0;
-   if(!CurrentDailyBudgetState(openRisk,remainingDailyBudget))
-   {
-      openRisk=0.0;
-      remainingDailyBudget=0.0;
-   }
+   double targetRisk=g_riskSnapshot.targetRisk;
+   double dailyLossBudget=g_riskSnapshot.dailyBudget;
+   double openRisk=g_riskSnapshot.openRiskKnown?g_riskSnapshot.openRisk:0.0;
+   double remainingDailyBudget=g_riskSnapshot.openRiskKnown?g_riskSnapshot.remaining:0.0;
    double effectivePlannedRisk=MathMax(0.0,MathMin(targetRisk,remainingDailyBudget));
    string active=ActiveTradeJson();
    string openPositions=OpenPositionsJson();
@@ -4640,6 +4749,7 @@ void UpdateDashboard()
    if(h==INVALID_HANDLE) return;
 
    string json="{";
+   json += "\"risk_budget\":"+GSRB_Json(g_riskSnapshot)+",";
    json += StringFormat("\"updated_at\":\"%s\",",JsonEscape(TimeToString(TimeTradeServer(),TIME_DATE|TIME_SECONDS)));
    json += StringFormat("\"symbol\":\"%s\",\"timeframe\":\"H1\",",JsonEscape(_Symbol));
    json += StringFormat("\"account_login\":%I64d,",AccountInfoInteger(ACCOUNT_LOGIN));
