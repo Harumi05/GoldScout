@@ -155,8 +155,9 @@ class HaliGateway(BaseHTTPRequestHandler):
         self.end_headers()
 
     def client_key(self) -> str:
-        forwarded = (self.headers.get("X-Forwarded-For") or "").split(",", 1)[0].strip()
-        return forwarded or (self.client_address[0] if self.client_address else "unknown")
+        # No verified proxy-header contract: HTTP headers cannot own this bucket.
+        # Behind local Caddy, the peer is localhost: intentionally a global limit.
+        return self.client_address[0] if self.client_address else "unknown"
 
     def current_user(self):
         config = get_auth_config()

@@ -4,7 +4,8 @@
 Risk Budget V2 Phase 1: MERGED / ACCEPTED via PR #12.
 Main merge: 968ad45d7b2b538e7164f14b9120b48bcf5b9e10.
 Current task: Hali + main integration implemented; PR #13 remains DRAFT, pending human review.
-Security asset-root blocker: FIXED_PENDING_REVIEW.
+Security asset-root blocker: ACCEPTED_BY_REVIEW.
+Login rate-limit proxy trust: FIXED_PENDING_REVIEW; socket peer only, ignoring forwarded headers.
 No VPS deployment has been performed or validated by this integration task.
 
 ## Owner / Reviewer
@@ -50,10 +51,14 @@ pending monetary risk or new strategies. Capture actual DEMO runtime evidence
 only after a separately approved, controlled VPS deployment.
 
 ## Integration review notes
-The inherited public asset-root blocker is FIXED_PENDING_REVIEW: asset paths
+The inherited public asset-root blocker is ACCEPTED_BY_REVIEW: asset paths
 are decoded/validated and resolved strictly within dashboard/assets, including
 symlink/junction confinement. Traversal fails with 403; the fixed /login resource
 remains separately public. HTTP regression tests use synthetic files only.
 Human security review is required before marking PR #13 ready; no security
 approval or VPS deployment is claimed. VPS dashboard/assets is untracked and
 must be preserved, not replaced/deleted by deployment or cleanup commands.
+Login buckets now use only the TCP peer IP: behind local Caddy this is a
+conservative global localhost limit (8 attempts / 5 minutes), not per-client
+forwarded identity. No versioned Caddy sanitization contract was found; actual
+production proxy behavior remains UNKNOWN. The identity fix awaits human review.

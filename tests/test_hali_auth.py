@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import secrets
+import socket
 import subprocess
 import sys
 import tempfile
@@ -107,6 +108,112 @@ class HaliAuthServiceTests(unittest.TestCase):
         header = "other=abc; hali_session=token-value; x=1"
         self.assertEqual(auth_service.parse_cookie(header), "token-value")
         self.assertEqual(auth_service.parse_cookie("hali_session_extra=no"), "")
+
+
+class HaliLoginRateLimitIdentityTests(unittest.TestCase):
+    """Socket peer, not arbitrary forwarding headers, owns the login bucket."""
+
+    def setUp(self):
+        salt = secrets.token_bytes(16)
+        record = {"enabled": True, "display_name": "Rate-limit test", "iterations": 1000,
+                  "salt": b64e(salt),
+                  "password_hash": auth_service.derive_password_hash("synthetic-test-only", salt, 1000)}
+        self.config = auth_service.AuthConfig({"tester": record}, secrets.token_bytes(32), Path("unused"))
+        self.config_patch = patch.object(auth_gateway, "get_auth_config", return_value=self.config)
+        self.attempts_patch = patch.object(auth_gateway, "LOGIN_ATTEMPTS", {})
+        self.config_patch.start()
+        self.attempts_patch.start()
+        self.httpd = auth_gateway.ThreadingHTTPServer(("127.0.0.1", 0), auth_gateway.HaliGateway)
+        self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
+        self.thread.start()
+
+    def tearDown(self):
+        self.httpd.shutdown()
+        self.httpd.server_close()
+        self.thread.join(timeout=5)
+        self.attempts_patch.stop()
+        self.config_patch.stop()
+
+    def login(self, *, forwarded=None, password="wrong", extra_headers=None):
+        headers = {"Content-Type": "application/json", **(extra_headers or {})}
+        if forwarded is not None:
+            headers["X-Forwarded-For"] = forwarded
+        body = json.dumps({"username": "tester", "password": password}).encode("utf-8")
+        headers.update({"Host": "127.0.0.1", "Content-Length": str(len(body)), "Connection": "close"})
+        # One small HTTP frame avoids a Windows reset racing a delayed body
+        # when the existing limiter rejects before consuming that body.
+        frame = ("POST /api/login HTTP/1.1\r\n" + "".join(
+            f"{name}: {value}\r\n" for name, value in headers.items()) + "\r\n").encode("ascii") + body
+        with socket.create_connection(self.httpd.server_address, timeout=5) as connection:
+            response = http.client.HTTPResponse(connection)
+            try:
+                connection.sendall(frame)
+                response.begin()
+                return response.status, dict(response.getheaders()), json.loads(response.read())
+            finally:
+                response.close()
+
+    def test_repeated_login_hits_existing_limit(self):
+        for _ in range(auth_gateway.LOGIN_MAX_ATTEMPTS):
+            self.assertEqual(self.login()[0], 401)
+        status, headers, body = self.login()
+        self.assertEqual(status, 429)
+        self.assertEqual(body["error"], "RATE_LIMITED")
+        self.assertEqual(headers["Retry-After"], str(auth_gateway.LOGIN_WINDOW_SECONDS))
+
+    def test_changing_forwarded_headers_cannot_bypass_limit(self):
+        for index in range(auth_gateway.LOGIN_MAX_ATTEMPTS):
+            self.assertEqual(self.login(forwarded=f"198.51.100.{index + 1}")[0], 401)
+        self.assertEqual(self.login(forwarded="203.0.113.100")[0], 429)
+        self.assertEqual(set(auth_gateway.LOGIN_ATTEMPTS), {"127.0.0.1"})
+
+    def test_forwarded_chains_share_real_peer_bucket(self):
+        choices = (None, "", "198.51.100.1", "203.0.113.2, 127.0.0.1")
+        for index in range(auth_gateway.LOGIN_MAX_ATTEMPTS):
+            self.assertEqual(self.login(forwarded=choices[index % len(choices)])[0], 401)
+        self.assertEqual(self.login(forwarded="198.51.100.99, 203.0.113.99")[0], 429)
+
+    def test_other_forwarding_headers_do_not_reset_bucket(self):
+        for index in range(auth_gateway.LOGIN_MAX_ATTEMPTS):
+            self.assertEqual(self.login(extra_headers={"Forwarded": f"for=198.51.100.{index + 1}",
+                                                       "X-Real-IP": f"203.0.113.{index + 1}"})[0], 401)
+        self.assertEqual(self.login(extra_headers={"Forwarded": "for=203.0.113.99"})[0], 429)
+
+    def test_client_key_is_peer_even_with_forwarding_header(self):
+        handler = object.__new__(auth_gateway.HaliGateway)
+        handler.client_address = ("192.0.2.7", 54321)
+        handler.headers = {"X-Forwarded-For": "198.51.100.1, 127.0.0.1"}
+        self.assertEqual(handler.client_key(), "192.0.2.7")
+        handler.client_address = ("192.0.2.7", 54322)
+        self.assertEqual(handler.client_key(), "192.0.2.7")
+        handler.client_address = None
+        self.assertEqual(handler.client_key(), "unknown")
+
+    def test_successful_login_clears_same_peer_bucket(self):
+        other_attempts = [auth_gateway.time.time()]
+        auth_gateway.LOGIN_ATTEMPTS["192.0.2.1"] = other_attempts
+        self.assertEqual(self.login(forwarded="198.51.100.1")[0], 401)
+        status, headers, _ = self.login(forwarded="203.0.113.1", password="synthetic-test-only")
+        self.assertEqual(status, 200)
+        self.assertIn("HttpOnly; Secure; SameSite=Lax", headers["Set-Cookie"])
+        self.assertEqual(auth_gateway.LOGIN_ATTEMPTS, {"192.0.2.1": other_attempts})
+        for _ in range(auth_gateway.LOGIN_MAX_ATTEMPTS):
+            self.assertEqual(self.login(forwarded="198.51.100.2")[0], 401)
+        self.assertEqual(self.login(forwarded="203.0.113.2")[0], 429)
+
+    def test_success_cannot_bypass_already_exhausted_bucket(self):
+        for _ in range(auth_gateway.LOGIN_MAX_ATTEMPTS):
+            self.assertEqual(self.login()[0], 401)
+        self.assertEqual(self.login(forwarded="203.0.113.1", password="synthetic-test-only")[0], 429)
+
+    def test_window_expiry_allows_same_identity_again(self):
+        with patch.object(auth_gateway.time, "time", return_value=1000):
+            for _ in range(auth_gateway.LOGIN_MAX_ATTEMPTS):
+                self.assertEqual(self.login()[0], 401)
+            self.assertEqual(self.login()[0], 429)
+        with patch.object(auth_gateway.time, "time", return_value=1000 + auth_gateway.LOGIN_WINDOW_SECONDS + 1):
+            self.assertEqual(self.login(forwarded="203.0.113.1")[0], 401)
+        self.assertEqual(set(auth_gateway.LOGIN_ATTEMPTS), {"127.0.0.1"})
 
 
 class HaliPublicAssetBoundaryTests(unittest.TestCase):
