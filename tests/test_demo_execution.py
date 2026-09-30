@@ -202,7 +202,7 @@ class DemoExecutionSourceContracts(unittest.TestCase):
         self.assertIn("FileFlush(handle)", ledger)
 
     def test_dashboard_has_execution_positions_closures_and_stats(self):
-        for label in ("DEMO EXECUTION", "OPEN POSITIONS", "SESSION STATS"):
+        for label in ('id="execState"', 'id="active"', 'id="statsTrades"'):
             self.assertIn(label, self.dashboard)
         for field in ("open_positions", "session_stats", "demo_execution", "open_risk"):
             self.assertIn(field, self.ea)

@@ -1,16 +1,21 @@
 # GoldScout — Current Task
 
 ## Status
-IMPLEMENTED_PENDING_HUMAN_REVIEW — Risk Budget V2 Phase 1.
-Acceptance/merge is not implied by this status.
+Risk Budget V2 Phase 1: MERGED / ACCEPTED via PR #12.
+Main merge: 968ad45d7b2b538e7164f14b9120b48bcf5b9e10.
+Current task: Hali + main integration implemented; PR #13 remains DRAFT, pending human review.
+Security asset-root blocker: ACCEPTED_BY_REVIEW.
+Login rate-limit proxy trust: FIXED_PENDING_REVIEW; socket peer only, ignoring forwarded headers.
+No VPS deployment has been performed or validated by this integration task.
 
 ## Owner / Reviewer
 Implementer: Codex. Reviewer: Human / ChatGPT.
 
 ## Objective
-Expose the CURRENT risk decomposition and precise block diagnostics in one
-read-only snapshot, dashboard and Market Observer. Characterize existing
-acceptance behavior before any risk-policy change.
+Merge current main into a Hali-derived integration branch without rewriting
+either history. Preserve Hali UI/auth/health/one-second read-only chart alongside
+DEMO Ledger / Recovery V2 and Risk Budget Phase 1. MT5 risk_budget remains the
+authoritative read-only source for the Hali risk panel; unknown is never healthy.
 
 ## Implemented contract
 - Daily budget uses persisted start-of-day equity, not current profitable equity.
@@ -31,13 +36,29 @@ REAL remains hard-blocked; EnableLiveTrading=false. No new strategy or capital r
 UseArmedInvalidationV1=false remains the source default; not promoted here.
 
 ## Required validation
-Risk/safety characterization (before/after allow-block equivalence), dashboard
-and Observer contracts, full Python suite, main EA and Market Observer harness
-compilation, and git diff --check. Report actual results and limitations in the PR.
-Compilation does not prove deployed behavior; request an actual VPS/MT5 snapshot.
+Hali auth/health/live chart, dashboard/Observer/ledger/risk compatibility tests,
+protected safety characterization and the full versioned Python suite. Compile
+the main EA, Observer/ledger harnesses and HaliLiveFeed with real MT5 includes.
+Run git diff --check and report actual results in the PR. Local validation is
+not evidence of VPS deployment, HTTPS/assets configuration or MT5 recovery there.
 
 ## Workflow / next task
-Dedicated branch codex/risk-budget-v2-phase1-observability; PR against main,
-human review required, NO automatic merge. Preserve the two untracked TP V2.1 files.
-After approval: define Risk Budget V2 Phase 2 policy/atomic pending-risk ownership
-with explicit approval and tests; do not implement it in Phase 1.
+Dedicated branch codex/hali-main-integration-v1, based on codex/hali-dashboard-v1;
+merge origin/main, preserve provenance, then PR against main. Human review
+required, NO automatic merge or deployment. Preserve the two untracked TP V2.1
+files and all VPS assets/state/secrets. Do not implement Risk Budget Phase 2,
+pending monetary risk or new strategies. Capture actual DEMO runtime evidence
+only after a separately approved, controlled VPS deployment.
+
+## Integration review notes
+The inherited public asset-root blocker is ACCEPTED_BY_REVIEW: asset paths
+are decoded/validated and resolved strictly within dashboard/assets, including
+symlink/junction confinement. Traversal fails with 403; the fixed /login resource
+remains separately public. HTTP regression tests use synthetic files only.
+Human security review is required before marking PR #13 ready; no security
+approval or VPS deployment is claimed. VPS dashboard/assets is untracked and
+must be preserved, not replaced/deleted by deployment or cleanup commands.
+Login buckets now use only the TCP peer IP: behind local Caddy this is a
+conservative global localhost limit (8 attempts / 5 minutes), not per-client
+forwarded identity. No versioned Caddy sanitization contract was found; actual
+production proxy behavior remains UNKNOWN. The identity fix awaits human review.

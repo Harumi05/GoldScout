@@ -28,9 +28,19 @@ except Exception:
     read_tradingview_snapshot = None
     record_tradingview_status = None
 try:
-    from market_observer_service import observation_snapshot as read_market_observer_snapshot
-except Exception:
-    read_market_observer_snapshot = None
+    from .market_observer_service import (
+        observation_snapshot as read_market_observer_snapshot,
+        recent_bar_series as read_market_bar_series,
+    )
+except ImportError:
+    try:
+        from market_observer_service import (
+            observation_snapshot as read_market_observer_snapshot,
+            recent_bar_series as read_market_bar_series,
+        )
+    except Exception:
+        read_market_observer_snapshot = None
+        read_market_bar_series = None
 try:
     from .demo_trade_ledger import read_ledger as read_demo_ledger
 except ImportError:
@@ -46,6 +56,20 @@ except ValueError:
 TRADINGVIEW_RATE_LIMITER=SlidingWindowRateLimiter(_tv_rate_limit,60) if SlidingWindowRateLimiter else None
 
 ROOT = Path(__file__).resolve().parent
+STATIC_CONTENT_TYPES = {
+    '.html': 'text/html; charset=utf-8',
+    '.css': 'text/css; charset=utf-8',
+    '.js': 'application/javascript; charset=utf-8',
+    '.json': 'application/json; charset=utf-8',
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.webp': 'image/webp',
+    '.svg': 'image/svg+xml',
+    '.ico': 'image/x-icon',
+    '.webmanifest': 'application/manifest+json; charset=utf-8',
+}
+
 CANDIDATES = []
 custom = os.environ.get('MT5_COMMON_FILES','').strip()
 if custom:
@@ -134,6 +158,74 @@ def read_json(name):
             except Exception:
                 pass
     return None
+
+def file_health(name):
+    """Return non-sensitive freshness metadata for one Common/Files artifact."""
+    now=time.time()
+    for p in CANDIDATES:
+        f=p/name
+        if not f.exists():
+            continue
+        try:
+            stat=f.stat()
+            return {
+                'exists':True,
+                'age_seconds':max(0.0,now-stat.st_mtime),
+                'size_bytes':int(stat.st_size),
+            }
+        except OSError:
+            return {'exists':True,'age_seconds':None,'size_bytes':None}
+    return {'exists':False,'age_seconds':None,'size_bytes':None}
+
+
+def system_health_snapshot():
+    dash=read_json('xau_goldscout_dashboard.json')
+    news=read_json('gold_news_analysis.json')
+    dash_file=file_health('xau_goldscout_dashboard.json')
+    news_file=file_health('gold_news_analysis.json')
+    observer_file=file_health('market_observations.jsonl')
+    live_file=file_health('hali_live_market.json')
+    broker=bool(((dash or {}).get('demo_execution') or {}).get('broker_connected'))
+    execution_allowed=bool(((dash or {}).get('demo_execution') or {}).get('execution_allowed'))
+    account_mode=str(((dash or {}).get('demo_execution') or {}).get('account_mode') or 'UNKNOWN')
+    dash_age=dash_file.get('age_seconds')
+    ea_fresh=bool(dash_file.get('exists') and isinstance(dash_age,(int,float)) and dash_age<=45)
+    news_age=news_file.get('age_seconds')
+    try:
+        news_stale_after=float((news or {}).get('stale_after_seconds',900))
+    except (TypeError,ValueError):
+        news_stale_after=900.0
+    news_fresh=bool(news_file.get('exists') and isinstance(news_age,(int,float)) and news_age<=max(60.0,news_stale_after))
+    return {
+        'ok':True,
+        'server_epoch':time.time(),
+        'backend':{'status':'ONLINE'},
+        'ea_feed':{
+            'status':'ONLINE' if ea_fresh else ('STALE' if dash_file.get('exists') else 'NO_DATA'),
+            **dash_file,
+        },
+        'broker':{
+            'status':'CONNECTED' if broker else 'DISCONNECTED',
+            'connected':broker,
+            'account_mode':account_mode,
+        },
+        'demo_execution':{
+            'status':'READY' if execution_allowed else 'BLOCKED',
+            'execution_allowed':execution_allowed,
+        },
+        'news_engine':{
+            'status':'ONLINE' if news_fresh else ('STALE' if news_file.get('exists') else 'NO_DATA'),
+            **news_file,
+        },
+        'market_observer':{
+            'status':'AVAILABLE' if observer_file.get('exists') else 'NO_DATA',
+            **observer_file,
+        },
+        'live_feed':{
+            'status':'ONLINE' if live_file.get('exists') and isinstance(live_file.get('age_seconds'),(int,float)) and live_file.get('age_seconds')<=5 else ('STALE' if live_file.get('exists') else 'NO_DATA'),
+            **live_file,
+        },
+    }
 
 def read_news():
     d=read_json('gold_news_analysis.json')
@@ -289,11 +381,44 @@ class H(BaseHTTPRequestHandler):
             d=canonical_lifecycle_value(d)
             self.send_payload(200,'application/json; charset=utf-8',json.dumps(d,ensure_ascii=False).encode()); return
         if self.path.startswith('/api/health'):
-            payload={'ok':True,'candidates':[str(p) for p in CANDIDATES],
-                'news_file':bool(read_json('gold_news_analysis.json')),
+            payload=system_health_snapshot()
+            payload.update({
                 'external_signal_file':bool(read_json('external_signal_etoro.json')),
                 'tradingview_events':read_tradingview().get('event_count',0),
-                'market_observations':read_market_observer().get('observation_count',0)}
+                'market_observations':read_market_observer().get('observation_count',0),
+            })
+            self.send_payload(200,'application/json; charset=utf-8',json.dumps(payload,ensure_ascii=False).encode()); return
+        if self.path.startswith('/api/chart'):
+            from urllib.parse import urlparse, parse_qs
+            query=parse_qs(urlparse(self.path).query)
+            timeframe=(query.get('timeframe',['H1'])[0] or 'H1').upper()
+            try:
+                limit=int(query.get('limit',['120'])[0])
+            except (TypeError,ValueError):
+                limit=120
+            if not read_market_bar_series:
+                payload={'source':'MT5','timeframe':timeframe,'bars':[],'count':0,'observer_only':True,'score_effect':0}
+            else:
+                paths=[candidate/'market_observations.jsonl' for candidate in CANDIDATES]
+                payload=read_market_bar_series(paths,timeframe=timeframe,limit=limit)
+
+            live_market=read_json('hali_live_market.json') or {}
+            if not isinstance(live_market,dict):
+                live_market={}
+            live_bars=live_market.get('bars') if isinstance(live_market.get('bars'),dict) else {}
+            live_bar=live_bars.get(timeframe) if isinstance(live_bars,dict) else None
+            if not isinstance(live_bar,dict):
+                live_bar=None
+            payload.update({
+                'live_bar':live_bar,
+                'bid':live_market.get('bid'),
+                'ask':live_market.get('ask'),
+                'spread':live_market.get('spread'),
+                'server_time':live_market.get('server_time'),
+                'server_epoch':live_market.get('server_epoch'),
+                'tick_epoch':live_market.get('tick_epoch'),
+                'tick_time_msc':live_market.get('tick_time_msc'),
+            })
             self.send_payload(200,'application/json; charset=utf-8',json.dumps(payload,ensure_ascii=False).encode()); return
         if self.path.startswith('/api/log'):
             import csv
@@ -309,9 +434,14 @@ class H(BaseHTTPRequestHandler):
                         pass
             self.send_payload(200,'application/json; charset=utf-8',json.dumps(rows[-100:],ensure_ascii=False).encode()); return
         rel=self.path.split('?',1)[0]
-        file=ROOT/('index.html' if rel=='/' else rel.lstrip('/'))
+        requested='index.html' if rel=='/' else rel.lstrip('/')
+        file=(ROOT/requested).resolve()
+        try:
+            file.relative_to(ROOT.resolve())
+        except ValueError:
+            self.send_payload(403,'text/plain; charset=utf-8',b'403'); return
         if file.exists() and file.is_file():
-            ctype='text/html; charset=utf-8' if file.suffix.lower()=='.html' else 'text/plain; charset=utf-8'
+            ctype=STATIC_CONTENT_TYPES.get(file.suffix.lower(),'application/octet-stream')
             self.send_payload(200,ctype,file.read_bytes()); return
         self.send_payload(404,'text/plain; charset=utf-8',b'404')
 
@@ -354,7 +484,7 @@ class H(BaseHTTPRequestHandler):
         self.send_payload(code,'application/json; charset=utf-8',json.dumps(result).encode())
 
 if __name__=='__main__':
-    print('GoldScout dashboard: http://127.0.0.1:8787')
+    print('Hali dashboard: http://127.0.0.1:8787')
     threading.Thread(target=news_loop,daemon=True).start()
     threading.Thread(target=external_loop,daemon=True).start()
     ThreadingHTTPServer(('127.0.0.1',8787),H).serve_forever()

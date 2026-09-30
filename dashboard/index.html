@@ -2,8 +2,13 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>GoldScout 24/7 — XAUUSD</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#050607">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="icon" type="image/png" href="/assets/hali-logo.png">
+<link rel="apple-touch-icon" href="/assets/hali-logo.png">
+<link rel="manifest" href="/manifest.webmanifest">
+<title>HALI — XAUUSD Trading Intelligence</title>
 <style>
 :root{--bg:#efede3;--ink:#111;--muted:#66645f;--card:#f4f1e7;--line:#222;--orange:#f05223;--green:#27864a;--red:#c94633}
 *{box-sizing:border-box} body{margin:0;background:radial-gradient(circle at 50% 10%,#faf8ef 0,#ebe8dc 42%,#dfdccf 100%);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--ink)}
@@ -16,31 +21,1116 @@
 @media(max-width:900px){.span4,.span6,.span8{grid-column:span 12}.headline{font-size:40px}.stats{grid-template-columns:repeat(2,1fr)}.trade{grid-template-columns:1fr 1fr}.trade button{grid-column:span 2}.sources{grid-template-columns:1fr}}
 @media(max-width:520px){.analysis-grid{grid-template-columns:1fr}.wrap{padding-left:16px;padding-right:16px}.headline{font-size:34px}.stats{grid-template-columns:1fr}.row{align-items:flex-start;flex-wrap:wrap}.source-box{padding:9px}}
 .session-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-top:12px}.session-box{border:1px solid #aaa;border-radius:8px;padding:12px;background:#efecdf;min-width:0}.session-box .label{font-size:11px;color:var(--muted);text-transform:uppercase}.session-box .big{font-size:22px;font-weight:900;margin-top:5px}.session-note{margin-top:10px;padding:10px;border-left:3px solid var(--orange);background:#efecdf}.session-open{border-color:var(--orange)}.centers{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:12px}.center-card{border:1px solid #aaa;border-radius:8px;padding:9px;background:#efecdf;min-width:0}.center-card strong{font-size:12px;display:flex;justify-content:space-between;gap:8px;align-items:flex-start}.center-open-time{font-size:10px;font-weight:700;color:var(--muted);white-space:nowrap}.center-card .small{margin-top:4px}.center-open{border-color:var(--orange);box-shadow:0 0 0 1px rgba(240,82,35,.15)}.center-active{border-color:var(--green)}@media(max-width:1000px){.centers{grid-template-columns:repeat(3,minmax(0,1fr))}}@media(max-width:700px){.centers{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:460px){.centers{grid-template-columns:1fr}}@media(max-width:900px){.session-grid{grid-template-columns:repeat(3,1fr)}}@media(max-width:620px){.session-grid{grid-template-columns:repeat(2,1fr)}}
+
+/* ===== HALI GOTHIC TRADING UI V1 ===== */
+:root{
+  --bg:#050607;--ink:#f4eee4;--muted:#8d929b;--card:#0b0e11;--card2:#101419;
+  --line:#232831;--orange:#c49a55;--gold:#d7ad63;--gold2:#8b6431;
+  --green:#20c997;--red:#ef3f58;--blood:#8f0f22;--shadow:0 18px 55px rgba(0,0,0,.42)
+}
+html{background:#050607;scroll-behavior:smooth}
+body{
+  color:var(--ink);
+  background:
+    radial-gradient(circle at 86% -8%,rgba(132,8,28,.18),transparent 28rem),
+    radial-gradient(circle at 7% 68%,rgba(129,89,35,.08),transparent 30rem),
+    linear-gradient(180deg,#07090b 0%,#030405 100%);
+  min-height:100vh
+}
+body:before{
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:-1;opacity:.22;
+  background-image:linear-gradient(rgba(255,255,255,.018) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.012) 1px,transparent 1px);
+  background-size:36px 36px
+}
+.hali-topbar{
+  height:72px;position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-content:space-between;
+  padding:0 22px;border-bottom:1px solid #20242b;background:rgba(5,7,9,.92);
+  backdrop-filter:blur(18px);box-shadow:0 8px 30px rgba(0,0,0,.28)
+}
+.hali-brand{display:flex;align-items:center;gap:12px;min-width:0}
+.hali-brand img{width:52px;height:52px;object-fit:cover;border-radius:50%;border:1px solid #7e592f;box-shadow:0 0 24px rgba(207,48,67,.18)}
+.hali-wordmark{font-family:Georgia,'Times New Roman',serif;font-size:25px;letter-spacing:.16em;color:#e7bd75;text-transform:uppercase;line-height:1}
+.hali-tagline{font-size:9px;letter-spacing:.28em;color:#6f747c;margin-top:6px;text-transform:uppercase}
+.hali-topstats{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+.top-chip{border:1px solid #2b3139;background:#0b0e12;border-radius:9px;padding:8px 11px;font-size:11px;color:#b8bec7}
+.top-chip b{color:#f3eee7}.top-chip.online{border-color:rgba(32,201,151,.45);color:#45d9ab}.top-chip.offline{border-color:rgba(239,63,88,.45);color:#ef6375}
+.app-shell{display:grid;grid-template-columns:188px minmax(0,1fr);min-height:calc(100vh - 72px)}
+.hali-sidebar{
+  position:sticky;top:72px;height:calc(100vh - 72px);padding:24px 14px;border-right:1px solid #1c2026;
+  background:linear-gradient(180deg,rgba(8,10,12,.98),rgba(4,5,6,.98));overflow:auto
+}
+.hali-nav{display:grid;gap:8px}.hali-nav a{color:#8e949e;text-decoration:none;padding:11px 12px;border:1px solid transparent;border-radius:9px;font-size:12px;transition:.18s ease}
+.hali-nav a:hover{color:#f3eee7;border-color:#322229;background:linear-gradient(90deg,rgba(143,15,34,.22),transparent)}
+.hali-nav a.active{color:#fff;border-color:#5f1726;background:linear-gradient(90deg,rgba(143,15,34,.5),rgba(143,15,34,.06));box-shadow:inset 3px 0 #dc3049}
+.sidebar-mark{margin-top:28px;padding:14px;border-top:1px solid #20242a;color:#5f646c;font-family:Georgia,serif;font-size:11px;letter-spacing:.18em;line-height:1.8;text-transform:uppercase}
+.main-stage{min-width:0}.wrap{max-width:1550px;padding:22px 22px 54px}
+.hero-brand{
+  min-height:205px;border:1px solid #242932;border-radius:16px;overflow:hidden;position:relative;
+  display:flex;align-items:center;gap:24px;padding:25px 30px;margin-bottom:16px;
+  background:
+   radial-gradient(circle at 15% 50%,rgba(147,15,34,.22),transparent 18rem),
+   linear-gradient(115deg,#0b0d10 0%,#070809 62%,#10070a 100%);
+  box-shadow:var(--shadow)
+}
+.hero-brand:after{content:"";position:absolute;left:0;right:0;bottom:0;height:2px;background:linear-gradient(90deg,transparent,#8d5c2a,#b5152f,#8d5c2a,transparent);opacity:.7}
+.hero-logo{width:150px;height:150px;object-fit:cover;border-radius:18px;filter:drop-shadow(0 8px 30px rgba(0,0,0,.75));flex:0 0 auto}
+.hero-brand h1{font-family:Georgia,'Times New Roman',serif;font-size:56px;letter-spacing:.12em;margin:0;color:#e8c17d;text-transform:uppercase;text-shadow:0 0 24px rgba(202,151,75,.12)}
+.hero-brand p{margin:7px 0 0;color:#989da5;font-size:12px;letter-spacing:.18em;text-transform:uppercase}
+.hero-brand .bloodline{color:#c92c43}
+.kpi-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px;margin:16px 0 8px}
+.kpi{min-width:0;padding:15px 16px;border:1px solid #262c34;border-radius:12px;background:linear-gradient(155deg,#101318,#090b0e);box-shadow:0 10px 28px rgba(0,0,0,.22)}
+.kpi-label{font-size:10px;letter-spacing:.11em;color:#858b94;text-transform:uppercase}.kpi-value{margin-top:7px;font-size:20px;font-weight:800;color:#f3efe9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.kpi-note{font-size:10px;color:#626973;margin-top:5px}
+.grid{gap:12px;margin-top:12px}
+.card{
+  background:linear-gradient(155deg,rgba(15,18,22,.97),rgba(7,9,11,.98));
+  border:1px solid #272d35;border-radius:13px;padding:17px;box-shadow:0 10px 30px rgba(0,0,0,.23);
+  position:relative;overflow:hidden
+}
+.card:before{content:"";position:absolute;left:0;top:0;width:100%;height:1px;background:linear-gradient(90deg,transparent,rgba(214,165,88,.38),transparent)}
+.card h3,.section-title{color:#d5ae6d;letter-spacing:.09em}.section-title{font-family:Georgia,'Times New Roman',serif;font-size:22px}
+.value,.score{color:#f4eee5}.small{color:#858b94}.analysis-box,.session-box,.center-card,.decision-box,.muted-box,.source-box,.notice,.reason{
+  background:#0a0d10;border-color:#2a3038;color:#d6d9dd
+}
+.analysis-row{border-top-color:#252b32}.session-note{background:#0a0d10;border-left-color:#a9162e}
+.pill{border-color:#343b45;background:#0b0e11;color:#b9bec6}.paper{border-color:rgba(32,201,151,.55);color:#39d5a4;background:rgba(32,201,151,.07)}
+.live{border-color:rgba(239,63,88,.58);color:#ef6375;background:rgba(239,63,88,.07)}
+.buy,.ok{color:#28d6a3!important}.sell,.bad{color:#f05269!important}.meter{background:#090b0d;border-color:#303741}.meter i{background:linear-gradient(90deg,#8d5c2a,#d6ad67,#9e1730)}
+button{color:#c9cdd3;border-color:#343b45;background:#0b0e11}button:hover{background:#161a20;border-color:#795530;color:#fff}
+.tag{border-bottom-color:#b0172e;color:#d9b36e}.headline-link{color:#d5d8de}
+hr{border:0;border-top:1px solid #282e36}
+#newsRisk,#aBlock,#stopReason{overflow-wrap:anywhere}
+@media(max-width:1200px){.kpi-grid{grid-template-columns:repeat(3,1fr)}.app-shell{grid-template-columns:150px minmax(0,1fr)}.hali-sidebar{padding-left:8px;padding-right:8px}}
+@media(max-width:900px){
+  .hali-topbar{height:auto;min-height:64px;padding:9px 13px}.hali-brand img{width:42px;height:42px}.hali-wordmark{font-size:20px}.hali-tagline{display:none}
+  .top-chip:nth-child(2),.top-chip:nth-child(3){display:none}.app-shell{display:block}.hali-sidebar{display:none}
+  .wrap{padding:14px 12px 38px}.hero-brand{min-height:150px;padding:18px;gap:15px}.hero-logo{width:94px;height:94px}.hero-brand h1{font-size:39px}
+  .hero-brand p{font-size:9px;letter-spacing:.11em}.kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.kpi{padding:12px}.kpi-value{font-size:17px}
+  .card{padding:14px}.section-title{font-size:19px}.trade{grid-template-columns:1fr}.trade button{grid-column:auto}
+}
+@media(max-width:460px){.hero-brand{min-height:125px}.hero-logo{width:76px;height:76px}.hero-brand h1{font-size:32px}.kpi-grid{grid-template-columns:repeat(2,1fr)}.top-chip{padding:7px 8px}}
+
+
+/* ===== HALI TERMINAL V2 ===== */
+.main-stage{padding-bottom:22px}
+.hero-brand{min-height:170px;padding:22px 26px}
+.hero-logo{width:126px;height:126px}
+.hero-brand h1{font-size:48px}
+.hero-signal-strip{display:flex;flex-wrap:wrap;gap:8px;margin-top:17px}
+.hero-signal-strip span{min-width:110px;padding:8px 10px;border:1px solid #262d35;border-radius:9px;background:rgba(7,9,11,.75)}
+.hero-signal-strip small{display:block;font-size:8px;letter-spacing:.12em;color:#676e78;margin-bottom:4px}
+.hero-signal-strip b{font-size:11px;color:#ddd8d0;display:block;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mode-chip{border-color:#603341;color:#d98996}
+.kpi{position:relative;overflow:hidden}.kpi:after{content:"";position:absolute;right:-20px;bottom:-34px;width:72px;height:72px;border:1px solid rgba(205,162,91,.08);transform:rotate(45deg)}
+.kpi-value.buy{color:#2bd7a6}.kpi-value.sell{color:#ef5369}
+.grid{align-items:start}
+.grid>.section-market{order:1;grid-column:span 8}
+.grid>.section-active{order:2;grid-column:span 4}
+.grid>.section-stats{order:3;grid-column:span 4}
+.grid>.section-analysis{order:4;grid-column:span 8}
+.grid>.section-risk{order:5;grid-column:span 4}
+.grid>.section-monitor{order:6;grid-column:span 4}
+.grid>.section-session{order:7;grid-column:span 8}
+.grid>.section-stop{order:8;grid-column:span 6}
+.grid>.section-tp{order:9;grid-column:span 6}
+.grid>.section-execution{order:10;grid-column:span 6}
+.grid>.section-news{order:11;grid-column:span 6}
+.grid>.section-history{order:12;grid-column:span 12}
+.grid>.section-external{order:20;grid-column:span 4}
+.grid>.section-tv{order:21;grid-column:span 4}
+.grid>.section-observer{order:22;grid-column:span 4}
+.grid>.section-how{order:23;grid-column:span 12}
+.section-market{min-height:260px}
+.section-market .value{font-size:27px}.section-market .score{font-size:48px}
+.section-active{min-height:260px}.section-active .trade{grid-template-columns:1fr;gap:8px}.section-active .trade button{width:max-content}
+.section-stats .stats{grid-template-columns:repeat(2,1fr)}
+.section-analysis .analysis-grid,.section-monitor .analysis-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+.section-stop .analysis-grid,.section-tp .analysis-grid,.section-execution .analysis-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+.section-news .stats{grid-template-columns:repeat(2,1fr)}
+.section-history .trade{background:#090c0f;border:1px solid #222831;border-radius:10px;margin-top:8px;padding:12px}
+.section-title{display:flex;align-items:center;gap:10px}.section-title:before{content:"";width:3px;height:18px;border-radius:3px;background:linear-gradient(#d5a960,#a60e26)}
+.statusline{flex-wrap:wrap}
+.advanced-control{max-width:1550px;margin:0 auto;padding:0 22px 26px}.advanced-control button{width:100%;padding:12px;letter-spacing:.08em;font-size:10px;color:#9ca1a8}
+.hali-mobile-nav{display:none}
+@media(max-width:1150px){
+ .grid>.section-market,.grid>.section-analysis,.grid>.section-session{grid-column:span 12}
+ .grid>.section-active,.grid>.section-stats,.grid>.section-risk,.grid>.section-monitor{grid-column:span 6}
+ .grid>.section-stop,.grid>.section-tp,.grid>.section-execution,.grid>.section-news{grid-column:span 6}
+}
+@media(max-width:900px){
+ body{padding-bottom:72px}
+ .hali-topbar{position:sticky;top:0}
+ .hali-wordmark{letter-spacing:.12em}
+ .hero-brand{min-height:138px;padding:16px}
+ .hero-logo{width:92px;height:92px}
+ .hero-brand h1{font-size:37px}
+ .hero-signal-strip{gap:6px;margin-top:11px}.hero-signal-strip span{min-width:86px;padding:7px 8px}.hero-signal-strip span:first-child{display:none}
+ .grid>.section-market,.grid>.section-active,.grid>.section-stats,.grid>.section-analysis,.grid>.section-risk,.grid>.section-monitor,.grid>.section-session,.grid>.section-stop,.grid>.section-tp,.grid>.section-execution,.grid>.section-news,.grid>.section-history,.grid>.section-external,.grid>.section-tv,.grid>.section-observer,.grid>.section-how{grid-column:span 12}
+ .grid>.section-active{order:2}.grid>.section-stats{order:3}.grid>.section-analysis{order:4}.grid>.section-risk{order:5}
+ .advanced-section{display:none}.show-advanced .advanced-section{display:block}
+ .hali-mobile-nav{display:grid;grid-template-columns:repeat(5,1fr);position:fixed;left:8px;right:8px;bottom:8px;z-index:200;border:1px solid #2c323a;border-radius:14px;background:rgba(8,10,12,.94);backdrop-filter:blur(18px);box-shadow:0 10px 30px rgba(0,0,0,.55);overflow:hidden}
+ .hali-mobile-nav a{color:#777e88;text-decoration:none;text-align:center;padding:8px 3px 7px;font-size:15px}.hali-mobile-nav a:active{background:#171016;color:#e8b969}
+ .hali-mobile-nav small{display:block;font-size:8px;margin-top:2px;letter-spacing:.04em}
+ .advanced-control{padding:0 12px 8px}
+ .section-active{min-height:0}.section-market{min-height:0}
+}
+@media(max-width:560px){
+ .kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr));margin-top:10px}.kpi{min-height:88px}
+ .kpi:nth-child(5),.kpi:nth-child(6){display:block}
+ .hero-brand{gap:12px}.hero-logo{width:78px;height:78px;border-radius:13px}.hero-brand h1{font-size:31px}.hero-brand p{font-size:8px}
+ .hero-signal-strip span{min-width:76px;flex:1}.hero-signal-strip b{font-size:10px}
+ .section-market .stats,.section-stats .stats,.section-news .stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .section-analysis .analysis-grid,.section-monitor .analysis-grid,.section-stop .analysis-grid,.section-tp .analysis-grid,.section-execution .analysis-grid{grid-template-columns:1fr}
+ .card{border-radius:12px}
+ .trade{grid-template-columns:1fr}
+ .terminal-chip,.update-chip{display:none!important}
+}
+
+
+/* ===== HALI MOBILE POLISH V3 ===== */
+@media(max-width:900px){
+  body{padding-bottom:118px}
+  .hali-topbar{min-height:58px;padding:7px 12px;border-bottom-color:#242a31}
+  .hali-brand img{width:38px;height:38px}
+  .hali-wordmark{font-size:18px}
+  .hali-topstats{gap:6px}
+  .top-chip{font-size:10px;padding:7px 9px}
+  .hero-brand{margin-bottom:12px}
+  .kpi-grid{margin-bottom:12px}
+  .hali-mobile-nav{
+    left:12px;right:12px;bottom:12px;
+    padding-bottom:max(0px,env(safe-area-inset-bottom));
+    border-radius:16px;
+  }
+  .hali-mobile-nav a{padding:9px 3px 8px}
+  .section-market,.section-active,.section-analysis,.section-risk,.section-news{scroll-margin-top:82px}
+}
+@media(max-width:560px){
+  .wrap{padding-top:10px}
+  .hero-brand{min-height:0;display:grid;grid-template-columns:70px 1fr;align-items:center;padding:14px 15px}
+  .hero-logo{width:68px;height:68px}
+  .hero-brand h1{font-size:29px;line-height:1}
+  .hero-brand p{font-size:7.5px;line-height:1.4;margin-top:6px}
+  .hero-signal-strip{grid-column:1/-1;display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:13px}
+  .hero-signal-strip span{min-width:0;padding:8px}
+  .hero-signal-strip span:first-child{display:none}
+  .hero-signal-strip small{font-size:7px}.hero-signal-strip b{font-size:10px}
+  .kpi-grid{gap:8px}
+  .kpi{min-height:82px;padding:12px 13px}
+  .kpi-label{font-size:9px}.kpi-value{font-size:19px}.kpi-note{font-size:9px}
+  .grid{gap:10px}
+  .card{padding:14px}
+  .section-title{font-size:17px}
+  .section-market .value{font-size:25px}
+  .section-market .row{gap:10px}
+  .section-market .pill{font-size:9px;padding:6px 8px}
+  .section-market .stats{gap:8px}
+  .section-market .score{font-size:39px}
+  .section-active .trade,.section-history .trade{padding:11px}
+  .hali-mobile-nav small{font-size:7.5px}
+}
+
+
+/* ===== HALI PRICE CHART ===== */
+.grid>.section-chart{order:2;grid-column:span 8;min-height:380px}
+.grid>.section-active{order:2;grid-column:span 4}
+.grid>.section-stats{order:3}
+.chart-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}
+.chart-head .section-title{margin-bottom:5px}
+.chart-tabs{display:flex;gap:5px;padding:4px;border:1px solid #292f37;background:#080a0d;border-radius:10px}
+.chart-tabs button{min-width:46px;padding:7px 9px;border:0;border-radius:7px;color:#717883;background:transparent;font-size:10px}
+.chart-tabs button:hover{background:#12161b}.chart-tabs button.active{color:#f2e5cf;background:linear-gradient(180deg,#30251a,#19130e);box-shadow:inset 0 0 0 1px #72552f}
+.chart-quote{display:flex;align-items:baseline;gap:12px;margin:14px 0 8px;flex-wrap:wrap}
+.chart-quote strong{font-size:25px;color:#f0ece5}.chart-quote span{font-size:11px;color:#808791}.chart-quote .up{color:#27d5a3}.chart-quote .down{color:#ef5369}
+.chart-wrap{position:relative;height:290px;border:1px solid #20262d;border-radius:10px;overflow:hidden;background:linear-gradient(180deg,#080b0e,#06080a)}
+#priceChart{display:block;width:100%;height:100%}
+.chart-empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#626a74;font-size:11px;letter-spacing:.04em}
+.chart-legend{display:flex;gap:15px;margin-top:9px;color:#6f7680;font-size:9px;text-transform:uppercase;letter-spacing:.06em}
+.chart-legend span{display:flex;align-items:center;gap:5px}.chart-legend i{width:14px;height:2px;display:inline-block}.legend-candle{background:#c9b07d}.legend-ema20{background:#d8a64d}.legend-ema200{background:#9a4260}
+@media(max-width:1150px){.grid>.section-chart{grid-column:span 12}.grid>.section-active{grid-column:span 6}}
+@media(max-width:900px){.grid>.section-chart{grid-column:span 12;order:2}.grid>.section-active{order:3}.chart-wrap{height:260px}}
+@media(max-width:560px){.section-chart{padding:12px}.chart-head{align-items:center}.chart-head .small{display:none}.chart-wrap{height:230px}.chart-quote{margin-top:10px}.chart-quote strong{font-size:22px}.chart-tabs button{min-width:40px;padding:6px 7px}}
+
+
+/* ===== HALI MOBILE POLISH V4 ===== */
+@media(max-width:560px){
+  .hali-topbar{min-height:54px;padding:6px 10px}
+  .hali-brand{gap:9px}.hali-brand img{width:34px;height:34px}.hali-wordmark{font-size:17px}
+  .top-chip{font-size:9px;padding:6px 8px;border-radius:8px}
+  .hero-brand{grid-template-columns:62px 1fr;padding:12px 13px;border-radius:14px}
+  .hero-logo{width:60px;height:60px}
+  .hero-brand h1{font-size:27px;letter-spacing:.10em}
+  .hero-brand p{font-size:7px;letter-spacing:.10em}
+  .hero-signal-strip{margin-top:10px}
+  .hero-signal-strip span{padding:7px}
+  .kpi{min-height:76px;padding:10px 12px}
+  .kpi-value{font-size:18px}.kpi-note{margin-top:3px}
+  .section-market{padding:13px}
+  .section-market .value{font-size:23px}
+  .section-market .row{align-items:center}
+  .section-market .stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+  .section-market .stat{padding-top:8px}
+  .section-market .score{font-size:34px}
+  .section-chart{padding:12px}
+  .chart-head{gap:8px}
+  .chart-head .section-title{font-size:16px;white-space:nowrap}
+  .chart-tabs{padding:3px}
+  .chart-tabs button{font-size:9px;min-width:37px;padding:6px}
+  .chart-quote{gap:8px}
+  .chart-quote strong{font-size:21px}
+  .chart-quote span{font-size:10px}
+  .chart-wrap{height:218px}
+  .chart-legend{gap:10px;font-size:8px}
+  .section-active .section-title,.section-stats .section-title,.section-history .section-title{font-size:16px}
+  .section-active .trade{padding:10px}
+  .hali-mobile-nav{left:10px;right:10px;bottom:8px;border-radius:14px}
+  .hali-mobile-nav a{padding:7px 2px 6px}
+  .hali-mobile-nav small{font-size:7px}
+}
+@media(max-width:390px){
+  .hero-brand h1{font-size:24px}
+  .hero-brand p{display:none}
+  .chart-head .section-title{font-size:15px}
+  .kpi-value{font-size:16px}
+}
+
+
+/* ===== HALI ACTIVE TRADE CARD V5 ===== */
+.section-active{overflow:visible}
+.trade-empty{min-height:150px;display:flex;align-items:center;gap:14px;padding:18px;border:1px dashed #2a3139;border-radius:11px;background:#080b0e}
+.trade-empty-mark{width:42px;height:42px;border:1px solid #3b4149;border-radius:50%;display:grid;place-items:center;color:#74552f;font-size:19px;flex:0 0 auto}
+.trade-empty strong{font-size:11px;letter-spacing:.10em;color:#c7cbd0}.trade-empty p{margin:7px 0 0;color:#757c86;font-size:10px;line-height:1.55}
+.live-trade-card{border:1px solid #2b3139;border-radius:13px;padding:15px;background:linear-gradient(155deg,#0d1115,#07090b);box-shadow:inset 0 1px 0 rgba(218,174,102,.08),0 14px 35px rgba(0,0,0,.28)}
+.live-trade-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+.live-trade-symbol{font-family:Georgia,'Times New Roman',serif;font-weight:700;font-size:19px;color:#e5c07d;letter-spacing:.04em}
+.direction-badge{display:inline-flex;align-items:center;margin-left:6px;padding:4px 7px;border-radius:7px;font-family:ui-monospace,monospace;font-size:9px;letter-spacing:.04em;vertical-align:2px}
+.direction-badge.long{color:#31d8a7;border:1px solid rgba(49,216,167,.34);background:rgba(49,216,167,.07)}
+.direction-badge.short{color:#ef5a70;border:1px solid rgba(239,90,112,.34);background:rgba(239,90,112,.07)}
+.live-trade-tags{display:flex;gap:5px;flex-wrap:wrap;margin-top:7px}.live-trade-tags span{font-size:8px;text-transform:uppercase;letter-spacing:.06em;color:#777f89;border:1px solid #262c33;padding:4px 6px;border-radius:6px;background:#090c0f}
+.live-state{font-size:8px;letter-spacing:.09em;color:#35d2a3;border:1px solid rgba(53,210,163,.3);border-radius:8px;padding:6px 8px;white-space:nowrap}.live-state i{display:inline-block;width:6px;height:6px;border-radius:50%;background:#35d2a3;margin-right:5px;box-shadow:0 0 10px rgba(53,210,163,.65)}
+.live-trade-pnl{display:grid;grid-template-columns:1.5fr 1fr;gap:8px;margin-top:14px;padding:11px 0;border-top:1px solid #20262d;border-bottom:1px solid #20262d}
+.live-trade-pnl small,.live-price-grid small,.live-trade-meta small{display:block;font-size:7px;letter-spacing:.10em;color:#676f79;margin-bottom:4px}
+.live-trade-pnl strong{font-size:22px;letter-spacing:.01em}.live-trade-pnl>div:last-child{text-align:right}.live-trade-pnl>div:last-child strong{font-size:16px}
+.live-price-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-top:12px}.live-price-grid>div{padding:8px;border:1px solid #242a31;border-radius:8px;background:#090c0f;min-width:0}.live-price-grid b{font-size:11px;color:#d8dbe0}
+.rr-rail-wrap{margin-top:14px}.rr-rail-labels{display:grid;grid-template-columns:1fr 1fr 1fr;font-size:7px;color:#626a74;letter-spacing:.05em;margin-bottom:6px}.rr-rail-labels span:nth-child(2){text-align:center}.rr-rail-labels span:last-child{text-align:right}
+.rr-rail{height:8px;position:relative;border-radius:999px;background:#11161b;overflow:visible;border:1px solid #272d34}
+.rr-rail .rail-loss{position:absolute;left:0;top:0;bottom:0;width:33.33%;border-radius:999px 0 0 999px;background:linear-gradient(90deg,rgba(145,21,40,.65),rgba(145,21,40,.16))}
+.rr-rail .rail-win{position:absolute;right:0;top:0;bottom:0;border-radius:0 999px 999px 0;background:linear-gradient(90deg,rgba(38,128,102,.12),rgba(39,190,146,.5))}
+.entry-marker,.current-marker{position:absolute;top:50%;width:2px;height:14px;transform:translate(-1px,-50%);background:#d9b46f;box-shadow:0 0 7px rgba(217,180,111,.35)}
+.current-marker{width:8px;height:8px;border-radius:50%;transform:translate(-4px,-50%);background:#e7e7e7;border:1px solid #080a0d;box-shadow:0 0 0 2px #3b4149}
+.current-marker.buy{background:#2bd6a5;box-shadow:0 0 0 2px rgba(43,214,165,.18),0 0 12px rgba(43,214,165,.35)}.current-marker.sell{background:#ef566d;box-shadow:0 0 0 2px rgba(239,86,109,.18),0 0 12px rgba(239,86,109,.35)}
+.live-trade-meta{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:12px}.live-trade-meta span{min-width:0}.live-trade-meta b{font-size:10px;color:#c4c9cf}
+.trade-detail-btn{margin-top:12px;width:100%;font-size:8px;letter-spacing:.10em;padding:8px}.trade-reason{font-size:9px}
+@media(max-width:560px){
+ .live-trade-card{padding:13px}.live-trade-symbol{font-size:18px}.live-trade-pnl strong{font-size:20px}
+ .live-price-grid{grid-template-columns:repeat(2,1fr)}
+ .live-trade-meta{grid-template-columns:repeat(2,1fr);gap:9px}
+}
+
+
+/* ===== HALI SIGNAL PANEL V6 ===== */
+.signal-panel{overflow:visible}
+.signal-header{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.signal-decision{padding:7px 10px;border-radius:8px;border:1px solid #343a43;background:#0a0d10;color:#8e959f;font-size:9px;letter-spacing:.09em;white-space:nowrap}
+.signal-decision.ready{color:#31d5a4;border-color:rgba(49,213,164,.38);background:rgba(49,213,164,.07)}
+.signal-decision.armed{color:#d8ad66;border-color:rgba(216,173,102,.38);background:rgba(216,173,102,.07)}
+.signal-decision.blocked{color:#ef5b70;border-color:rgba(239,91,112,.38);background:rgba(239,91,112,.07)}
+.signal-score-grid{display:grid;grid-template-columns:1fr 1fr;gap:11px;margin-top:15px}
+.signal-score-card{padding:13px;border:1px solid #272e36;border-radius:11px;background:#090c0f}
+.signal-score-top{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px}
+.signal-score-top span{font-size:10px;letter-spacing:.12em;color:#7c838d}
+.signal-score-top strong{font-size:24px}
+.long-side .signal-score-top strong{color:#2bd6a5}.short-side .signal-score-top strong{color:#ef566d}
+.signal-meter{height:10px;position:relative;border:1px solid #293038;border-radius:999px;background:#101419;overflow:visible}
+.signal-meter i{display:block;height:100%;width:0;border-radius:999px;transition:width .35s ease}
+.long-side .signal-meter i{background:linear-gradient(90deg,#135b49,#2bd6a5)}
+.short-side .signal-meter i{background:linear-gradient(90deg,#651827,#ef566d)}
+.signal-meter b{position:absolute;top:-3px;width:1px;height:16px;background:#6f7781;opacity:.7}
+.signal-meter .arm-marker{left:58%}.signal-meter .trade-marker{left:74%;background:#d3ac69}
+.signal-thresholds{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;margin-top:6px;font-size:7px;color:#59616b}
+.signal-thresholds span:nth-child(2),.signal-thresholds span:nth-child(3){text-align:center}.signal-thresholds span:last-child{text-align:right}
+.signal-core-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:11px}
+.signal-core-card{position:relative;min-height:78px;padding:11px;border:1px solid #252c34;border-radius:10px;background:linear-gradient(145deg,#0b0e12,#080a0d)}
+.signal-core-card small{display:block;font-size:7px;letter-spacing:.11em;color:#656d77;margin-bottom:7px}
+.signal-core-card strong{font-size:13px;color:#d6d9dd;display:block;max-width:86%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.signal-core-card>span{position:absolute;right:10px;bottom:9px;font-size:10px;color:#5f6670}
+.signal-core-card.bull strong,.signal-core-card.bull>span{color:#2bd6a5}.signal-core-card.bear strong,.signal-core-card.bear>span{color:#ef566d}
+.signal-decision-box{display:grid;grid-template-columns:2fr 1fr;gap:9px;margin-top:11px;padding:12px;border:1px solid #2b3139;border-radius:10px;background:linear-gradient(90deg,#0b0e11,#090b0e)}
+.signal-decision-box small{display:block;font-size:7px;color:#646c76;letter-spacing:.10em;margin-bottom:5px}
+.signal-decision-box strong{font-size:11px;color:#d0d4d9;line-height:1.5}
+.signal-block{text-align:right}.signal-block strong{color:#d59b60}
+.signal-tech-strip{display:grid;grid-template-columns:repeat(8,1fr);gap:6px;margin-top:10px}
+.signal-tech-strip>div{padding:8px;border-top:1px solid #262d34;min-width:0}
+.signal-tech-strip span{display:block;font-size:7px;color:#626a74;margin-bottom:4px;white-space:nowrap}
+.signal-tech-strip strong{font-size:10px;color:#c7cbd0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
+.signal-details{margin-top:10px;border:1px solid #252c33;border-radius:9px;background:#080b0e}
+.signal-details summary{cursor:pointer;list-style:none;padding:9px 11px;font-size:8px;letter-spacing:.09em;color:#777f89}.signal-details summary::-webkit-details-marker{display:none}
+.signal-details[open] summary{border-bottom:1px solid #252c33;color:#d5ad68}
+.signal-details-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;padding:9px}
+.signal-disclaimer{margin-top:9px;padding-top:9px;border-top:1px dashed #262c33;font-size:8px}
+@media(max-width:900px){.signal-tech-strip{grid-template-columns:repeat(4,1fr)}.signal-details-grid{grid-template-columns:1fr}}
+@media(max-width:560px){
+ .signal-header{align-items:center}.signal-header .section-title{margin-bottom:2px}
+ .signal-decision{font-size:8px;padding:6px 8px}
+ .signal-score-grid{gap:8px;margin-top:12px}.signal-score-card{padding:10px}.signal-score-top strong{font-size:21px}
+ .signal-core-grid{grid-template-columns:repeat(2,1fr);gap:7px}
+ .signal-core-card{min-height:68px;padding:9px}
+ .signal-decision-box{grid-template-columns:1fr;gap:8px}.signal-block{text-align:left}
+ .signal-tech-strip{grid-template-columns:repeat(4,1fr);gap:4px}.signal-tech-strip>div{padding:7px 4px}
+}
+
+
+/* ===== HALI RISK PANEL V7 ===== */
+.risk-panel{overflow:visible}
+.risk-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.risk-head h3{margin-bottom:4px}
+.risk-state{font-size:8px;letter-spacing:.09em;padding:6px 8px;border-radius:8px;border:1px solid #343b43;color:#858d97;background:#090c0f;white-space:nowrap}
+.risk-state.safe{color:#32d4a4;border-color:rgba(50,212,164,.35);background:rgba(50,212,164,.06)}
+.risk-state.warn{color:#d7ac64;border-color:rgba(215,172,100,.38);background:rgba(215,172,100,.07)}
+.risk-state.danger{color:#ef566d;border-color:rgba(239,86,109,.38);background:rgba(239,86,109,.07)}
+.risk-overview{display:grid;grid-template-columns:120px 1fr;align-items:center;gap:15px;margin-top:14px;padding:14px;border:1px solid #292f37;border-radius:12px;background:linear-gradient(145deg,#0c1013,#080a0c)}
+.risk-ring{width:108px;height:108px;border-radius:50%;display:grid;place-items:center;background:conic-gradient(#b08b52 var(--risk-pct),#171c21 0);position:relative;box-shadow:0 0 0 1px #2b3138 inset}
+.risk-ring:before{content:"";position:absolute;inset:9px;border-radius:50%;background:#080b0e;border:1px solid #22282f}
+.risk-ring>div{position:relative;z-index:1;text-align:center}.risk-ring strong{display:block;font-size:20px;color:#efe8dc}.risk-ring span{display:block;margin-top:4px;font-size:6px;line-height:1.35;letter-spacing:.10em;color:#6d7580}
+.risk-overview-copy small{display:block;font-size:7px;letter-spacing:.11em;color:#68707a}.risk-overview-copy strong{display:block;font-size:25px;margin-top:6px;color:#eee9e2}.risk-overview-copy span{display:block;margin-top:3px;font-size:9px;color:#6d7480}
+.risk-bars{display:grid;gap:10px;margin-top:13px}.risk-bar-row>div:first-child{display:flex;justify-content:space-between;gap:10px;font-size:9px;color:#7b828c}.risk-bar-row strong{color:#cbd0d5}
+.risk-track{height:7px;margin-top:6px;border:1px solid #262c33;border-radius:999px;background:#101419;overflow:hidden}.risk-track i{display:block;height:100%;width:0;border-radius:999px;transition:width .35s ease}.risk-track .loss{background:linear-gradient(90deg,#6d1828,#ee536a)}.risk-track .reserved{background:linear-gradient(90deg,#4f3b22,#d5aa63)}.risk-track .committed{background:linear-gradient(90deg,#73552f,#d5aa63,#a31c33)}
+.risk-metrics{display:grid;grid-template-columns:repeat(2,1fr);gap:7px;margin-top:13px}.risk-metrics>div{padding:10px;border:1px solid #252c33;border-radius:9px;background:#090c0f;min-width:0}.risk-metrics small,.risk-account small{display:block;font-size:7px;letter-spacing:.10em;color:#666e78;margin-bottom:5px}.risk-metrics strong{display:block;font-size:13px;color:#d7dadf}.risk-metrics span{display:block;font-size:8px;color:#656d77;margin-top:3px}
+.risk-account{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}.risk-account>div{padding:10px 11px;border-top:1px solid #2a3037}.risk-account strong{font-size:15px;color:#e3ded6}
+.risk-guard{display:flex;gap:10px;align-items:flex-start;margin-top:10px;padding:10px;border:1px solid #252b32;border-radius:9px;background:linear-gradient(90deg,rgba(111,76,35,.08),rgba(145,18,38,.04))}
+.guard-icon{width:28px;height:28px;border-radius:8px;border:1px solid #4b3b26;display:grid;place-items:center;color:#c99c55;flex:0 0 auto}.risk-guard strong{font-size:8px;letter-spacing:.10em;color:#c9a361}.risk-guard p{margin:4px 0 0;font-size:8px;line-height:1.5;color:#747b84}
+@media(max-width:560px){
+ .risk-overview{grid-template-columns:95px 1fr;padding:11px;gap:11px}.risk-ring{width:88px;height:88px}.risk-ring strong{font-size:17px}
+ .risk-overview-copy strong{font-size:21px}.risk-metrics{grid-template-columns:repeat(2,1fr)}
+}
+
+
+/* ===== HALI NEWS PANEL V8 ===== */
+.news-panel{overflow:visible}
+.news-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.news-fresh{font-size:8px;letter-spacing:.09em;padding:6px 8px;border-radius:8px;border:1px solid #343b43;background:#090c0f;color:#7e8690;white-space:nowrap}
+.news-fresh.ok{color:#2fd3a2;border-color:rgba(47,211,162,.34);background:rgba(47,211,162,.06)}
+.news-fresh.warn{color:#d8ad66;border-color:rgba(216,173,102,.34);background:rgba(216,173,102,.06)}
+.news-fresh.bad{color:#ef586e;border-color:rgba(239,88,110,.34);background:rgba(239,88,110,.06)}
+.news-overview{display:grid;grid-template-columns:1.15fr 1.5fr 1fr 1fr;gap:9px;margin-top:14px}
+.news-direction-card,.news-bias-card,.news-metric-card{border:1px solid #272e36;border-radius:11px;background:linear-gradient(145deg,#0c1013,#080a0d);padding:12px;min-width:0}
+.news-direction-card small,.news-metric-card small{display:block;font-size:7px;letter-spacing:.11em;color:#68707a;margin-bottom:7px}
+.news-direction-card strong{display:block;font-size:19px;color:#d9dce0}.news-direction-card strong.bull{color:#2fd3a2}.news-direction-card strong.bear{color:#ef586e}
+.news-direction-card span,.news-metric-card span{display:block;font-size:8px;color:#68717b;margin-top:4px}
+.news-metric-card strong{font-size:17px;color:#d9dce0}
+.news-bias-top{display:flex;justify-content:space-between;align-items:baseline}.news-bias-top span{font-size:7px;letter-spacing:.11em;color:#68707a}.news-bias-top strong{font-size:19px;color:#ddd8d1}
+.news-bias-scale{height:8px;position:relative;margin-top:13px;border-radius:999px;background:#12171c;border:1px solid #282f37;overflow:visible}
+.news-bias-scale span{position:absolute;top:0;bottom:0}.bear-zone{left:0;width:40%;background:linear-gradient(90deg,rgba(164,27,48,.65),rgba(164,27,48,.08))}.neutral-zone{left:40%;width:20%;background:rgba(122,122,122,.11)}.bull-zone{right:0;width:40%;background:linear-gradient(90deg,rgba(37,154,119,.08),rgba(37,154,119,.62))}
+.news-bias-scale i{position:absolute;top:-4px;width:2px;height:16px;background:#eadab9;box-shadow:0 0 8px rgba(234,218,185,.4);transform:translateX(-1px);z-index:2;transition:left .35s ease}
+.news-bias-labels{display:flex;justify-content:space-between;margin-top:6px;font-size:7px;color:#5f6771}
+.news-summary-card{display:flex;gap:12px;margin-top:11px;padding:13px;border:1px solid #2a3037;border-radius:11px;background:linear-gradient(90deg,rgba(93,61,28,.09),rgba(134,17,37,.05),#090c0f)}
+.news-summary-icon{width:34px;height:34px;display:grid;place-items:center;border:1px solid #4c3a25;border-radius:9px;color:#d4aa63;flex:0 0 auto}.news-summary-card small{display:block;font-size:7px;letter-spacing:.11em;color:#6b737d;margin-bottom:5px}.news-summary-card strong{display:block;font-size:11px;line-height:1.5;color:#d6dade}.news-summary-card p{margin:5px 0 0;font-size:9px;color:#727a84;line-height:1.5}
+.news-source-section,.news-headline-section{margin-top:13px}.news-section-head{display:flex;justify-content:space-between;gap:10px;align-items:center;padding-bottom:7px;border-bottom:1px solid #252b32}.news-section-head span{font-size:8px;letter-spacing:.11em;color:#707883}.news-section-head strong{font-size:8px;color:#8d959f;font-weight:600}
+.news-sources{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:8px}.news-source-card{padding:9px;border:1px solid #252c33;border-radius:9px;background:#090c0f;min-width:0}.news-source-card .source-name{display:flex;align-items:center;justify-content:space-between;gap:7px;font-size:9px;color:#bfc4ca}.news-source-card .source-status{width:7px;height:7px;border-radius:50%;background:#6a717b;flex:0 0 auto}.news-source-card.ok .source-status{background:#2fd3a2;box-shadow:0 0 8px rgba(47,211,162,.35)}.news-source-card.bad .source-status{background:#ef586e}.news-source-card .source-meta{margin-top:5px;font-size:8px;color:#626a74}.news-source-card .source-error{margin-top:4px;font-size:7px;color:#a75b65;overflow-wrap:anywhere}
+.news-headlines{display:grid;gap:7px;margin-top:8px}.news-item{display:grid;grid-template-columns:36px 1fr auto;gap:9px;align-items:start;padding:10px;border:1px solid #252c33;border-radius:9px;background:#090c0f}.impact-badge{width:34px;height:34px;border-radius:8px;display:grid;place-items:center;font-size:9px;font-weight:800;border:1px solid #303740;color:#8a929c;background:#0d1115}.impact-badge.pos{color:#2fd3a2;border-color:rgba(47,211,162,.28);background:rgba(47,211,162,.05)}.impact-badge.neg{color:#ef586e;border-color:rgba(239,88,110,.28);background:rgba(239,88,110,.05)}
+.news-item a{color:#d6dade;text-decoration:none;font-size:10px;line-height:1.45}.news-item a:hover{color:#e8bf78}.news-item .meta{font-size:7px;color:#626a74;margin-top:4px}.news-item .category{font-size:7px;color:#8d6f40;border:1px solid #3c3122;padding:3px 5px;border-radius:5px;white-space:nowrap}
+.news-empty{padding:14px;border:1px dashed #2a3138;border-radius:9px;color:#69717b;font-size:9px;text-align:center}
+@media(max-width:900px){.news-overview{grid-template-columns:repeat(2,1fr)}.news-sources{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:560px){
+ .news-overview{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.news-direction-card,.news-bias-card,.news-metric-card{padding:10px}
+ .news-direction-card strong{font-size:17px}.news-metric-card strong{font-size:15px}
+ .news-sources{grid-template-columns:1fr 1fr}
+ .news-item{grid-template-columns:32px 1fr;gap:8px;padding:9px}.impact-badge{width:30px;height:30px}.news-item .category{grid-column:2;justify-self:start}
+}
+
+
+/* ===== HALI UX FINAL PASS V9 ===== */
+*{box-sizing:border-box}
+body{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+.value,.score,.kpi-value,strong,b{font-variant-numeric:tabular-nums}
+button,a{-webkit-tap-highlight-color:transparent}
+button:focus-visible,a:focus-visible,summary:focus-visible{outline:2px solid #b1844b;outline-offset:2px}
+section[id]{scroll-margin-top:88px}
+.connection-banner{position:fixed;top:72px;left:50%;transform:translate(-50%,-16px);z-index:190;display:flex;align-items:center;gap:8px;max-width:min(520px,calc(100vw - 24px));padding:8px 12px;border:1px solid rgba(239,86,109,.42);border-radius:10px;background:rgba(28,8,13,.96);color:#e7a4ae;font-size:9px;letter-spacing:.06em;box-shadow:0 12px 35px rgba(0,0,0,.42);opacity:0;pointer-events:none;transition:.2s ease}
+.connection-banner.on{opacity:1;transform:translate(-50%,8px)}
+.connection-dot{width:7px;height:7px;border-radius:50%;background:#ef566d;box-shadow:0 0 10px rgba(239,86,109,.55);flex:0 0 auto}
+.hali-nav a.active{color:#f2e8d8;border-color:#5f1726;background:linear-gradient(90deg,rgba(143,15,34,.5),rgba(143,15,34,.06));box-shadow:inset 3px 0 #dc3049}
+.hali-mobile-nav a.active{color:#e8be77;background:linear-gradient(180deg,rgba(139,94,44,.10),rgba(143,15,34,.08))}
+.hali-mobile-nav a.active span{filter:drop-shadow(0 0 6px rgba(216,173,102,.4))}
+.grid>.section-market{order:1}
+.grid>.section-chart{order:2}
+.grid>.section-active{order:3}
+.grid>.section-analysis{order:4}
+.grid>.section-risk{order:5}
+.grid>.section-session{order:6}
+.grid>.section-news{order:7}
+.grid>.section-stats{order:8}
+.grid>.section-history{order:9}
+.grid>.section-monitor{order:12}
+.grid>.section-stop{order:13}
+.grid>.section-tp{order:14}
+.grid>.section-execution{order:15}
+.grid>.section-external{order:20}
+.grid>.section-tv{order:21}
+.grid>.section-observer{order:22}
+.grid>.section-how{order:23}
+.card{transition:border-color .18s ease,transform .18s ease}
+@media(hover:hover) and (pointer:fine){.card:hover{border-color:#353c45}}
+.advanced-control{display:none}
+@media(max-width:900px){
+  section[id]{scroll-margin-top:74px}
+  .connection-banner{top:58px}
+  .advanced-control{display:block;padding:2px 12px 8px}
+  .advanced-control button{min-height:42px;border-radius:10px}
+  .advanced-section{display:none!important}
+  .show-advanced .advanced-section{display:block!important}
+  .grid>.section-market{order:1}
+  .grid>.section-chart{order:2}
+  .grid>.section-active{order:3}
+  .grid>.section-analysis{order:4}
+  .grid>.section-risk{order:5}
+  .grid>.section-news{order:6}
+  .grid>.section-session{order:7}
+  .grid>.section-stats{order:8}
+  .grid>.section-history{order:9}
+}
+@media(max-width:560px){
+  body{padding-bottom:106px}
+  .wrap{padding-bottom:24px}
+  .card{box-shadow:0 8px 24px rgba(0,0,0,.20)}
+  .section-title{line-height:1.08}
+  .hali-mobile-nav{padding-bottom:max(2px,env(safe-area-inset-bottom))}
+}
+
+
+/* ===== HALI PERFORMANCE V10 ===== */
+.performance-panel,.history-panel{overflow:visible}
+.performance-head,.history-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.data-quality{font-size:8px;letter-spacing:.08em;padding:6px 8px;border:1px solid #343b43;border-radius:8px;background:#090c0f;color:#858d97;white-space:nowrap}
+.data-quality.good{color:#2fd3a2;border-color:rgba(47,211,162,.34);background:rgba(47,211,162,.06)}
+.data-quality.warn{color:#d8ad66;border-color:rgba(216,173,102,.34);background:rgba(216,173,102,.06)}
+.data-quality.bad,.data-quality.legacy{color:#caa160;border-color:rgba(202,161,96,.30);background:rgba(202,161,96,.05)}
+.performance-kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-top:14px}
+.performance-kpis>div{padding:11px;border:1px solid #252c33;border-radius:10px;background:linear-gradient(145deg,#0b0e11,#080a0d);min-width:0}
+.performance-kpis small{display:block;font-size:7px;letter-spacing:.11em;color:#68707a;margin-bottom:6px}
+.performance-kpis strong{display:block;font-size:16px;color:#ded9d2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.performance-kpis span{display:block;margin-top:4px;font-size:8px;color:#646c76}
+.performance-body{display:grid;grid-template-columns:minmax(0,2.2fr) minmax(210px,.8fr);gap:10px;margin-top:11px}
+.equity-panel,.performance-side{border:1px solid #262d34;border-radius:11px;background:#080b0e}
+.equity-panel{padding:12px}.equity-head{display:flex;justify-content:space-between;align-items:flex-end;gap:12px}.equity-head small{display:block;font-size:7px;letter-spacing:.11em;color:#666e78}.equity-head strong{display:block;margin-top:4px;font-size:18px}.equity-head>span{font-size:8px;color:#616974}
+.equity-chart-wrap{position:relative;height:190px;margin-top:9px;border-top:1px solid #1f252b}
+#equityCurve{display:block;width:100%;height:100%}.performance-empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#616a74;font-size:9px}
+.performance-side{padding:7px 11px}.perf-row{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-top:1px solid #22282f}.perf-row:first-child{border-top:0}.perf-row span{font-size:8px;color:#727a84}.perf-row strong{font-size:10px;color:#ced2d7}
+.today-strip{display:grid;grid-template-columns:auto repeat(5,1fr);gap:7px;align-items:center;margin-top:10px;padding:9px;border:1px solid #252c33;border-radius:10px;background:#090c0f}.today-strip>span{font-size:8px;letter-spacing:.13em;color:#c59a57;padding:0 7px}.today-strip div{padding-left:9px;border-left:1px solid #252c33}.today-strip small{display:block;font-size:7px;color:#616974;margin-bottom:3px}.today-strip strong{font-size:10px;color:#cbd0d5}
+.quality-note{margin-top:9px;padding:9px 10px;border-left:2px solid #795a31;background:rgba(121,90,49,.06);color:#777f89;font-size:8px;line-height:1.55}
+.history-filters{display:flex;gap:5px;padding:3px;border:1px solid #282f36;border-radius:9px;background:#080a0d}.history-filters button{border:0;padding:6px 8px;font-size:7px;color:#707883}.history-filters button.active{color:#e7bd75;background:#241c13;box-shadow:inset 0 0 0 1px #5b4528}
+.history-summary{margin-top:10px;font-size:8px;color:#737b85}
+.history-list{display:grid;gap:8px;margin-top:8px}
+.history-trade{border:1px solid #262d34;border-radius:11px;background:linear-gradient(145deg,#0b0f12,#080a0c);overflow:hidden}
+.history-trade-main{display:grid;grid-template-columns:minmax(180px,1.3fr) .9fr .9fr auto;gap:10px;align-items:center;padding:12px}
+.history-symbol{font-family:Georgia,'Times New Roman',serif;font-size:15px;color:#e1bd7b}.history-meta{font-size:8px;color:#6b737d;margin-top:5px}.history-meta .pill{padding:3px 5px;font-size:7px}
+.history-num small{display:block;font-size:7px;color:#666e78;margin-bottom:4px}.history-num strong{font-size:12px}.history-num span{display:block;margin-top:3px;font-size:8px;color:#666e78}
+.history-result{text-align:right}.history-result strong{font-size:14px}
+.history-detail-btn{font-size:7px;padding:7px 8px}
+.history-trade .reason{margin:0 12px 12px;padding:10px;font-size:8px}
+.history-empty{padding:18px;border:1px dashed #2a3139;border-radius:10px;text-align:center;color:#6a727c;font-size:9px}
+@media(max-width:1100px){.performance-kpis{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:900px){
+ .performance-body{grid-template-columns:1fr}.performance-side{display:grid;grid-template-columns:repeat(2,1fr);gap:0 14px}
+ .today-strip{grid-template-columns:auto repeat(3,1fr)}.today-strip div:nth-last-child(-n+2){display:none}
+ .history-trade-main{grid-template-columns:1fr 1fr}.history-result{text-align:left}.history-detail-btn{justify-self:start}
+}
+@media(max-width:560px){
+ .performance-head,.history-head{align-items:center}.data-quality{font-size:7px;max-width:145px;white-space:normal;text-align:right}
+ .performance-kpis{grid-template-columns:repeat(2,1fr);gap:7px}.performance-kpis>div{padding:9px}.performance-kpis strong{font-size:14px}
+ .equity-chart-wrap{height:165px}.performance-side{grid-template-columns:1fr 1fr}
+ .today-strip{grid-template-columns:auto repeat(2,1fr)}.today-strip div:nth-last-child(-n+3){display:none}
+ .history-head{display:grid;grid-template-columns:1fr}.history-filters{width:100%;display:grid;grid-template-columns:repeat(3,1fr)}.history-filters button{padding:8px 4px}
+ .history-trade-main{grid-template-columns:1fr 1fr;padding:10px}.history-trade-main>div:first-child{grid-column:1/-1}.history-detail-btn{grid-column:1/-1;width:100%}
+}
+
+
+/* ===== HALI AUTH CONTROLS ===== */
+.user-chip{color:#c8a66a;border-color:#413622}
+.logout-button{height:34px;padding:0 10px;border:1px solid #3a2b30;border-radius:8px;background:#0c090a;color:#9e747b;font-size:8px;letter-spacing:.09em;cursor:pointer}
+.logout-button:hover{border-color:#6f2736;color:#e1919f;background:#160a0d}
+@media(max-width:900px){.user-chip{display:none}.logout-button{height:31px;padding:0 8px;font-size:7px}}
+
+
+/* ===== HALI SYSTEM HEALTH V11 ===== */
+.grid>.section-health{order:10;grid-column:span 12}
+.system-health-panel{overflow:visible}
+.health-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.health-overall{font-size:8px;letter-spacing:.10em;padding:7px 9px;border:1px solid #353c44;border-radius:8px;background:#090c0f;color:#858d97;white-space:nowrap}
+.health-overall.good{color:#2fd3a2;border-color:rgba(47,211,162,.34);background:rgba(47,211,162,.06)}
+.health-overall.warn{color:#d8ad66;border-color:rgba(216,173,102,.34);background:rgba(216,173,102,.06)}
+.health-overall.bad{color:#ef586e;border-color:rgba(239,88,110,.34);background:rgba(239,88,110,.06)}
+.health-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:14px}
+.health-component{padding:11px;border:1px solid #262d34;border-radius:10px;background:linear-gradient(145deg,#0b0f12,#080a0c);min-width:0}
+.health-component-head{display:flex;justify-content:space-between;gap:8px;align-items:center}
+.health-component-head span{font-size:7px;letter-spacing:.10em;color:#69717b}
+.health-component-head i{width:7px;height:7px;border-radius:50%;background:#606873;box-shadow:0 0 0 2px rgba(96,104,115,.08)}
+.health-component strong{display:block;margin-top:8px;font-size:12px;color:#cfd3d8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.health-component small{display:block;margin-top:4px;font-size:8px;color:#636b75;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.health-component.good{border-color:rgba(47,211,162,.18)}.health-component.good .health-component-head i{background:#2fd3a2;box-shadow:0 0 10px rgba(47,211,162,.38)}.health-component.good strong{color:#9fdec9}
+.health-component.warn{border-color:rgba(216,173,102,.22)}.health-component.warn .health-component-head i{background:#d8ad66;box-shadow:0 0 10px rgba(216,173,102,.28)}.health-component.warn strong{color:#d7bd8e}
+.health-component.bad{border-color:rgba(239,88,110,.24)}.health-component.bad .health-component-head i{background:#ef586e;box-shadow:0 0 10px rgba(239,88,110,.30)}.health-component.bad strong{color:#e8919e}
+.health-footer{display:grid;grid-template-columns:.8fr 1.7fr auto;gap:10px;align-items:center;margin-top:10px;padding:10px;border:1px solid #252c33;border-radius:10px;background:#090c0f}
+.health-footer small{display:block;font-size:7px;color:#616a74;letter-spacing:.09em;margin-bottom:3px}.health-footer strong{font-size:9px;color:#c6cbd0}
+.health-footer button{height:34px;padding:0 10px;font-size:7px;letter-spacing:.09em}
+@media(max-width:900px){.health-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:560px){
+ .health-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.health-component{padding:9px}
+ .health-footer{grid-template-columns:1fr 1fr}.health-footer button{grid-column:1/-1;width:100%}
+ .health-head{align-items:center}.health-overall{font-size:7px}
+}
+
+
+/* ===== HALI LIVE CHART V12 ===== */
+.chart-live{display:inline-flex;align-items:center;gap:6px;margin-left:auto;padding:4px 7px;border:1px solid #333a42;border-radius:7px;font-size:7px!important;letter-spacing:.08em;color:#727a84}
+.chart-live i{width:6px;height:6px;border-radius:50%;background:#656d77}
+.chart-live.live{color:#2fd3a2;border-color:rgba(47,211,162,.30);background:rgba(47,211,162,.05)}
+.chart-live.live i{background:#2fd3a2;box-shadow:0 0 9px rgba(47,211,162,.5);animation:haliLivePulse 1.5s ease-in-out infinite}
+.chart-live.stale{color:#d8ad66;border-color:rgba(216,173,102,.28)}
+.chart-live.stale i{background:#d8ad66}
+@keyframes haliLivePulse{0%,100%{opacity:.45}50%{opacity:1}}
+@media(prefers-reduced-motion:reduce){.chart-live.live i{animation:none}}
+@media(max-width:560px){.chart-live{margin-left:0;width:max-content}}
+
 </style>
 </head>
-<body><div class="wrap">
-<h1 class="headline">Primero, escanea el<br>mercado 24/7.</h1>
-<div class="sub">+ PRECIO <span class="orange">•</span> NOTICIAS <span class="orange">•</span> VOLUMEN <span class="orange">•</span> SETUPS +</div>
+<body>
+<header class="hali-topbar">
+  <div class="hali-brand">
+    <img src="/assets/hali-logo.png" alt="Hali" onerror="this.style.display='none'">
+    <div><div class="hali-wordmark">HALI</div><div class="hali-tagline">Autonomous Gold Intelligence</div></div>
+  </div>
+  <div class="hali-topstats">
+    <span id="topStatus" class="top-chip offline">● OFFLINE</span>
+    <span id="topMode" class="top-chip mode-chip">PAPER</span>
+    <span class="top-chip">Cuenta: <b id="topAccount">—</b></span>
+    <span id="userChip" class="top-chip user-chip">◈ <b id="authUser">—</b></span>
+    <button id="logoutButton" class="logout-button" type="button" onclick="logoutHali()" aria-label="Cerrar sesión">SALIR</button>
+    <span class="top-chip terminal-chip">XAUUSD · H1/H4/M15</span>
+    <span class="top-chip update-chip">Actualizado: <b id="topUpdated">—</b></span>
+  </div>
+</header>
+<div id="connectionBanner" class="connection-banner" role="status" aria-live="polite">
+  <span class="connection-dot"></span>
+  <span id="connectionBannerText">Reconectando con Hali…</span>
+</div>
+<div class="app-shell">
+<aside class="hali-sidebar">
+  <nav class="hali-nav">
+    <a class="active" href="#overview" data-nav="overview">◈ Resumen</a>
+    <a href="#market" data-nav="market">◉ Mercado</a>
+    <a href="#trades" data-nav="trades">↗ Operaciones</a>
+    <a href="#signal" data-nav="signal">⌁ Señal</a>
+    <a href="#riskpanel" data-nav="riskpanel">⬡ Riesgo</a>
+    <a href="#news" data-nav="news">✦ Noticias</a>
+    <a href="#history" data-nav="history">▣ Historial</a>
+    <a href="#health" data-nav="health">◆ Sistema</a>
+  </nav>
+  <div class="sidebar-mark">Disciplina<br>Datos<br>Resultados</div>
+</aside>
+<main class="main-stage">
+<div class="wrap" id="overview">
+<section class="hero-brand">
+  <img class="hero-logo" src="/assets/hali-logo.png" alt="Logo Hali" onerror="this.style.display='none'">
+  <div>
+    <h1>HALI</h1>
+    <p>Autonomous <span class="bloodline">XAUUSD</span> Trading Intelligence · Private Terminal</p>
+    <div class="hero-signal-strip">
+      <span><small>ESTADO</small><b id="heroState">CARGANDO</b></span>
+      <span><small>DIRECCIÓN</small><b id="heroDirection">—</b></span>
+      <span><small>SETUP</small><b id="heroSetup">—</b></span>
+      <span><small>RIESGO</small><b id="heroRisk">—</b></span>
+    </div>
+  </div>
+</section>
+<section class="kpi-grid" aria-label="Resumen">
+  <div class="kpi"><div class="kpi-label">Balance</div><div class="kpi-value" id="heroBalance">—</div><div class="kpi-note">Cuenta actual</div></div>
+  <div class="kpi"><div class="kpi-label">Equity</div><div class="kpi-value" id="heroEquity">—</div><div class="kpi-note">Equity en tiempo real</div></div>
+  <div class="kpi"><div class="kpi-label">PnL hoy</div><div class="kpi-value" id="heroDailyPnl">—</div><div class="kpi-note">Realizado sesión</div></div>
+  <div class="kpi"><div class="kpi-label">PnL flotante</div><div class="kpi-value" id="heroFloating">—</div><div class="kpi-note">Posiciones abiertas</div></div>
+  <div class="kpi"><div class="kpi-label">Win rate hoy</div><div class="kpi-value" id="heroWinRate">—</div><div class="kpi-note">Sesión actual</div></div>
+  <div class="kpi"><div class="kpi-label">Score actual</div><div class="kpi-value" id="heroScore">—</div><div class="kpi-note">Señal Hali</div></div>
+</section>
 <div class="grid">
-<section class="card span8"><div class="row"><div><h3>Escáner de mercado</h3><div class="value" id="symbol">XAUUSD · H1</div></div><div class="row"><span id="connection" class="pill offline">SIN DATOS MT5</span><span id="mode" class="pill paper">PAPER MODE</span></div></div><p class="small" id="decision">Cargando...</p><div class="stats"><div class="stat"><span class="small">SCORE</span><div class="score" id="score">--</div></div><div class="stat"><span class="small">SETUP</span><div id="setup">--</div></div><div class="stat"><span class="small">DIRECCIÓN</span><div id="direction">--</div></div><div class="stat"><span class="small">RIESGO EFECTIVO</span><div id="risk">—</div><div class="small" id="riskPct">5.0% equity</div><div class="small" id="riskBudget">Objetivo — · restante diario —</div></div></div></section>
-<section class="card span4"><h3>Sistema de riesgo</h3><div class="row"><div><div class="small">BALANCE</div><div class="value" id="balance">—</div></div><div><div class="small">EQUITY ACTUAL</div><div class="value" id="equity">—</div></div></div><hr><div class="analysis-row"><span>Equity inicio del día</span><strong id="startEquity">—</strong></div><div class="analysis-row"><span>RiskPercent</span><strong id="tradeRiskPercent">5.0%</strong></div><div class="analysis-row"><span>Riesgo objetivo/trade</span><strong id="targetRisk">—</strong></div><div class="analysis-row"><span>DailyLossLimitPercent</span><strong id="dailyLossPercent">5.0%</strong></div><div class="analysis-row"><span>Presupuesto diario inicial</span><strong id="dailyBudget">—</strong></div><div class="analysis-row"><span>Pérdida diaria utilizada</span><strong id="dailyLossUsed">—</strong></div><div class="analysis-row"><span>Riesgo abierto de cuenta</span><strong id="openRisk">—</strong></div><div class="analysis-row"><span>Presupuesto diario restante</span><strong id="dailyRemaining">—</strong></div><div class="analysis-row"><span>Riesgo efectivo permitido</span><strong id="effectiveRisk">—</strong></div><div class="analysis-row"><span>Riesgo monetario pendiente</span><strong id="pendingRisk">NOT SUPPORTED</strong></div><div class="analysis-row"><span>Drawdown actual / máximo</span><strong id="riskDrawdown">—</strong></div><div class="analysis-row"><span>Reserva H1</span><strong id="h1Reservation">UNKNOWN</strong></div><div class="analysis-row"><span>Estado de riesgo</span><strong id="riskHealth">UNKNOWN</strong></div><div class="small" id="riskBudgetStatus">RISK_STATE_UNKNOWN</div><div class="small" id="riskBlockCode">NO_DATA</div><p class="small" id="riskBlockReason">Sin snapshot de riesgo MT5.</p><div class="meter"><i id="dailyMeter" style="width:0%"></i></div><p class="small" id="riskNote">El presupuesto diario se fija con la equity de inicio del día y no aumenta por ganancias intradía. Pérdidas realizadas y riesgo abierto reducen el disponible.</p><div id="mt5Notice" class="notice small">Conecta el EA en MT5 para reemplazar estos datos por balance, equity y operaciones reales de la cuenta.</div></section>
-<section class="card span12"><h2 class="section-title">Análisis de la última vela H1</h2><div class="small" id="analysisBar">Esperando la primera evaluación H1...</div><div class="analysis-grid"><div class="analysis-box"><h4>Tendencia</h4><div class="analysis-row"><span>H4</span><strong id="aH4">—</strong></div><div class="analysis-row"><span>H1</span><strong id="aH1">—</strong></div><div class="analysis-row"><span>EMA H1</span><strong id="aEma">—</strong></div><div class="analysis-row"><span>EMA H4</span><strong id="aH4Ema">—</strong></div></div><div class="analysis-box"><h4>Indicadores</h4><div class="analysis-row"><span>RSI 14</span><strong id="aRsi">—</strong></div><div class="analysis-row"><span>ADX 14</span><strong id="aAdx">—</strong></div><div class="analysis-row"><span>ATR 14</span><strong id="aAtr">—</strong></div><div class="analysis-row"><span>Volumen</span><strong id="aVol">—</strong></div></div><div class="analysis-box"><h4>Scoring</h4><div class="analysis-row"><span>LONG técnico</span><strong id="aLongTech">—</strong></div><div class="analysis-row"><span>SHORT técnico</span><strong id="aShortTech">—</strong></div><div class="analysis-row"><span>Noticias L/S</span><strong id="aNewsPts">—</strong></div><div class="analysis-row"><span>FINAL L/S</span><strong id="aFinal">—</strong></div></div><div class="analysis-box"><h4>Estructura</h4><div class="analysis-row"><span>Setup</span><strong id="aStructure">—</strong></div><div class="analysis-row"><span>Candidato</span><strong id="aCandidate">—</strong></div><div class="analysis-row"><span>R:R mínimo</span><strong id="aMinRR">—</strong></div><div class="analysis-row"><span>Bloqueo</span><strong id="aBlock">—</strong></div></div></div><div class="decision-box"><strong>LECTURA TÉCNICA</strong><div class="small" id="aTechReason">—</div></div><div class="decision-box"><strong>LECTURA DE NOTICIAS</strong><div class="small" id="aNewsReason">—</div></div><div class="muted-box small"><strong>Importante:</strong> el bot arma el setup al comenzar H1 y lo vigila intrabar. Score y sesgo son señales del sistema, no una probabilidad garantizada de acierto.</div></section>
-<section class="card span12"><h2 class="section-title">MONITOREO INTRABAR · H1</h2><div class="analysis-grid"><div class="analysis-box"><h4>Estado</h4><div class="analysis-row"><span>Estado</span><strong id="mState">—</strong></div><div class="analysis-row"><span>Candidato</span><strong id="mCandidate">—</strong></div></div><div class="analysis-box"><h4>Trigger</h4><div class="analysis-row"><span>Score</span><strong id="mScore">—</strong></div><div class="analysis-row"><span>Boost L / S</span><strong id="mBoost">—</strong></div></div><div class="analysis-box"><h4>Tiempo</h4><div class="analysis-row"><span>Vigilando</span><strong id="mAge">—</strong></div><div class="analysis-row"><span>Entrada usada H1</span><strong id="mUsed">—</strong></div></div><div class="analysis-box"><h4>Lectura</h4><div class="analysis-row"><span>Estado</span><strong id="mReason">—</strong></div></div></div><div class="decision-box"><strong>MONITOR</strong><div class="small" id="mReasonLong">—</div></div></section><section class="card span12"><h2 class="section-title">SESIÓN Y CENTROS DE MERCADO · ORO</h2><div class="session-grid"><div class="session-box"><div class="label">Sesión regional</div><div class="big" id="sessionName">—</div></div><div class="session-box"><div class="label">Fase</div><div class="big" id="sessionPhase">—</div></div><div class="session-box"><div class="label">Volatilidad</div><div class="big" id="sessionVol">—</div></div><div class="session-box"><div class="label">Impulso apertura</div><div class="big" id="sessionImpulse">—</div></div><div class="session-box"><div class="label">Puntos L / S</div><div class="big" id="sessionPts">—</div></div></div><div class="session-note small" id="sessionContext">Esperando contexto de mercado...</div><div class="centers" id="marketCenters"></div><div class="small" style="margin-top:10px">Contexto por centros: Tokio, Shanghai/HK, Singapur, Mumbai, Londres, Nueva York/COMEX y ventanas LBMA. GoldScout usa estas ventanas como contexto de liquidez/volatilidad; no asume que cada apertura produzca un pullback.</div></section>
-<section class="card span12"><h2 class="section-title">Noticias y macro que afectan al oro</h2><div class="stats"><div class="stat"><span class="small">SESGO</span><div class="value" id="newsDir">NEUTRO</div></div><div class="stat"><span class="small">BIAS</span><div class="score" style="font-size:34px" id="newsBias">0</div></div><div class="stat"><span class="small">CONFIANZA</span><div class="value" id="newsConf">0%</div></div><div class="stat"><span class="small">RIESGO</span><div class="value" id="newsRisk">UNKNOWN</div></div></div><p class="small" id="newsDataRisk">Riesgo de datos: UNKNOWN</p><p class="small" id="newsSummary">Esperando análisis de noticias...</p><div id="newsSources" class="sources"></div><h3 style="margin-top:18px">Titulares recientes</h3><div id="newsHeadlines" class="timeline"></div><p class="small" id="newsSource">Motor multi-fuente: GDELT + Google News RSS + Bing News RSS. GDELT es opcional; las fuentes RSS funcionan como respaldo.</p></section>
-<section class="card span12"><h2 class="section-title">CONSENSO EXTERNO — ETORO</h2><div class="stats"><div class="stat"><span class="small">LONG</span><div class="value buy" id="extLong">0%</div></div><div class="stat"><span class="small">SHORT</span><div class="value sell" id="extShort">0%</div></div><div class="stat"><span class="small">NEUTRAL</span><div class="value" id="extNeutral">0%</div></div><div class="stat"><span class="small">TRADERS VÁLIDOS</span><div class="value" id="extTraders">0</div></div></div><div class="statusline small"><span id="extQuality">Calidad: 0</span><span id="extFresh">Frescura: —</span><span id="extApi">API: SIN DATOS</span></div><div class="muted-box small" id="extReadOnly">Solo diagnóstico · score_effect=0 · sin copy trading ni ejecución.</div></section>
-<section class="card span12"><h2 class="section-title">TRADINGVIEW — OBSERVACIÓN</h2><div class="stats"><div class="stat"><span class="small">DIRECCIÓN</span><div class="value" id="tvDirection">—</div></div><div class="stat"><span class="small">TIMEFRAME</span><div class="value" id="tvTimeframe">—</div></div><div class="stat"><span class="small">EVENTO</span><div class="value" id="tvEvent">—</div></div><div class="stat"><span class="small">PRECIO</span><div class="value" id="tvPrice">—</div></div></div><div class="statusline small"><span id="tvStatus">Estado: NO_DATA</span><span id="tvLast">Última señal: —</span><span id="tvFresh">Frescura: —</span><span id="tvCount">Eventos: 0</span></div><div class="muted-box small">Solo observación · score_effect=0</div></section>
-<section class="card span12"><h2 class="section-title">MARKET OBSERVER — MT5</h2><div class="stats"><div class="stat"><span class="small">ÚLTIMO M15</span><div id="observerM15">—</div></div><div class="stat"><span class="small">ÚLTIMO H1</span><div id="observerH1">—</div></div><div class="stat"><span class="small">ÚLTIMO H4</span><div id="observerH4">—</div></div><div class="stat"><span class="small">OBSERVACIONES</span><div class="value" id="observerCount">0</div></div></div><div class="statusline small"><span id="observerStatus">Estado: NO_DATA</span><span id="observerFresh">Frescura: —</span></div><div class="decision-box"><strong>ÚLTIMA DECISIÓN GOLDSCOUT</strong><div class="small" id="observerDecision">—</div></div><div class="muted-box small">Solo observación · score_effect=0</div></section>
-<section class="card span12"><h2 class="section-title">STOP MODE — PAPER/DEMO A/B</h2><div class="analysis-grid"><div class="analysis-box"><h4>Selección</h4><div class="analysis-row"><span>Modo</span><strong id="stopMode">NOT_EVALUATED</strong></div><div class="analysis-row"><span>Setup</span><strong id="stopSetup">—</strong></div><div class="analysis-row"><span>Dirección</span><strong id="stopDirection">—</strong></div></div><div class="analysis-box"><h4>CURRENT shadow</h4><div class="analysis-row"><span>SL / ATR</span><strong id="stopCurrent">—</strong></div><div class="analysis-row"><span>Lotaje</span><strong id="stopCurrentLot">—</strong></div></div><div class="analysis-box"><h4>ADAPTIVE V2 shadow</h4><div class="analysis-row"><span>SL / ATR</span><strong id="stopAdaptive">—</strong></div><div class="analysis-row"><span>Lotaje</span><strong id="stopAdaptiveLot">—</strong></div></div><div class="analysis-box"><h4>Utilizado</h4><div class="analysis-row"><span>SL / lote</span><strong id="stopSelected">—</strong></div><div class="analysis-row"><span>Riesgo</span><strong id="stopRisk">—</strong></div><div class="analysis-row"><span>Motivo</span><strong id="stopReason">—</strong></div></div></div><div class="muted-box small">Feature flag apagado por defecto. Adaptive V2 solo puede seleccionarse en PAPER o en cuenta DEMO verificada; REAL permanece hard-blocked.</div></section>
-<section class="card span12"><h2 class="section-title">TP MODE — PAPER A/B</h2><div class="analysis-grid"><div class="analysis-box"><h4>Selección</h4><div class="analysis-row"><span>Modo</span><strong id="tpMode">CURRENT</strong></div><div class="analysis-row"><span>Clase</span><strong id="tpClass">—</strong></div><div class="analysis-row"><span>Setup</span><strong id="tpSetup">—</strong></div><div class="analysis-row"><span>Dirección</span><strong id="tpDirection">—</strong></div></div><div class="analysis-box"><h4>CURRENT</h4><div class="analysis-row"><span>TP</span><strong id="tpCurrent">—</strong></div><div class="analysis-row"><span>R:R</span><strong id="tpCurrentRR">—</strong></div></div><div class="analysis-box"><h4>V2 shadow</h4><div class="analysis-row"><span>TP</span><strong id="tpV2">—</strong></div><div class="analysis-row"><span>R:R</span><strong id="tpV2RR">—</strong></div><div class="analysis-row"><span>Nivel</span><strong id="tpLevel">—</strong></div><div class="analysis-row"><span>Confidence</span><strong id="tpConfidence">NONE</strong></div></div><div class="analysis-box"><h4>Utilizado</h4><div class="analysis-row"><span>TP</span><strong id="tpSelected">—</strong></div><div class="analysis-row"><span>R:R</span><strong id="tpSelectedRR">—</strong></div><div class="analysis-row"><span>Motivo</span><strong id="tpReason">—</strong></div></div></div><div class="muted-box small">Comparación PAPER CURRENT vs V2. V2 no modifica score, SL, lotaje ni riesgo y queda bloqueado en LIVE.</div></section>
-<section class="card span12"><h2 class="section-title">DEMO EXECUTION</h2><div class="analysis-grid"><div class="analysis-box"><h4>Cuenta</h4><div class="analysis-row"><span>Modo</span><strong id="execAccountMode">UNKNOWN</strong></div><div class="analysis-row"><span>Broker</span><strong id="execConnected">DESCONECTADO</strong></div></div><div class="analysis-box"><h4>Permiso</h4><div class="analysis-row"><span>Input habilitado</span><strong id="execEnabled">NO</strong></div><div class="analysis-row"><span>Ejecución permitida</span><strong id="execAllowed">NO</strong></div><div class="analysis-row"><span>Autorización</span><strong id="execAuthorization">—</strong></div></div><div class="analysis-box"><h4>Estado</h4><div class="analysis-row"><span>Ciclo</span><strong id="execState">PAPER</strong></div><div class="analysis-row"><span>Resultado</span><strong id="execReason">—</strong></div></div><div class="analysis-box"><h4>Último resultado</h4><div class="analysis-row"><span>Order / Deal</span><strong id="execIds">—</strong></div><div class="analysis-row"><span>Fill</span><strong id="execFill">—</strong></div></div></div><div class="muted-box small">Las órdenes reales solo se permiten en ACCOUNT_TRADE_MODE_DEMO. Una cuenta REAL queda bloqueada sin excepción.</div></section>
-<section class="card span12"><h2 class="section-title">OPEN POSITIONS</h2><div id="active">No hay posiciones abiertas del MagicNumber de GoldScout.</div></section>
-<section class="card span12"><h2 class="section-title">SESSION STATS</h2><div class="small" id="ledgerStatus">Ledger MT5: NO_DATA</div><div class="stats"><div class="stat"><span class="small">TRADES</span><div class="value" id="statsTrades">0</div></div><div class="stat"><span class="small">W / L</span><div class="value" id="statsWL">0 / 0</div></div><div class="stat"><span class="small">WIN RATE</span><div class="value" id="statsWinRate">0%</div></div><div class="stat"><span class="small">NET P/L</span><div class="value" id="statsNet">—</div></div></div><div class="statusline small"><span id="statsExpectancy">Expectancy: —</span><span id="statsPF">Profit factor: —</span></div></section>
-<section class="card span12"><h2 class="section-title">Historial / señal</h2><div id="log"><div class="small">Cargando historial...</div></div></section>
-<section class="card span12"><h2 class="section-title">Cómo decide GoldScout</h2><div class="timeline"><div><span class="tag">1. ESCANEA</span> H4 define sesgo; H1 define entrada; RSI, ADX, ATR, tick-volume y contexto de sesión filtran ruido.</div><div><span class="tag">2. DETECTA</span> Busca continuación, pullback, ruptura o momentum y usa la sesión Asia/Europa/EE. UU. como contexto. No asume que toda apertura termina en pullback.</div><div><span class="tag">3. PUNTÚA</span> Un score ≥ 74 habilita la señal. El tamaño se calcula con OrderCalcProfit para mantener el riesgo objetivo del 5% de equity.</div><div><span class="tag">4. REVISA</span> El calendario USD de alto impacto puede bloquear entradas alrededor del evento.</div><div><span class="tag">5. PROTEGE</span> Stop dinámico ATR + estructura, límite de pérdida diaria, drawdown, spread máximo, una entrada por vela H1 y PAPER por defecto.</div></div></section>
+<section id="market" class="card span8 section-market"><div class="row"><div><h3>XAUUSD — VISIÓN DE MERCADO</h3><div class="value" id="symbol">XAUUSD · H1</div></div><div class="row"><span id="connection" class="pill offline">SIN DATOS MT5</span><span id="mode" class="pill paper">PAPER MODE</span></div></div><p class="small" id="decision">Cargando...</p><div class="stats"><div class="stat"><span class="small">SCORE</span><div class="score" id="score">--</div></div><div class="stat"><span class="small">SETUP</span><div id="setup">--</div></div><div class="stat"><span class="small">DIRECCIÓN</span><div id="direction">--</div></div><div class="stat"><span class="small">RIESGO EFECTIVO</span><div id="risk">—</div><div class="small" id="riskPct">5.0% equity</div><div class="small" id="riskBudget">Objetivo — · restante diario —</div></div></div></section>
+<section id="chart" class="card span8 section-chart">
+  <div class="chart-head">
+    <div>
+      <h2 class="section-title">XAUUSD · PRICE ACTION</h2>
+      <div class="small">Velas confirmadas + vela actual de MT5 · solo visualización</div>
+    </div>
+    <div class="chart-tabs" role="tablist" aria-label="Timeframe del gráfico">
+      <button type="button" data-tf="M15" onclick="setChartTimeframe('M15')">M15</button>
+      <button type="button" class="active" data-tf="H1" onclick="setChartTimeframe('H1')">H1</button>
+      <button type="button" data-tf="H4" onclick="setChartTimeframe('H4')">H4</button>
+    </div>
+  </div>
+  <div class="chart-quote">
+    <strong id="chartLast">—</strong>
+    <span id="chartChange">—</span>
+    <span id="chartRange">H — · L —</span>
+    <span id="chartLive" class="chart-live offline"><i></i> ESPERANDO LIVE</span>
+  </div>
+  <div class="chart-wrap">
+    <canvas id="priceChart" aria-label="Gráfico de velas XAUUSD"></canvas>
+    <div id="chartEmpty" class="chart-empty">Esperando velas confirmadas de MT5…</div>
+  </div>
+  <div class="chart-legend">
+    <span><i class="legend-candle"></i> Precio</span>
+    <span><i class="legend-ema20"></i> EMA20</span>
+    <span><i class="legend-ema200"></i> EMA200</span>
+  </div>
+</section>
+<section id="riskpanel" class="card span4 section-risk risk-panel">
+  <div class="risk-head">
+    <div>
+      <h3>RIESGO Y PROTECCIÓN</h3>
+      <div class="small">Límites del Champion · solo lectura</div>
+    </div>
+    <div id="riskState" class="risk-state warn">UNKNOWN</div>
+  </div>
+
+  <div class="risk-overview">
+    <div class="risk-ring" id="riskRing" style="--risk-pct:0%">
+      <div>
+        <strong id="riskUsedPct">—</strong>
+        <span>CAPACIDAD<br>COMPROMETIDA</span>
+      </div>
+    </div>
+    <div class="risk-overview-copy">
+      <small>RESTANTE DEL DÍA</small>
+      <strong id="dailyRemaining">—</strong>
+      <span id="riskHeadroomText">de — disponibles</span>
+    </div>
+  </div>
+
+  <div class="risk-bars">
+    <div class="risk-bar-row">
+      <div><span>Pérdida realizada</span><strong id="dailyLossUsed">—</strong></div>
+      <div class="risk-track"><i id="riskLossBar" class="loss" style="width:0%"></i></div>
+    </div>
+    <div class="risk-bar-row">
+      <div><span>Riesgo abierto de cuenta</span><strong id="openRisk">—</strong></div>
+      <div class="risk-track"><i id="riskOpenBar" class="reserved" style="width:0%"></i></div>
+    </div>
+    <div class="risk-bar-row">
+      <div><span>Capacidad comprometida</span><strong id="riskCommitted">—</strong></div>
+      <div class="risk-track"><i id="dailyMeter" class="committed" style="width:0%"></i></div>
+    </div>
+  </div>
+
+  <div class="risk-metrics">
+    <div><small>RISK / TRADE</small><strong id="tradeRiskPercent">5.0%</strong><span id="targetRisk">—</span></div>
+    <div><small>LÍMITE DIARIO</small><strong id="dailyLossPercent">5.0%</strong><span id="dailyBudget">—</span></div>
+    <div><small>RIESGO EFECTIVO</small><strong id="effectiveRisk">—</strong><span>permitido ahora</span></div>
+    <div><small>EQUITY VS INICIO</small><strong id="equityDelta">—</strong><span id="startEquity">—</span></div>
+  </div>
+
+  <div class="risk-account">
+    <div><small>BALANCE</small><strong id="balance">—</strong></div>
+    <div><small>EQUITY ACTUAL</small><strong id="equity">—</strong></div>
+  </div>
+
+  <div class="risk-metrics">
+    <div><small>RIESGO PENDIENTE</small><strong id="pendingRisk">NOT_SUPPORTED</strong></div>
+    <div><small>DRAWDOWN / MÁXIMO</small><strong id="riskDrawdown">—</strong></div>
+    <div><small>RESERVA H1</small><strong id="h1Reservation">UNKNOWN</strong></div>
+    <div><small>ESTADO DE RIESGO</small><strong id="riskHealth">UNKNOWN</strong></div>
+  </div>
+  <div class="small" id="riskBudgetStatus">RISK_STATE_UNKNOWN</div>
+  <div class="small" id="riskBlockCode">NO_DATA</div>
+  <p class="small" id="riskBlockReason">Sin snapshot de riesgo MT5.</p>
+
+  <div class="risk-guard">
+    <div class="guard-icon">◆</div>
+    <div>
+      <strong id="riskGuardTitle">ESTADO DE RIESGO UNKNOWN</strong>
+      <p id="riskNote">El presupuesto diario se fija con la equity de inicio del día y no aumenta por ganancias intradía. Pérdidas realizadas y riesgo abierto reducen el disponible.</p>
+    </div>
+  </div>
+
+  <div id="mt5Notice" class="notice small">Conecta el EA en MT5 para reemplazar estos datos por balance, equity y operaciones reales de la cuenta.</div>
+</section>
+<section id="signal" class="card span12 section-analysis signal-panel">
+  <div class="signal-header">
+    <div>
+      <h2 class="section-title">SEÑAL / DECISIÓN ACTUAL</h2>
+      <div class="small" id="analysisBar">Esperando la primera evaluación H1...</div>
+    </div>
+    <div id="signalDecision" class="signal-decision neutral">MONITOREANDO</div>
+  </div>
+
+  <div class="signal-score-grid">
+    <div class="signal-score-card long-side">
+      <div class="signal-score-top"><span>LONG</span><strong id="signalLongFinal">—</strong></div>
+      <div class="signal-meter"><i id="signalLongBar" style="width:0%"></i><b class="arm-marker" title="Arm 58"></b><b class="trade-marker" title="Trade 74"></b></div>
+      <div class="signal-thresholds"><span>0</span><span>ARM 58</span><span>TRADE 74</span><span>100</span></div>
+    </div>
+    <div class="signal-score-card short-side">
+      <div class="signal-score-top"><span>SHORT</span><strong id="signalShortFinal">—</strong></div>
+      <div class="signal-meter"><i id="signalShortBar" style="width:0%"></i><b class="arm-marker" title="Arm 58"></b><b class="trade-marker" title="Trade 74"></b></div>
+      <div class="signal-thresholds"><span>0</span><span>ARM 58</span><span>TRADE 74</span><span>100</span></div>
+    </div>
+  </div>
+
+  <div class="signal-core-grid">
+    <div class="signal-core-card">
+      <small>TENDENCIA H4</small>
+      <strong id="aH4">—</strong>
+      <span id="signalH4Icon">◇</span>
+    </div>
+    <div class="signal-core-card">
+      <small>TENDENCIA H1</small>
+      <strong id="aH1">—</strong>
+      <span id="signalH1Icon">◇</span>
+    </div>
+    <div class="signal-core-card">
+      <small>SETUP</small>
+      <strong id="aStructure">—</strong>
+      <span id="signalSetupState">—</span>
+    </div>
+    <div class="signal-core-card">
+      <small>CANDIDATO</small>
+      <strong id="aCandidate">—</strong>
+      <span id="signalCandidateState">—</span>
+    </div>
+  </div>
+
+  <div class="signal-decision-box">
+    <div>
+      <small>DECISIÓN DE HALI</small>
+      <strong id="signalDecisionText">Esperando datos…</strong>
+    </div>
+    <div class="signal-block">
+      <small>BLOQUEO</small>
+      <strong id="aBlock">—</strong>
+    </div>
+  </div>
+
+  <div class="signal-tech-strip">
+    <div><span>LONG técnico</span><strong id="aLongTech">—</strong></div>
+    <div><span>SHORT técnico</span><strong id="aShortTech">—</strong></div>
+    <div><span>Noticias L/S</span><strong id="aNewsPts">—</strong></div>
+    <div><span>FINAL L/S</span><strong id="aFinal">—</strong></div>
+    <div><span>RSI</span><strong id="aRsi">—</strong></div>
+    <div><span>ADX</span><strong id="aAdx">—</strong></div>
+    <div><span>ATR</span><strong id="aAtr">—</strong></div>
+    <div><span>Volumen</span><strong id="aVol">—</strong></div>
+  </div>
+
+  <details class="signal-details">
+    <summary>VER LECTURA TÉCNICA COMPLETA</summary>
+    <div class="signal-details-grid">
+      <div class="analysis-box">
+        <h4>Medias y contexto</h4>
+        <div class="analysis-row"><span>EMA H1</span><strong id="aEma">—</strong></div>
+        <div class="analysis-row"><span>EMA H4</span><strong id="aH4Ema">—</strong></div>
+        <div class="analysis-row"><span>R:R mínimo</span><strong id="aMinRR">—</strong></div>
+      </div>
+      <div class="analysis-box">
+        <h4>Lectura técnica</h4>
+        <div class="small" id="aTechReason">—</div>
+      </div>
+      <div class="analysis-box">
+        <h4>Noticias</h4>
+        <div class="small" id="aNewsReason">—</div>
+      </div>
+    </div>
+  </details>
+
+  <div class="signal-disclaimer small">Score y sesgo son señales del sistema; no representan una probabilidad garantizada de acierto. Champion actual: armado 58 · ejecución 74.</div>
+</section>
+<section class="card span12 section-monitor"><h2 class="section-title">MONITOREO DE EJECUCIÓN · H1</h2><div class="analysis-grid"><div class="analysis-box"><h4>Estado</h4><div class="analysis-row"><span>Estado</span><strong id="mState">—</strong></div><div class="analysis-row"><span>Candidato</span><strong id="mCandidate">—</strong></div></div><div class="analysis-box"><h4>Trigger</h4><div class="analysis-row"><span>Score</span><strong id="mScore">—</strong></div><div class="analysis-row"><span>Boost L / S</span><strong id="mBoost">—</strong></div></div><div class="analysis-box"><h4>Tiempo</h4><div class="analysis-row"><span>Vigilando</span><strong id="mAge">—</strong></div><div class="analysis-row"><span>Entrada usada H1</span><strong id="mUsed">—</strong></div></div><div class="analysis-box"><h4>Lectura</h4><div class="analysis-row"><span>Estado</span><strong id="mReason">—</strong></div></div></div><div class="decision-box"><strong>MONITOR</strong><div class="small" id="mReasonLong">—</div></div></section><section class="card span12 section-session"><h2 class="section-title">SESIÓN Y LIQUIDEZ · ORO</h2><div class="session-grid"><div class="session-box"><div class="label">Sesión regional</div><div class="big" id="sessionName">—</div></div><div class="session-box"><div class="label">Fase</div><div class="big" id="sessionPhase">—</div></div><div class="session-box"><div class="label">Volatilidad</div><div class="big" id="sessionVol">—</div></div><div class="session-box"><div class="label">Impulso apertura</div><div class="big" id="sessionImpulse">—</div></div><div class="session-box"><div class="label">Puntos L / S</div><div class="big" id="sessionPts">—</div></div></div><div class="session-note small" id="sessionContext">Esperando contexto de mercado...</div><div class="centers" id="marketCenters"></div><div class="small" style="margin-top:10px">Contexto por centros: Tokio, Shanghai/HK, Singapur, Mumbai, Londres, Nueva York/COMEX y ventanas LBMA. Hali usa estas ventanas como contexto de liquidez/volatilidad; no asume que cada apertura produzca un pullback.</div></section>
+<section id="news" class="card span12 section-news news-panel">
+  <div class="news-head">
+    <div>
+      <h2 class="section-title">NOTICIAS Y CONTEXTO</h2>
+      <div class="small">Contexto macro para XAUUSD · no genera órdenes por sí solo</div>
+    </div>
+    <div id="newsFreshState" class="news-fresh unknown">SIN DATOS</div>
+  </div>
+
+  <div class="news-overview">
+    <div class="news-direction-card">
+      <small>SESGO DEL ORO</small>
+      <strong id="newsDir">NEUTRO</strong>
+      <span id="newsBiasLabel">Bias 0</span>
+    </div>
+    <div class="news-bias-card">
+      <div class="news-bias-top"><span>BIAS</span><strong id="newsBias">0</strong></div>
+      <div class="news-bias-scale">
+        <i id="newsBiasNeedle" style="left:50%"></i>
+        <span class="bear-zone"></span><span class="neutral-zone"></span><span class="bull-zone"></span>
+      </div>
+      <div class="news-bias-labels"><span>-100</span><span>NEUTRO</span><span>+100</span></div>
+    </div>
+    <div class="news-metric-card">
+      <small>CONFIANZA</small>
+      <strong id="newsConf">0%</strong>
+      <span id="newsConfLabel">Señal agregada</span>
+    </div>
+    <div class="news-metric-card">
+      <small>RIESGO MACRO</small>
+      <strong id="newsRisk">UNKNOWN</strong>
+      <span id="newsDataRisk">Datos: UNKNOWN</span>
+    </div>
+  </div>
+
+  <div class="news-summary-card">
+    <div class="news-summary-icon">✦</div>
+    <div>
+      <small>LECTURA ACTUAL</small>
+      <strong id="newsSummary">Esperando análisis de noticias...</strong>
+      <p id="newsRationale">Sin contexto adicional disponible.</p>
+    </div>
+  </div>
+
+  <div class="news-source-section">
+    <div class="news-section-head">
+      <span>FUENTES</span>
+      <strong id="newsSource">0/0 activas</strong>
+    </div>
+    <div id="newsSources" class="news-sources"></div>
+  </div>
+
+  <div class="news-headline-section">
+    <div class="news-section-head">
+      <span>TITULARES RECIENTES</span>
+      <strong id="newsArticleCount">0 artículos</strong>
+    </div>
+    <div id="newsHeadlines" class="news-headlines"></div>
+  </div>
+</section>
+<section class="card span12 section-external advanced-section"><h2 class="section-title">CONSENSO EXTERNO · SOLO DIAGNÓSTICO</h2><div class="stats"><div class="stat"><span class="small">LONG</span><div class="value buy" id="extLong">0%</div></div><div class="stat"><span class="small">SHORT</span><div class="value sell" id="extShort">0%</div></div><div class="stat"><span class="small">NEUTRAL</span><div class="value" id="extNeutral">0%</div></div><div class="stat"><span class="small">TRADERS VÁLIDOS</span><div class="value" id="extTraders">0</div></div></div><div class="statusline small"><span id="extQuality">Calidad: 0</span><span id="extFresh">Frescura: —</span><span id="extApi">API: SIN DATOS</span></div><div class="muted-box small" id="extReadOnly">Solo diagnóstico · score_effect=0 · sin copy trading ni ejecución.</div></section>
+<section class="card span12 section-tv advanced-section"><h2 class="section-title">TRADINGVIEW · OBSERVACIÓN</h2><div class="stats"><div class="stat"><span class="small">DIRECCIÓN</span><div class="value" id="tvDirection">—</div></div><div class="stat"><span class="small">TIMEFRAME</span><div class="value" id="tvTimeframe">—</div></div><div class="stat"><span class="small">EVENTO</span><div class="value" id="tvEvent">—</div></div><div class="stat"><span class="small">PRECIO</span><div class="value" id="tvPrice">—</div></div></div><div class="statusline small"><span id="tvStatus">Estado: NO_DATA</span><span id="tvLast">Última señal: —</span><span id="tvFresh">Frescura: —</span><span id="tvCount">Eventos: 0</span></div><div class="muted-box small">Solo observación · score_effect=0</div></section>
+<section class="card span12 section-observer advanced-section"><h2 class="section-title">MARKET OBSERVER · MT5</h2><div class="stats"><div class="stat"><span class="small">ÚLTIMO M15</span><div id="observerM15">—</div></div><div class="stat"><span class="small">ÚLTIMO H1</span><div id="observerH1">—</div></div><div class="stat"><span class="small">ÚLTIMO H4</span><div id="observerH4">—</div></div><div class="stat"><span class="small">OBSERVACIONES</span><div class="value" id="observerCount">0</div></div></div><div class="statusline small"><span id="observerStatus">Estado: NO_DATA</span><span id="observerFresh">Frescura: —</span></div><div class="decision-box"><strong>ÚLTIMA DECISIÓN HALI</strong><div class="small" id="observerDecision">—</div></div><div class="muted-box small">Solo observación · score_effect=0</div></section>
+<section class="card span12 section-stop advanced-section"><h2 class="section-title">STOP MODE · CURRENT vs ADAPTIVE V2</h2><div class="analysis-grid"><div class="analysis-box"><h4>Selección</h4><div class="analysis-row"><span>Modo</span><strong id="stopMode">NOT_EVALUATED</strong></div><div class="analysis-row"><span>Setup</span><strong id="stopSetup">—</strong></div><div class="analysis-row"><span>Dirección</span><strong id="stopDirection">—</strong></div></div><div class="analysis-box"><h4>CURRENT shadow</h4><div class="analysis-row"><span>SL / ATR</span><strong id="stopCurrent">—</strong></div><div class="analysis-row"><span>Lotaje</span><strong id="stopCurrentLot">—</strong></div></div><div class="analysis-box"><h4>ADAPTIVE V2 shadow</h4><div class="analysis-row"><span>SL / ATR</span><strong id="stopAdaptive">—</strong></div><div class="analysis-row"><span>Lotaje</span><strong id="stopAdaptiveLot">—</strong></div></div><div class="analysis-box"><h4>Utilizado</h4><div class="analysis-row"><span>SL / lote</span><strong id="stopSelected">—</strong></div><div class="analysis-row"><span>Riesgo</span><strong id="stopRisk">—</strong></div><div class="analysis-row"><span>Motivo</span><strong id="stopReason">—</strong></div></div></div><div class="muted-box small">Feature flag apagado por defecto. Adaptive V2 solo puede seleccionarse en PAPER o en cuenta DEMO verificada; REAL permanece hard-blocked.</div></section>
+<section class="card span12 section-tp advanced-section"><h2 class="section-title">TAKE PROFIT · CURRENT vs V2</h2><div class="analysis-grid"><div class="analysis-box"><h4>Selección</h4><div class="analysis-row"><span>Modo</span><strong id="tpMode">CURRENT</strong></div><div class="analysis-row"><span>Clase</span><strong id="tpClass">—</strong></div><div class="analysis-row"><span>Setup</span><strong id="tpSetup">—</strong></div><div class="analysis-row"><span>Dirección</span><strong id="tpDirection">—</strong></div></div><div class="analysis-box"><h4>CURRENT</h4><div class="analysis-row"><span>TP</span><strong id="tpCurrent">—</strong></div><div class="analysis-row"><span>R:R</span><strong id="tpCurrentRR">—</strong></div></div><div class="analysis-box"><h4>V2 shadow</h4><div class="analysis-row"><span>TP</span><strong id="tpV2">—</strong></div><div class="analysis-row"><span>R:R</span><strong id="tpV2RR">—</strong></div><div class="analysis-row"><span>Nivel</span><strong id="tpLevel">—</strong></div><div class="analysis-row"><span>Confidence</span><strong id="tpConfidence">NONE</strong></div></div><div class="analysis-box"><h4>Utilizado</h4><div class="analysis-row"><span>TP</span><strong id="tpSelected">—</strong></div><div class="analysis-row"><span>R:R</span><strong id="tpSelectedRR">—</strong></div><div class="analysis-row"><span>Motivo</span><strong id="tpReason">—</strong></div></div></div><div class="muted-box small">Comparación PAPER CURRENT vs V2. V2 no modifica score, SL, lotaje ni riesgo y queda bloqueado en LIVE.</div></section>
+<section class="card span12 section-execution advanced-section"><h2 class="section-title">EJECUCIÓN DEMO</h2><div class="analysis-grid"><div class="analysis-box"><h4>Cuenta</h4><div class="analysis-row"><span>Modo</span><strong id="execAccountMode">UNKNOWN</strong></div><div class="analysis-row"><span>Broker</span><strong id="execConnected">DESCONECTADO</strong></div></div><div class="analysis-box"><h4>Permiso</h4><div class="analysis-row"><span>Input habilitado</span><strong id="execEnabled">NO</strong></div><div class="analysis-row"><span>Ejecución permitida</span><strong id="execAllowed">NO</strong></div><div class="analysis-row"><span>Autorización</span><strong id="execAuthorization">—</strong></div></div><div class="analysis-box"><h4>Estado</h4><div class="analysis-row"><span>Ciclo</span><strong id="execState">PAPER</strong></div><div class="analysis-row"><span>Resultado</span><strong id="execReason">—</strong></div></div><div class="analysis-box"><h4>Último resultado</h4><div class="analysis-row"><span>Order / Deal</span><strong id="execIds">—</strong></div><div class="analysis-row"><span>Fill</span><strong id="execFill">—</strong></div></div></div><div class="muted-box small">Las órdenes reales solo se permiten en ACCOUNT_TRADE_MODE_DEMO. Una cuenta REAL queda bloqueada sin excepción.</div></section>
+<section id="trades" class="card span12 section-active"><h2 class="section-title">OPERACIONES ACTIVAS</h2><div id="active">No hay posiciones abiertas del MagicNumber de Hali.</div></section>
+<section class="card span12 section-stats performance-panel">
+  <div class="performance-head">
+    <div>
+      <h2 class="section-title">RENDIMIENTO</h2>
+      <div class="small">Historial reconciliado del ledger MT5 · costes y R según evidencia</div>
+    </div>
+    <div id="statsQuality" class="data-quality legacy">LEDGER MT5 · NO_DATA</div>
+    <div class="small" id="ledgerStatus">Ledger MT5: NO_DATA</div>
+  </div>
+
+  <div class="performance-kpis">
+    <div><small>TRADES</small><strong id="statsTrades">0</strong><span id="statsWL">0W / 0L</span></div>
+    <div><small>WIN RATE</small><strong id="statsWinRate">0%</strong><span>reciente</span></div>
+    <div><small>NET P/L</small><strong id="statsNet">—</strong><span id="statsNetNote">cerrados</span></div>
+    <div><small>PROFIT FACTOR</small><strong id="statsPF">—</strong><span>net P/L</span></div>
+    <div><small>EXPECTANCY</small><strong id="statsExpectancy">—</strong><span>solo R conocido</span></div>
+    <div><small>R ACUMULADO</small><strong id="statsTotalR">—</strong><span id="statsRSamples">0 muestras</span></div>
+  </div>
+
+  <div class="performance-body">
+    <div class="equity-panel">
+      <div class="equity-head">
+        <div><small>CURVA DE RESULTADO</small><strong id="curveNet">—</strong></div>
+        <span id="curveLabel">PnL neto acumulado</span>
+      </div>
+      <div class="equity-chart-wrap">
+        <canvas id="equityCurve" aria-label="Curva acumulada de resultados de Hali"></canvas>
+        <div id="equityEmpty" class="performance-empty">Todavía no hay suficientes trades cerrados.</div>
+      </div>
+    </div>
+    <div class="performance-side">
+      <div class="perf-row"><span>Ganancia media</span><strong id="statsAvgWin">—</strong></div>
+      <div class="perf-row"><span>Pérdida media</span><strong id="statsAvgLoss">—</strong></div>
+      <div class="perf-row"><span>Mejor trade</span><strong id="statsBest">—</strong></div>
+      <div class="perf-row"><span>Peor trade</span><strong id="statsWorst">—</strong></div>
+      <div class="perf-row"><span>R medio válido</span><strong id="statsAvgR">—</strong></div>
+      <div class="perf-row"><span>Racha actual</span><strong id="statsStreak">—</strong></div>
+    </div>
+  </div>
+
+  <div class="today-strip">
+    <span>HOY</span>
+    <div><small>Trades</small><strong id="todayTrades">0</strong></div>
+    <div><small>W / L</small><strong id="todayWL">0 / 0</strong></div>
+    <div><small>Win rate</small><strong id="todayWinRate">0%</strong></div>
+    <div><small>Net</small><strong id="todayNet">—</strong></div>
+    <div><small>Expectancy</small><strong id="todayExpectancy">—</strong></div>
+  </div>
+
+  <div id="performanceQualityNote" class="quality-note">
+    Esperando ledger V2. Costes desconocidos permanecen desconocidos; trades conflictivos no aportan estadísticas.
+  </div>
+</section>
+<section id="history" class="card span12 section-history history-panel">
+  <div class="history-head">
+    <div>
+      <h2 class="section-title">ÚLTIMAS OPERACIONES</h2>
+      <div class="small">Cierres recientes del broker · detalles expandibles</div>
+    </div>
+    <div class="history-filters">
+      <button type="button" class="active" data-filter="ALL" onclick="setHistoryFilter('ALL')">TODAS</button>
+      <button type="button" data-filter="WIN" onclick="setHistoryFilter('WIN')">GANADORAS</button>
+      <button type="button" data-filter="LOSS" onclick="setHistoryFilter('LOSS')">PERDEDORAS</button>
+    </div>
+  </div>
+  <div id="historySummary" class="history-summary">0 operaciones</div>
+  <div id="log" class="history-list"><div class="small">Cargando historial...</div></div>
+</section>
+<section id="health" class="card span12 section-health system-health-panel">
+  <div class="health-head">
+    <div>
+      <h2 class="section-title">ESTADO DEL SISTEMA</h2>
+      <div class="small">Heartbeat 24/7 de los componentes que mantienen Hali operativo.</div>
+    </div>
+    <div id="healthOverall" class="health-overall checking">COMPROBANDO</div>
+  </div>
+
+  <div class="health-grid">
+    <div class="health-component" data-health="https">
+      <div class="health-component-head"><span>HTTPS / CADDY</span><i></i></div>
+      <strong id="healthHttps">—</strong><small id="healthHttpsMeta">Conexión pública</small>
+    </div>
+    <div class="health-component" data-health="auth">
+      <div class="health-component-head"><span>AUTH GATEWAY</span><i></i></div>
+      <strong id="healthAuth">—</strong><small id="healthAuthMeta">Sesión privada</small>
+    </div>
+    <div class="health-component" data-health="backend">
+      <div class="health-component-head"><span>DASHBOARD</span><i></i></div>
+      <strong id="healthBackend">—</strong><small id="healthBackendMeta">127.0.0.1:8787</small>
+    </div>
+    <div class="health-component" data-health="ea">
+      <div class="health-component-head"><span>MT5 / EA</span><i></i></div>
+      <strong id="healthEa">—</strong><small id="healthEaMeta">Heartbeat —</small>
+    </div>
+    <div class="health-component" data-health="broker">
+      <div class="health-component-head"><span>BROKER</span><i></i></div>
+      <strong id="healthBroker">—</strong><small id="healthBrokerMeta">Capital.com DEMO</small>
+    </div>
+    <div class="health-component" data-health="execution">
+      <div class="health-component-head"><span>DEMO EXECUTION</span><i></i></div>
+      <strong id="healthExecution">—</strong><small id="healthExecutionMeta">Órdenes DEMO</small>
+    </div>
+    <div class="health-component" data-health="news">
+      <div class="health-component-head"><span>NEWS ENGINE</span><i></i></div>
+      <strong id="healthNews">—</strong><small id="healthNewsMeta">Snapshot —</small>
+    </div>
+    <div class="health-component" data-health="observer">
+      <div class="health-component-head"><span>MARKET OBSERVER</span><i></i></div>
+      <strong id="healthObserver">—</strong><small id="healthObserverMeta">Dataset causal</small>
+    </div>
+  </div>
+
+  <div class="health-footer">
+    <div><small>ÚLTIMA COMPROBACIÓN</small><strong id="healthLastCheck">—</strong></div>
+    <div><small>ESTADO</small><strong id="healthSummary">Esperando heartbeat…</strong></div>
+    <button type="button" onclick="loadSystemHealth(true)">COMPROBAR AHORA</button>
+  </div>
+</section>
+<section class="card span12 section-how advanced-section"><h2 class="section-title">MOTOR DE DECISIÓN HALI</h2><div class="timeline"><div><span class="tag">1. ESCANEA</span> H4 define sesgo; H1 define entrada; RSI, ADX, ATR, tick-volume y contexto de sesión filtran ruido.</div><div><span class="tag">2. DETECTA</span> Busca continuación, pullback, ruptura o momentum y usa la sesión Asia/Europa/EE. UU. como contexto. No asume que toda apertura termina en pullback.</div><div><span class="tag">3. PUNTÚA</span> Un score ≥ 74 habilita la señal. El tamaño se calcula con OrderCalcProfit para mantener el riesgo objetivo del 5% de equity.</div><div><span class="tag">4. REVISA</span> El calendario USD de alto impacto puede bloquear entradas alrededor del evento.</div><div><span class="tag">5. PROTEGE</span> Stop dinámico ATR + estructura, límite de pérdida diaria, drawdown, spread máximo, una entrada por vela H1 y PAPER por defecto.</div></div></section>
 </div></div>
 <div class="wrap" style="padding-top:0"><section class="card"><h2 class="section-title">ARMED STATUS</h2><div class="statusline"><strong id="armedStatus">DISABLED</strong><span class="small" id="armedDetail">Feature flag apagado.</span></div></section></div>
+<div class="advanced-control"><button id="advancedToggle" type="button" onclick="toggleAdvanced()">MOSTRAR DIAGNÓSTICO AVANZADO</button></div>
+<nav class="hali-mobile-nav" aria-label="Navegación móvil">
+  <a class="active" href="#overview" data-nav="overview"><span>◆</span><small>Inicio</small></a>
+  <a href="#trades" data-nav="trades"><span>↗</span><small>Trades</small></a>
+  <a href="#signal" data-nav="signal"><span>⌁</span><small>Señal</small></a>
+  <a href="#riskpanel" data-nav="riskpanel"><span>⬡</span><small>Riesgo</small></a>
+  <a href="#news" data-nav="news"><span>✦</span><small>Noticias</small></a>
+</nav>
 <script>
-const $=id=>document.getElementById(id); let lastLog=[]; let accountCurrency='USD';
+const $=id=>document.getElementById(id);
+let chartTimeframe=localStorage.getItem('hali_chart_tf')||'H1', chartBars=[], latestStatus=null, performanceRows=[], historyFilter='ALL';
+function healthAge(seconds){
+  const n=Number(seconds);if(!Number.isFinite(n))return '—';
+  if(n<60)return Math.round(n)+' s';
+  if(n<3600)return Math.round(n/60)+' min';
+  if(n<86400)return (n/3600).toFixed(n<7200?1:0)+' h';
+  return (n/86400).toFixed(1)+' d';
+}
+function setHealthComponent(name,state,label,meta){
+  const card=document.querySelector('[data-health="'+name+'"]');
+  if(card)card.className='health-component '+state;
+  const key=name.charAt(0).toUpperCase()+name.slice(1);
+  const value=$('health'+key),detail=$('health'+key+'Meta');
+  if(value)value.textContent=label;
+  if(detail)detail.textContent=meta||'';
+}
+async function loadSystemHealth(manual=false){
+  try{
+    const [healthResponse,authResponse]=await Promise.all([
+      fetch('/api/health?t='+Date.now(),{cache:'no-store'}),
+      fetch('/api/auth/status?t='+Date.now(),{cache:'no-store'})
+    ]);
+    if(healthResponse.status===401||authResponse.status===401){location.replace('/login');return}
+    if(!healthResponse.ok)throw new Error('health HTTP '+healthResponse.status);
+    const h=await healthResponse.json(),auth=authResponse.ok?await authResponse.json():{};
+    const secure=location.protocol==='https:';
+    setHealthComponent('https',secure?'good':'bad',secure?'SEGURO':'NO SEGURO',secure?'TLS activo':'HTTPS requerido');
+    setHealthComponent('auth',auth.authenticated?'good':'bad',auth.authenticated?'AUTENTICADO':'SIN SESIÓN',auth.user?.display_name||'Gateway privado');
+    setHealthComponent('backend',h.backend?.status==='ONLINE'?'good':'bad',h.backend?.status||'NO DATA','API local');
+    const eaStatus=String(h.ea_feed?.status||'NO_DATA');
+    setHealthComponent('ea',eaStatus==='ONLINE'?'good':eaStatus==='STALE'?'warn':'bad',eaStatus,'Heartbeat '+healthAge(h.ea_feed?.age_seconds));
+    const brokerConnected=!!h.broker?.connected;
+    setHealthComponent('broker',brokerConnected?'good':'bad',brokerConnected?'CONECTADO':'DESCONECTADO',h.broker?.account_mode||'UNKNOWN');
+    const demoReady=!!h.demo_execution?.execution_allowed;
+    setHealthComponent('execution',demoReady?'good':'warn',demoReady?'READY':'BLOQUEADO','Solo cuenta DEMO');
+    const newsStatus=String(h.news_engine?.status||'NO_DATA');
+    setHealthComponent('news',newsStatus==='ONLINE'?'good':newsStatus==='STALE'?'warn':'bad',newsStatus,'Hace '+healthAge(h.news_engine?.age_seconds));
+    const observerAvailable=String(h.market_observer?.status||'NO_DATA')==='AVAILABLE';
+    setHealthComponent('observer',observerAvailable?'good':'warn',observerAvailable?'DISPONIBLE':'SIN DATOS','Último evento '+healthAge(h.market_observer?.age_seconds));
+    const criticalBad=!secure||!auth.authenticated||h.backend?.status!=='ONLINE'||eaStatus==='NO_DATA'||!brokerConnected;
+    const warnings=eaStatus==='STALE'||!demoReady||newsStatus!=='ONLINE'||!observerAvailable;
+    const overall=$('healthOverall');
+    overall.textContent=criticalBad?'INCIDENCIA':warnings?'ATENCIÓN':'TODO OPERATIVO';
+    overall.className='health-overall '+(criticalBad?'bad':warnings?'warn':'good');
+    $('healthSummary').textContent=criticalBad?'Hay un componente crítico que requiere revisión.':warnings?'Hali funciona, pero hay uno o más componentes en estado parcial.':'Gateway, dashboard, MT5, broker y servicios principales responden correctamente.';
+    $('healthLastCheck').textContent=new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  }catch(e){
+    const overall=$('healthOverall');if(overall){overall.textContent='SIN RESPUESTA';overall.className='health-overall bad'}
+    if($('healthSummary'))$('healthSummary').textContent='No se pudo completar el heartbeat: '+e.message;
+  }
+}
+async function loadIdentity(){
+  try{
+    const r=await fetch('/api/auth/status',{cache:'no-store'});
+    const d=await r.json();
+    if(!d.authenticated){location.replace('/login');return}
+    const label=d.user?.display_name||d.user?.username||'Usuario';
+    if($('authUser'))$('authUser').textContent=label;
+  }catch(_){}
+}
+async function logoutHali(){
+  const button=$('logoutButton');
+  if(button){button.disabled=true;button.textContent='SALIENDO…'}
+  try{await fetch('/api/logout',{method:'POST',cache:'no-store'})}catch(_){}
+  location.replace('/login');
+}
+function setConnectionBanner(on,message='Reconectando con Hali…'){
+  const el=$('connectionBanner'),txt=$('connectionBannerText');
+  if(!el||!txt)return;
+  txt.textContent=message;el.classList.toggle('on',!!on);
+}
+function setActiveNav(id){
+  document.querySelectorAll('[data-nav]').forEach(a=>{
+    const active=a.dataset.nav===id;
+    a.classList.toggle('active',active);
+    if(active)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');
+  });
+}
+function initNavObserver(){
+  const ids=['overview','market','trades','signal','riskpanel','news','history','health'];
+  const sections=ids.map(id=>document.getElementById(id)).filter(Boolean);
+  if(!('IntersectionObserver' in window)||!sections.length)return;
+  const observer=new IntersectionObserver(entries=>{
+    const visible=entries.filter(e=>e.isIntersecting).sort((a,b)=>b.intersectionRatio-a.intersectionRatio)[0];
+    if(visible)setActiveNav(visible.target.id);
+  },{rootMargin:'-20% 0px -65% 0px',threshold:[0,.15,.35,.6]});
+  sections.forEach(s=>observer.observe(s));
+}
+function toggleAdvanced(){
+  document.body.classList.toggle('show-advanced');
+  const b=$('advancedToggle');
+  if(b)b.textContent=document.body.classList.contains('show-advanced')?'OCULTAR DIAGNÓSTICO AVANZADO':'MOSTRAR DIAGNÓSTICO AVANZADO';
+} let lastLog=[]; let accountCurrency='USD';
 function money(n,currency=accountCurrency){const value=Number(n||0);try{return new Intl.NumberFormat('en-US',{style:'currency',currency}).format(value)}catch(_){return value.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})+' '+currency}}
 function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
 function observerStamp(row){if(!row)return '—';const epoch=Number(row.captured_at||row.timestamp||0);const when=epoch>0?new Date(epoch*1000).toLocaleString('es-CO',{timeZone:'America/Bogota'}):'—';return `${when} · ${esc(row.snapshot_type||'SNAPSHOT')}`}
@@ -74,17 +1164,150 @@ function currentSessionContext(){
   const phase=opening.length?'OPEN WINDOW':(active.length>=2?'OVERLAP / DESARROLLO':'DESARROLLO');
   return {regional,phase,active,opening,cards,note:`Hora Colombia ${colP.hour}:${colP.minute} · UTC ${utcP.hour}:${utcP.minute} · activos: ${active.join(' + ')||'ninguno'} · aperturas: ${opening.join(' + ')||'ninguna'}`};
 }
+
+function setChartTimeframe(tf){
+  chartTimeframe=tf;
+  localStorage.setItem('hali_chart_tf',tf);
+  document.querySelectorAll('.chart-tabs button').forEach(b=>b.classList.toggle('active',b.dataset.tf===tf));
+  loadChart(true);
+}
+function chartNum(v){const n=Number(v);return Number.isFinite(n)?n:null}
+function drawPriceChart(){
+  const canvas=$('priceChart'), empty=$('chartEmpty');
+  if(!canvas)return;
+  const rect=canvas.getBoundingClientRect();
+  const dpr=Math.max(1,Math.min(2,window.devicePixelRatio||1));
+  canvas.width=Math.max(1,Math.floor(rect.width*dpr)); canvas.height=Math.max(1,Math.floor(rect.height*dpr));
+  const ctx=canvas.getContext('2d'); ctx.setTransform(dpr,0,0,dpr,0,0);
+  const w=rect.width,h=rect.height; ctx.clearRect(0,0,w,h);
+  const bars=chartBars.filter(b=>[b.open,b.high,b.low,b.close].every(v=>chartNum(v)!==null));
+  if(bars.length<2){ if(empty)empty.style.display='flex'; return; }
+  if(empty)empty.style.display='none';
+  const pad={l:10,r:60,t:12,b:22};
+  const values=[];
+  bars.forEach(b=>{values.push(+b.high,+b.low);if(chartNum(b.ema20)!=null)values.push(+b.ema20);if(chartNum(b.ema200)!=null)values.push(+b.ema200)});
+  let min=Math.min(...values),max=Math.max(...values); const extra=Math.max((max-min)*.08,.5); min-=extra;max+=extra;
+  const px=i=>pad.l+(i+.5)*(w-pad.l-pad.r)/bars.length;
+  const py=v=>pad.t+(max-v)/(max-min)*(h-pad.t-pad.b);
+  // grid
+  ctx.lineWidth=1;ctx.strokeStyle='rgba(125,135,145,.10)';ctx.fillStyle='#68717c';ctx.font='9px ui-monospace,monospace';
+  for(let i=0;i<5;i++){const y=pad.t+i*(h-pad.t-pad.b)/4;ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(w-pad.r,y);ctx.stroke();const val=max-i*(max-min)/4;ctx.fillText(val.toFixed(2),w-pad.r+7,y+3)}
+  // candles
+  const step=(w-pad.l-pad.r)/bars.length, body=Math.max(2,Math.min(9,step*.58));
+  bars.forEach((b,i)=>{
+    const x=px(i),up=+b.close>=+b.open;const col=up?'#25cfa0':'#e94f66';
+    const liveCandle=!!b.live;
+    ctx.save();
+    ctx.strokeStyle=col;ctx.lineWidth=liveCandle?1.5:1;
+    ctx.fillStyle=up?(liveCandle?'rgba(37,207,160,.88)':'rgba(37,207,160,.60)'):(liveCandle?'rgba(233,79,102,.88)':'rgba(233,79,102,.66)');
+    if(liveCandle){ctx.shadowColor=col;ctx.shadowBlur=7}
+    ctx.beginPath();ctx.moveTo(x,py(+b.high));ctx.lineTo(x,py(+b.low));ctx.stroke();
+    const yo=py(+b.open),yc=py(+b.close),top=Math.min(yo,yc),bh=Math.max(1,Math.abs(yc-yo));
+    ctx.fillRect(x-(body+(liveCandle?1:0))/2,top,body+(liveCandle?1:0),bh);
+    ctx.restore();
+  });
+  function line(key,color,width){
+    ctx.strokeStyle=color;ctx.lineWidth=width;ctx.beginPath();let started=false;
+    bars.forEach((b,i)=>{const v=chartNum(b[key]);if(v==null)return;const x=px(i),y=py(v);if(!started){ctx.moveTo(x,y);started=true}else ctx.lineTo(x,y)});
+    if(started)ctx.stroke();
+  }
+  line('ema20','#d6a64d',1.25);line('ema200','#98415f',1.15);
+  // active trade SL/TP overlays when available
+  const pos=(latestStatus?.open_positions||[])[0];
+  if(pos){
+    [[pos.sl,'SL','#e45366'],[pos.tp,'TP','#2bcf9f'],[pos.open_price,'ENTRY','#d7b36d']].forEach(([v,label,col])=>{
+      v=chartNum(v);if(v==null||v<min||v>max)return;const y=py(v);ctx.save();ctx.setLineDash([5,5]);ctx.strokeStyle=col;ctx.globalAlpha=.72;ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(w-pad.r,y);ctx.stroke();ctx.restore();ctx.fillStyle=col;ctx.font='9px ui-monospace,monospace';ctx.fillText(label,w-pad.r-38,y-3);
+    });
+  }
+  // x labels
+  ctx.fillStyle='#5f6873';ctx.font='8px ui-monospace,monospace';
+  const picks=[0,Math.floor((bars.length-1)/2),bars.length-1];
+  picks.forEach(i=>{const d=new Date(Number(bars[i].timestamp)*1000);const label=d.toLocaleString('es-CO',{timeZone:'America/Bogota',hour:'2-digit',minute:'2-digit',day:'2-digit',month:'2-digit'});ctx.fillText(label,Math.max(5,Math.min(w-90,px(i)-25)),h-6)});
+  const last=bars[bars.length-1],prev=bars[bars.length-2],lastClose=+last.close,delta=lastClose-+prev.close,pct=+prev.close?delta/+prev.close*100:0;
+  $('chartLast').textContent=lastClose.toFixed(2);
+  $('chartChange').textContent=(delta>=0?'+':'')+delta.toFixed(2)+' ('+(pct>=0?'+':'')+pct.toFixed(2)+'%)';
+  $('chartChange').className=delta>=0?'up':'down';
+  $('chartRange').textContent='H '+Math.max(...bars.map(b=>+b.high)).toFixed(2)+' · L '+Math.min(...bars.map(b=>+b.low)).toFixed(2);
+}
+async function loadChart(force=false){
+  try{
+    const r=await fetch('/api/chart?timeframe='+encodeURIComponent(chartTimeframe)+'&limit=120&t='+Date.now(),{cache:'no-store'});
+    if(r.status===401){location.replace('/login');return}
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const d=await r.json();
+    const bars=Array.isArray(d.bars)?d.bars.slice():[];
+    const live=d.live_bar&&typeof d.live_bar==='object'?d.live_bar:null;
+    if(live && [live.open,live.high,live.low,live.close].every(v=>Number.isFinite(Number(v)))){
+      const ts=Number(live.timestamp);
+      const idx=bars.findIndex(b=>Number(b.timestamp)===ts);
+      const enriched={...live,live:true};
+      if(idx>=0)bars[idx]=enriched;else bars.push(enriched);
+    }
+    chartBars=bars.slice(-121);
+    const liveEl=$('chartLive');
+    const nowSec=Date.now()/1000;
+    const serverEpoch=Number(d.server_epoch||0);
+    const tickEpoch=Number(d.tick_epoch||0);
+    const feedAge=serverEpoch>0?Math.max(0,nowSec-serverEpoch):null;
+    const tickAge=tickEpoch>0?Math.max(0,nowSec-tickEpoch):null;
+    if(liveEl){
+      if(live && feedAge!=null && feedAge<=5 && tickAge!=null && tickAge<=5){
+        liveEl.className='chart-live live';
+        liveEl.innerHTML='<i></i> LIVE · '+Math.round(tickAge)+'s';
+      }else if(live && feedAge!=null && feedAge<=5){
+        liveEl.className='chart-live stale';
+        liveEl.innerHTML='<i></i> FEED ONLINE · SIN TICKS';
+      }else if(live){
+        liveEl.className='chart-live stale';
+        liveEl.innerHTML='<i></i> FEED STALE';
+      }else{
+        liveEl.className='chart-live offline';
+        liveEl.innerHTML='<i></i> SIN FEED LIVE';
+      }
+    }
+    drawPriceChart();
+  }catch(e){
+    const liveEl=$('chartLive');
+    if(liveEl){liveEl.className='chart-live offline';liveEl.innerHTML='<i></i> OFFLINE'}
+    const empty=$('chartEmpty');if(empty){empty.textContent='Gráfico no disponible · '+e.message;empty.style.display='flex'}
+  }
+}
+
 const lifecycle=v=>String(v||'').toUpperCase()==='POSITION_CLOSE'?'POSITION_CLOSED':String(v||'');
 function render(data){
+ latestStatus=data;
  const armed=data.armed_status||{}; const armedDirection=armed.status==='CANCELLED'?(armed.previous_direction||'—'):(armed.direction||'—'); $('armedStatus').textContent=armed.status==='CANCELLED'?`CANCELLED ${armedDirection}`:armed.status==='VALID'?`ARMED ${armedDirection} — VALID`:(armed.status||'DISABLED'); $('armedDetail').textContent=armed.status==='CANCELLED'?`reason: ${armed.reason||'—'} · RSI: ${Number(armed.rsi||0).toFixed(1)} · Impulse: ${Number(armed.impulse_atr||0).toFixed(2)} ATR`:(armed.reason||'Feature flag apagado.');
- accountCurrency=String(data.account_currency||'USD').toUpperCase(); const legacyRiskAmount=Number(data.risk_amount??data.risk_usd??0); const targetRisk=Number(data.target_risk??legacyRiskAmount); const dailyLossBudget=Number(data.daily_loss_budget??0); const dailyLossUsed=Number(data.daily_loss_used??0); const remainingDailyBudget=Number(data.remaining_daily_budget??Math.max(0,dailyLossBudget-dailyLossUsed)); const effectivePlannedRisk=Math.max(0,Number(data.effective_planned_risk??Math.min(targetRisk,remainingDailyBudget))); const riskAmount=effectivePlannedRisk;
+ accountCurrency=String(data.account_currency||'UNKNOWN').toUpperCase();
+ const riskSnapshot=data.risk_budget||{};
+ const targetRisk=riskSnapshot.target_risk_amount, remainingDailyBudget=riskSnapshot.remaining_daily_budget;
+ const effectivePlannedRisk=riskSnapshot.planned_risk_amount;
  const de=data.demo_execution||{};
  $('symbol').textContent=`${data.symbol||'XAUUSD'} · ${data.timeframe||'H1'}`;
  $('mode').textContent=de.execution_allowed?'DEMO EXECUTION':'PAPER MODE'; $('mode').className='pill paper';
  $('connection').textContent=data.connected?'MT5 CONECTADO':'SIN DATOS MT5'; $('connection').className='pill '+(data.connected?'paper':'offline');
  $('mt5Notice').style.display=data.connected?'none':'block';
  $('decision').textContent=data.last_decision||'—'; $('score').textContent=data.last_score??'—'; $('setup').textContent=data.last_setup||'—'; $('direction').textContent=data.last_direction||'—'; $('risk').textContent=displayMoney(effectivePlannedRisk); $('riskPct').textContent=Number(data.risk_percent||5).toFixed(1)+'% equity'; $('riskBudget').textContent=`Objetivo ${displayMoney(targetRisk)} · restante diario ${displayMoney(remainingDailyBudget)}`;
- const a=data.analysis||{}; const m=data.monitor||{}; if(!m.state && data.last_decision){ m.state='ESTADO ACTUAL'; m.reason=data.last_decision; m.score=data.last_score??0; m.candidate=data.last_direction||'-'; m.age_sec=0; m.entry_used_this_bar=false; m.boost_l=0; m.boost_s=0; } $('analysisBar').textContent='Última evaluación H1: '+(a.bar||'—'); $('aH4').textContent=a.h4_trend||'—'; $('aH1').textContent=a.h1_trend||'—'; $('aEma').textContent=(a.ema_fast!=null&&a.ema_slow!=null)?`${Number(a.ema_fast).toFixed(2)} / ${Number(a.ema_slow).toFixed(2)}`:'—'; $('aH4Ema').textContent=(a.h4_ema_fast!=null&&a.h4_ema_slow!=null)?`${Number(a.h4_ema_fast).toFixed(2)} / ${Number(a.h4_ema_slow).toFixed(2)}`:'—'; $('aRsi').textContent=a.rsi!=null?Number(a.rsi).toFixed(1):'—'; $('aAdx').textContent=a.adx!=null?Number(a.adx).toFixed(1):'—'; $('aAtr').textContent=a.atr!=null?Number(a.atr).toFixed(2):'—'; $('aVol').textContent=a.volume_state||'—'; $('aLongTech').textContent=a.long_tech??'—'; $('aShortTech').textContent=a.short_tech??'—'; $('aNewsPts').textContent=(a.long_news_points!=null&&a.short_news_points!=null)?`${a.long_news_points>0?'+':''}${a.long_news_points} / ${a.short_news_points>0?'+':''}${a.short_news_points}`:'—'; $('aFinal').textContent=(a.long_final!=null&&a.short_final!=null)?`${a.long_final} / ${a.short_final}`:'—'; $('aStructure').textContent=a.structure||'—'; $('aCandidate').textContent=a.candidate||'—'; $('aMinRR').textContent=data.min_rr!=null?Number(data.min_rr).toFixed(2):'—'; $('aBlock').textContent=a.block_reason||'Ninguno'; $('aTechReason').textContent=a.technical_reason||'—'; $('aNewsReason').textContent=a.news_reason||'—'; $('mState').textContent=m.state||'—'; $('mCandidate').textContent=m.candidate||'—'; $('mScore').textContent=m.score??'—'; $('mBoost').textContent=(m.boost_l!=null&&m.boost_s!=null)?`${Number(m.boost_l)>=0?'+':''}${m.boost_l} / ${Number(m.boost_s)>=0?'+':''}${m.boost_s}`:'—'; $('mAge').textContent=m.age_sec!=null?Math.floor(Number(m.age_sec)/60)+'m '+Math.max(0,Math.floor(Number(m.age_sec)%60))+'s':'—'; $('mUsed').textContent=m.entry_used_this_bar?'SÍ':'NO'; $('mReason').textContent=m.reason||'—'; $('mReasonLong').textContent=m.reason||'—'; const sess=currentSessionContext();
+ const a=data.analysis||{}; const m=data.monitor||{}; if(!m.state && data.last_decision){ m.state='ESTADO ACTUAL'; m.reason=data.last_decision; m.score=data.last_score??0; m.candidate=data.last_direction||'-'; m.age_sec=0; m.entry_used_this_bar=false; m.boost_l=0; m.boost_s=0; } $('analysisBar').textContent='Última evaluación H1: '+(a.bar||'—'); $('aH4').textContent=a.h4_trend||'—'; $('aH1').textContent=a.h1_trend||'—'; $('aEma').textContent=(a.ema_fast!=null&&a.ema_slow!=null)?`${Number(a.ema_fast).toFixed(2)} / ${Number(a.ema_slow).toFixed(2)}`:'—'; $('aH4Ema').textContent=(a.h4_ema_fast!=null&&a.h4_ema_slow!=null)?`${Number(a.h4_ema_fast).toFixed(2)} / ${Number(a.h4_ema_slow).toFixed(2)}`:'—'; $('aRsi').textContent=a.rsi!=null?Number(a.rsi).toFixed(1):'—'; $('aAdx').textContent=a.adx!=null?Number(a.adx).toFixed(1):'—'; $('aAtr').textContent=a.atr!=null?Number(a.atr).toFixed(2):'—'; $('aVol').textContent=a.volume_state||'—'; $('aLongTech').textContent=a.long_tech??'—'; $('aShortTech').textContent=a.short_tech??'—'; $('aNewsPts').textContent=(a.long_news_points!=null&&a.short_news_points!=null)?`${a.long_news_points>0?'+':''}${a.long_news_points} / ${a.short_news_points>0?'+':''}${a.short_news_points}`:'—'; $('aFinal').textContent=(a.long_final!=null&&a.short_final!=null)?`${a.long_final} / ${a.short_final}`:'—'; $('aStructure').textContent=a.structure||'—'; $('aCandidate').textContent=a.candidate||'—'; $('aMinRR').textContent=data.min_rr!=null?Number(data.min_rr).toFixed(2):'—'; $('aBlock').textContent=a.block_reason||'Ninguno'; $('aTechReason').textContent=a.technical_reason||'—'; $('aNewsReason').textContent=a.news_reason||'—';
+ const longFinal=Number(a.long_final??a.long_tech??0), shortFinal=Number(a.short_final??a.short_tech??0);
+ $('signalLongFinal').textContent=Number.isFinite(longFinal)?Math.round(longFinal):'—';
+ $('signalShortFinal').textContent=Number.isFinite(shortFinal)?Math.round(shortFinal):'—';
+ $('signalLongBar').style.width=Math.max(0,Math.min(100,longFinal))+'%';
+ $('signalShortBar').style.width=Math.max(0,Math.min(100,shortFinal))+'%';
+ const decisionText=String(data.last_decision||a.block_reason||'MONITOREANDO');
+ $('signalDecisionText').textContent=decisionText;
+ const maxSignal=Math.max(longFinal,shortFinal);
+ const blocked=/bloque|block|spread|news|noticia|risk|riesgo|margin|margen/i.test(decisionText+' '+String(a.block_reason||''));
+ const ready=!blocked && maxSignal>=74;
+ const isArmedCandidate=!blocked && !ready && maxSignal>=58;
+ $('signalDecision').textContent=blocked?'BLOQUEADO':ready?'LISTO / TRIGGER':isArmedCandidate?'ARMADO':'MONITOREANDO';
+ $('signalDecision').className='signal-decision '+(blocked?'blocked':ready?'ready':isArmedCandidate?'armed':'neutral');
+ const trendClass=v=>/alcista|bull/i.test(String(v||''))?'bull':/bajista|bear/i.test(String(v||''))?'bear':'';
+ const h4Card=$('aH4').closest('.signal-core-card'),h1Card=$('aH1').closest('.signal-core-card');
+ h4Card.className='signal-core-card '+trendClass(a.h4_trend); h1Card.className='signal-core-card '+trendClass(a.h1_trend);
+ $('signalH4Icon').textContent=trendClass(a.h4_trend)==='bull'?'↗':trendClass(a.h4_trend)==='bear'?'↘':'◇';
+ $('signalH1Icon').textContent=trendClass(a.h1_trend)==='bull'?'↗':trendClass(a.h1_trend)==='bear'?'↘':'◇';
+ $('signalSetupState').textContent=a.structure&&a.structure!=='—'?'DETECTADO':'—';
+ $('signalCandidateState').textContent=maxSignal>=74?'VALIDADO':maxSignal>=58?'EN ARMADO':'ESPERA'; $('mState').textContent=m.state||'—'; $('mCandidate').textContent=m.candidate||'—'; $('mScore').textContent=m.score??'—'; $('mBoost').textContent=(m.boost_l!=null&&m.boost_s!=null)?`${Number(m.boost_l)>=0?'+':''}${m.boost_l} / ${Number(m.boost_s)>=0?'+':''}${m.boost_s}`:'—'; $('mAge').textContent=m.age_sec!=null?Math.floor(Number(m.age_sec)/60)+'m '+Math.max(0,Math.floor(Number(m.age_sec)%60))+'s':'—'; $('mUsed').textContent=m.entry_used_this_bar?'SÍ':'NO'; $('mReason').textContent=m.reason||'—'; $('mReasonLong').textContent=m.reason||'—'; const sess=currentSessionContext();
  $('sessionName').textContent=a.session||sess.regional||'—';
  $('sessionPhase').textContent=a.session_phase||sess.phase||'—';
  $('sessionVol').textContent=a.session_volatility||'—';
@@ -92,28 +1315,125 @@ function render(data){
  $('sessionPts').textContent=(a.session_long_points!=null&&a.session_short_points!=null)?`${a.session_long_points>0?'+':''}${a.session_long_points} / ${a.session_short_points>0?'+':''}${a.session_short_points}`:'Pendiente de la evaluación H1';
  $('sessionContext').textContent=(a.session_context||sess.note) + (a.active_market_centers?` · MT5 activos: ${esc(a.active_market_centers)}`:'');
  $('marketCenters').innerHTML=sess.cards.map(c=>{const open=String(Math.floor(c.open/60)).padStart(2,'0')+':'+String(c.open%60).padStart(2,'0');return `<div class="center-card ${c.opening?'center-open':(c.state==='ACTIVO'?'center-active':'')}"><strong><span>${esc(c.name)}</span><span class="center-open-time">ABRE ${open}</span></strong><div class="small">${c.state}</div></div>`}).join('');
- const n=data.news||{}; $('newsDataRisk').textContent='Riesgo de datos: '+(n.data_risk||'UNKNOWN'); $('newsDir').textContent=n.direction||'NEUTRO'; $('newsBias').textContent=n.bias??0; $('newsConf').textContent=(Number(n.confidence||0)).toFixed(0)+'%'; $('newsRisk').textContent=n.risk||'UNKNOWN'; $('newsSummary').textContent=n.summary||'—'; $('newsSource').textContent=`Fuentes OK: ${n.sources_ok||0}/${n.source_count||0} · ${n.article_count||0} titulares · actualización ${n.updated_at||'—'}`;
- const health=n.source_health||{}; $('newsSources').innerHTML=Object.entries(health).map(([name,v])=>`<div class="source-box"><strong class="${v.status==='OK'?'ok':'bad'}">${v.status==='OK'?'✓':'✕'} ${esc(name)}</strong><div class="small">${Number(v.articles||0)} titulares · ${Number(v.latency_ms||0)}ms</div>${v.error?`<div class="small bad">${esc(v.error)}</div>`:''}</div>`).join('')||'<div class="small">Sin estado de fuentes.</div>';
- $('newsHeadlines').innerHTML=(n.top_headlines||[]).slice(0,10).map((h,i)=>`<div><span class="tag">${esc(h.category||'NEWS')}</span> <a class="headline-link" href="${esc(h.url||'#')}" target="_blank" rel="noopener"><strong>${esc(h.title||'')}</strong></a><div class="small">${esc(h.domain||'')} · ${esc(h.source||'')} · impacto ${Number(h.impact||0)}</div></div>`).join('')||'<div class="small">No hay titulares recientes disponibles.</div>';
+ const n=data.news||{};
+ const newsBias=Number(n.bias||0), newsConf=Number(n.confidence||0), newsDirection=String(n.direction||'NEUTRO').toUpperCase(), newsRisk=String(n.risk||'UNKNOWN').toUpperCase(), dataRisk=String(n.data_risk||'UNKNOWN').toUpperCase();
+ $('newsDataRisk').textContent='Datos: '+dataRisk;
+ $('newsDir').textContent=newsDirection;
+ $('newsDir').className=newsDirection==='ALCISTA'?'bull':newsDirection==='BAJISTA'?'bear':'';
+ $('newsBias').textContent=(newsBias>0?'+':'')+Math.round(newsBias);
+ $('newsBiasLabel').textContent='Bias '+(newsBias>0?'+':'')+Math.round(newsBias);
+ $('newsBiasNeedle').style.left=Math.max(0,Math.min(100,(newsBias+100)/2))+'%';
+ $('newsConf').textContent=Math.max(0,Math.min(100,newsConf)).toFixed(0)+'%';
+ $('newsRisk').textContent=newsRisk;
+ $('newsRisk').className=newsRisk==='HIGH'?'sell':newsRisk==='LOW'?'buy':'';
+ $('newsSummary').textContent=n.summary||'—';
+ $('newsRationale').textContent=n.rationale||'Análisis agregado de titulares recientes.';
+ const sourcesOk=Number(n.sources_ok||0), sourceCount=Number(n.source_count||0), articleCount=Number(n.article_count||0);
+ $('newsSource').textContent=`${sourcesOk}/${sourceCount} activas · ${n.updated_at||'—'}`;
+ $('newsArticleCount').textContent=`${articleCount} artículos`;
+ const freshState=$('newsFreshState');
+ if(n.available && dataRisk==='LOW'){freshState.textContent='ACTUALIZADO';freshState.className='news-fresh ok'}
+ else if(n.available){freshState.textContent='DATOS PARCIALES';freshState.className='news-fresh warn'}
+ else {freshState.textContent='DESACTUALIZADO';freshState.className='news-fresh bad'}
+ const health=n.source_health||{};
+ $('newsSources').innerHTML=Object.entries(health).map(([name,v])=>`<div class="news-source-card ${v.status==='OK'?'ok':'bad'}"><div class="source-name"><span>${esc(name)}</span><i class="source-status"></i></div><div class="source-meta">${Number(v.articles||0)} titulares · ${Number(v.latency_ms||0)}ms</div>${v.error?`<div class="source-error">${esc(v.error)}</div>`:''}</div>`).join('')||'<div class="news-empty">Sin estado de fuentes.</div>';
+ $('newsHeadlines').innerHTML=(n.top_headlines||[]).slice(0,8).map(h=>{const impact=Number(h.impact||0);return `<div class="news-item"><div class="impact-badge ${impact>0?'pos':impact<0?'neg':''}">${impact>0?'+':''}${impact}</div><div><a href="${esc(h.url||'#')}" target="_blank" rel="noopener">${esc(h.title||'')}</a><div class="meta">${esc(h.domain||'')} · ${esc(h.source||'')}</div></div><div class="category">${esc(h.category||'NEWS')}</div></div>`}).join('')||'<div class="news-empty">No hay titulares recientes disponibles.</div>';
  const x=data.external_signal||{}; const pct=v=>(Number(v||0)*100).toFixed(0)+'%'; $('extLong').textContent=pct(x.long_weight); $('extShort').textContent=pct(x.short_weight); $('extNeutral').textContent=pct(x.neutral_weight); $('extTraders').textContent=Number(x.valid_traders||0); $('extQuality').textContent=`Calidad: ${Number(x.quality||0)}/100 · ${esc(x.data_quality||'LOW')}`; $('extFresh').textContent=x.freshness_sec==null?'Frescura: —':`Frescura: ${Math.max(0,Number(x.freshness_sec)).toFixed(0)}s`; $('extApi').textContent=`API: ${esc(x.api_status||'NO_DATA')}`; $('extReadOnly').textContent=`Solo diagnóstico · score_effect=${Number(x.score_effect||0)} · lectura ${x.read_only===false?'NO SEGURA':'READ-ONLY'} · ${esc(x.message||'sin copy trading ni ejecución')}`;
  const tv=data.tradingview||{}; const tvLast=tv.last_signal||{}; $('tvStatus').textContent=`Estado: ${esc(tv.api_status||'NO_DATA')}`; $('tvLast').textContent=`Última señal: ${esc(tvLast.received_at||'—')}`; $('tvTimeframe').textContent=tvLast.timeframe?`${esc(tvLast.timeframe)}m`:'—'; $('tvDirection').textContent=esc(tvLast.direction||'—'); $('tvEvent').textContent=esc(tvLast.event||'—'); $('tvPrice').textContent=tvLast.price==null?'—':Number(tvLast.price).toFixed(2); $('tvFresh').textContent=tv.freshness_sec==null?'Frescura: —':`Frescura: ${Math.max(0,Number(tv.freshness_sec)).toFixed(0)}s`; $('tvCount').textContent=`Eventos: ${Number(tv.event_count||0)}`;
  const observer=data.market_observer||{}; const latest=observer.latest_by_timeframe||{}; $('observerStatus').textContent=`Estado: ${esc(observer.status||'NO_DATA')}`; $('observerM15').textContent=observerStamp(latest.M15); $('observerH1').textContent=observerStamp(latest.H1); $('observerH4').textContent=observerStamp(latest.H4); $('observerCount').textContent=Number(observer.observation_count||0); $('observerFresh').textContent=observer.freshness_sec==null?'Frescura: —':`Frescura: ${Math.max(0,Number(observer.freshness_sec)).toFixed(0)}s`; $('observerDecision').textContent=observer.last_decision||'—';
  const sd=data.stop_diagnostics||{}; const stopPrice=v=>v==null||Number(v)<=0?'—':Number(v).toFixed(2); const stopAtr=v=>v==null||Number(v)<=0?'—':Number(v).toFixed(2)+' ATR'; const stopLot=v=>v==null||Number(v)<=0?'—':Number(v).toFixed(4)+' lot'; $('stopMode').textContent=esc(sd.mode||data.stop_mode||'NOT_EVALUATED'); $('stopSetup').textContent=esc(sd.setup||'—'); $('stopDirection').textContent=esc(sd.direction||'—'); $('stopCurrent').textContent=sd.evaluated?`${stopPrice(sd.current_sl)} · ${stopAtr(sd.current_sl_atr)}`:'—'; $('stopCurrentLot').textContent=stopLot(sd.current_lot); $('stopAdaptive').textContent=sd.evaluated?`${stopPrice(sd.adaptive_sl)} · ${stopAtr(sd.adaptive_sl_atr)}`:'—'; $('stopAdaptiveLot').textContent=stopLot(sd.adaptive_lot); $('stopSelected').textContent=sd.evaluated?`${stopPrice(sd.selected_sl)} · ${stopLot(sd.selected_lot)}`:'—'; $('stopRisk').textContent=sd.risk_amount==null?'—':displayMoney(sd.risk_amount,sd.account_currency||accountCurrency); $('stopReason').textContent=esc(sd.selection_reason||'NOT_EVALUATED');
  const tp=data.take_profit||{}; const tpPrice=v=>v==null||Number(v)<=0?'—':Number(v).toFixed(2); const tpRR=v=>v==null||Number(v)<=0?'—':Number(v).toFixed(2)+'R'; $('tpMode').textContent=esc(tp.mode||'CURRENT'); $('tpClass').textContent=esc(tp.class||'—'); $('tpSetup').textContent=esc(tp.setup||'—'); $('tpDirection').textContent=esc(tp.direction||'—'); $('tpCurrent').textContent=tpPrice(tp.current_tp); $('tpCurrentRR').textContent=tpRR(tp.current_rr); $('tpV2').textContent=tpPrice(tp.v2_tp); $('tpV2RR').textContent=tpRR(tp.v2_rr); $('tpSelected').textContent=tpPrice(tp.selected_tp); $('tpSelectedRR').textContent=tpRR(tp.selected_rr); $('tpLevel').textContent=tpPrice(tp.structure_level); $('tpConfidence').textContent=esc(tp.structure_confidence||'NONE'); $('tpReason').textContent=esc(tp.selection_reason||'—');
- $('balance').textContent=displayMoney(data.balance); $('equity').textContent=displayMoney(data.equity); $('startEquity').textContent=displayMoney(data.start_of_day_equity); $('tradeRiskPercent').textContent=Number(data.risk_percent||5).toFixed(1)+'%'; $('targetRisk').textContent=displayMoney(targetRisk); $('dailyLossPercent').textContent=Number(data.daily_loss_limit_percent||0).toFixed(1)+'%'; $('dailyBudget').textContent=displayMoney(dailyLossBudget); $('dailyLossUsed').textContent=displayMoney(dailyLossUsed); $('openRisk').textContent=displayMoney(data.open_risk||0); $('dailyRemaining').textContent=displayMoney(remainingDailyBudget); $('effectiveRisk').textContent=displayMoney(effectivePlannedRisk);
- const lim=Math.max(1,dailyLossBudget); $('dailyMeter').style.width=Math.min(100,Math.max(0,dailyLossUsed)/lim*100)+'%';
- renderRiskSnapshot(data);
+ $('balance').textContent=displayMoney(data.balance);
  $('execAccountMode').textContent=esc(de.account_mode||'UNKNOWN'); $('execConnected').textContent=de.broker_connected?'CONECTADO':'DESCONECTADO'; $('execEnabled').textContent=de.enabled?'SÍ':'NO'; $('execAllowed').textContent=de.execution_allowed?'SÍ':'NO'; $('execAuthorization').textContent=esc(de.authorization_reason||'—'); $('execState').textContent=esc(lifecycle(de.state||'PAPER')); $('execReason').textContent=esc(de.reason||'—'); $('execIds').textContent=(de.order_id||de.deal_id)?`${de.order_id||0} / ${de.deal_id||0}`:'—'; $('execFill').textContent=de.executed_price?`${Number(de.filled_volume||0).toFixed(4)} @ ${Number(de.executed_price).toFixed(2)}`:'—';
  const positions=data.open_positions||[];
- if(!positions.length){$('active').innerHTML='<div class="small">No hay posiciones abiertas del MagicNumber de GoldScout. Las señales PAPER no se muestran como posiciones reales.</div>'}
- else {$('active').innerHTML=positions.map((t,i)=>`<div class="trade"><div><strong class="${t.direction==='LONG'?'buy':'sell'}">${esc(t.direction)}</strong><div class="small"><span class="pill">${esc(t.class||'—')}</span> ${esc(t.setup||'—')} · score ${Number(t.score||0)}</div><div class="small">${esc(t.symbol)} · ${Number(t.volume).toFixed(4)} lot · pos ${esc(t.position_id)}</div></div><div><div class="small">ENTRADA / ACTUAL</div><strong>${Number(t.open_price).toFixed(2)} / ${Number(t.current_price).toFixed(2)}</strong><div class="small">SL ${Number(t.sl).toFixed(2)} · riesgo inicial ${displayMoney(t.initial_risk)} · riesgo actual ${displayMoney(t.risk)}</div></div><div><div class="small">OBJETIVO</div><strong>${Number(t.tp).toFixed(2)}</strong><div class="small">P/L flotante ${money(t.floating_pnl)}</div></div><button onclick="toggle('activeReason${i}')">Abrir explicación</button><div id="activeReason${i}" class="reason" style="grid-column:1/-1">Trade ${esc(t.trade_id||'—')} · Signal ${esc(t.signal_event_id||'—')} · ${esc(t.comment||'')}</div></div>`).join('')}
- const st=data.session_stats||{}; const ledger=data.demo_ledger||{}; $('ledgerStatus').textContent=`Ledger MT5: ${ledger.status||'NO_DATA'} · ${Number(ledger.event_count||0)} eventos · conflictos: ${Number(ledger.ledger_conflicts||0)} · costes desconocidos: ${Number(st.net_cost_unknown_trades||0)}`; $('ledgerStatus').title=(ledger.conflicting_trade_ids||[]).join(', '); $('statsTrades').textContent=Number(st.trades||0); $('statsWL').textContent=`${Number(st.wins||0)} / ${Number(st.losses||0)}`; $('statsWinRate').textContent=st.win_rate==null?'—':Number(st.win_rate).toFixed(1)+'%'; $('statsNet').textContent=displayMoney(st.net_pnl); $('statsExpectancy').textContent=`Expectancy: ${st.expectancy_r==null?'—':Number(st.expectancy_r).toFixed(3)+'R'}`; $('statsPF').textContent=`Profit factor: ${st.profit_factor==null?'—':Number(st.profit_factor).toFixed(3)}`;
+ if(!positions.length){
+   $('active').innerHTML=`<div class="trade-empty">
+     <div class="trade-empty-mark">◇</div>
+     <div><strong>SIN POSICIONES ABIERTAS</strong><p>Hali está monitoreando el mercado. Las señales PAPER no se muestran como posiciones reales.</p></div>
+   </div>`;
+ } else {
+   $('active').innerHTML=positions.map((t,i)=>{
+     const dir=String(t.direction||'').toUpperCase();
+     const side=dir==='LONG'?1:-1;
+     const entry=Number(t.open_price||0), current=Number(t.current_price||0), sl=Number(t.sl||0), tp=Number(t.tp||0);
+     const pnl=Number(t.floating_pnl||0), riskMoney=Number(t.risk||0);
+     const riskDist=entry>0&&sl>0?side*(entry-sl):0;
+     const rewardDist=entry>0&&tp>0?side*(tp-entry):0;
+     const currentMove=entry>0&&current>0?side*(current-entry):0;
+     const currentR=riskDist>0?currentMove/riskDist:null;
+     const targetR=riskDist>0&&rewardDist>0?rewardDist/riskDist:null;
+     const railMax=targetR!=null?targetR:1;
+     const entryPct=100/(railMax+1);
+     const currentPct=currentR!=null?Math.max(0,Math.min(100,(currentR+1)/(railMax+1)*100)):entryPct;
+     const pnlClass=pnl>0?'buy':pnl<0?'sell':'';
+     const rClass=currentR==null?'':currentR>=0?'buy':'sell';
+     const stopGap=sl>0&&current>0?Math.abs(current-sl):null;
+     const targetGap=tp>0&&current>0?Math.abs(tp-current):null;
+     return `<article class="live-trade-card">
+       <div class="live-trade-head">
+         <div>
+           <div class="live-trade-symbol">${esc(t.symbol||'XAUUSD')} <span class="direction-badge ${dir==='LONG'?'long':'short'}">${dir==='LONG'?'↗':'↘'} ${esc(dir||'—')}</span></div>
+           <div class="live-trade-tags"><span>${esc(t.class||'—')}</span><span>${esc(t.setup||'—')}</span><span>Score ${Number(t.score||0)}</span></div>
+         </div>
+         <div class="live-state"><i></i> ABIERTA</div>
+       </div>
+       <div class="live-trade-pnl">
+         <div><small>P/L FLOTANTE</small><strong class="${pnlClass}">${money(pnl)}</strong></div>
+         <div><small>R ACTUAL</small><strong class="${rClass}">${currentR==null?'—':(currentR>=0?'+':'')+currentR.toFixed(2)+'R'}</strong></div>
+       </div>
+       <div class="live-price-grid">
+         <div><small>ENTRADA</small><b>${entry>0?entry.toFixed(2):'—'}</b></div>
+         <div><small>ACTUAL</small><b>${current>0?current.toFixed(2):'—'}</b></div>
+         <div><small>SL</small><b class="sell">${sl>0?sl.toFixed(2):'—'}</b></div>
+         <div><small>TP</small><b class="buy">${tp>0?tp.toFixed(2):'—'}</b></div>
+       </div>
+       <div class="rr-rail-wrap">
+         <div class="rr-rail-labels"><span>SL · -1R</span><span>ENTRY</span><span>TP · ${targetR==null?'—':targetR.toFixed(2)+'R'}</span></div>
+         <div class="rr-rail">
+           <span class="rail-loss"></span><span class="rail-win" style="left:${entryPct.toFixed(2)}%"></span>
+           <i class="entry-marker" style="left:${entryPct.toFixed(2)}%"></i>
+           <i class="current-marker ${pnlClass}" style="left:${currentPct.toFixed(2)}%"></i>
+         </div>
+       </div>
+       <div class="live-trade-meta">
+         <span><small>RIESGO</small><b>${riskMoney>0?money(riskMoney):'—'}</b></span>
+         <span><small>LOTAJE</small><b>${Number(t.volume||0).toFixed(4)}</b></span>
+         <span><small>A SL</small><b>${stopGap==null?'—':stopGap.toFixed(2)}</b></span>
+         <span><small>A TP</small><b>${targetGap==null?'—':targetGap.toFixed(2)}</b></span>
+       </div>
+       <button class="trade-detail-btn" onclick="toggle('activeReason${i}')">VER DETALLE</button>
+       <div id="activeReason${i}" class="reason trade-reason">Trade ${esc(t.trade_id||'—')} · Posición ${esc(t.position_id||'—')} · Signal ${esc(t.signal_event_id||'—')}<br><span class="small">Riesgo inicial ${displayMoney(t.initial_risk)} · ${esc(t.comment||'Sin comentario de broker')}</span></div>
+     </article>`;
+   }).join('');
+ }
+ const st=data.session_stats||{};
+ const floating=positions.reduce((sum,p)=>sum+Number(p.floating_pnl||0),0);
+ $('heroBalance').textContent=displayMoney(data.balance);
+ $('heroEquity').textContent=displayMoney(data.equity);
+ $('heroDailyPnl').textContent=displayMoney(data.daily_pnl);
+ $('heroDailyPnl').className='kpi-value '+(Number(data.daily_pnl||0)>=0?'buy':'sell');
+ $('heroFloating').textContent=displayMoney(floating);
+ $('heroFloating').className='kpi-value '+(floating>=0?'buy':'sell');
+ $('heroWinRate').textContent=st.win_rate==null?'—':Number(st.win_rate).toFixed(1)+'%';
+ $('heroScore').textContent=data.last_score??'—';
+ $('topStatus').textContent=data.connected?'● ONLINE':'● OFFLINE';
+ $('topStatus').className='top-chip '+(data.connected?'online':'offline');
+ $('topAccount').textContent=de.account_mode||'UNKNOWN';
+ $('topUpdated').textContent=data.updated_at||'—';
+ $('topMode').textContent=de.execution_allowed?'DEMO LIVE':'PAPER / BLOCKED';
+ $('topMode').className='top-chip mode-chip '+(de.execution_allowed?'online':'');
+ $('heroState').textContent=data.last_decision||'—';
+ $('heroDirection').textContent=data.last_direction||'—';
+ $('heroDirection').className=(String(data.last_direction||'').toUpperCase()==='LONG'?'buy':String(data.last_direction||'').toUpperCase()==='SHORT'?'sell':'');
+ $('heroSetup').textContent=data.last_setup||'—';
+ renderRiskSnapshot(data);
 }
-// Read-only projection: never recompute portfolio risk in the dashboard.
+// MT5 is authoritative. Only scale its amounts for the Hali visual meters.
 function renderRiskSnapshot(data){
  const r=data.risk_budget||{}, currency=r.account_currency||'UNKNOWN';
- const number=v=>v==null||!Number.isFinite(Number(v))?'—':Number(v).toFixed(2);
- const amount=v=>v==null||!Number.isFinite(Number(v))?'—':displayMoney(v,currency);
+ const known=v=>v!=null&&Number.isFinite(Number(v));
+ const number=v=>known(v)?Number(v).toFixed(2):'—';
+ const amount=v=>known(v)?displayMoney(v,currency):'—';
  const fields={startEquity:'start_of_day_equity',equity:'current_equity',targetRisk:'target_risk_amount',dailyBudget:'daily_budget_amount',dailyLossUsed:'realized_daily_loss_used',openRisk:'account_open_risk',dailyRemaining:'remaining_daily_budget',effectiveRisk:'planned_risk_amount'};
  Object.entries(fields).forEach(([id,key])=>{$(id).textContent=amount(r[key])});
  $('tradeRiskPercent').textContent=number(r.configured_risk_percent)+'%';
@@ -125,13 +1445,168 @@ function renderRiskSnapshot(data){
  $('riskBudgetStatus').textContent=r.budget_status_code||'RISK_STATE_UNKNOWN';
  $('riskBlockCode').textContent=r.block_code||'NO_DATA';
  $('riskBlockReason').textContent=r.block_reason||'Sin bloqueo de riesgo evaluado para la decisión actual.';
- const used=Number(r.realized_daily_loss_used)+Number(r.account_open_risk), budget=Number(r.daily_budget_amount);
- $('dailyMeter').style.width=r.realized_daily_loss_used!=null&&r.account_open_risk!=null&&budget>0?Math.min(100,Math.max(0,used)/budget*100)+'%':'0%';
+ const budget=r.daily_budget_amount, remaining=r.remaining_daily_budget;
+ const committed=known(budget)&&known(remaining)?Math.max(0,Number(budget)-Number(remaining)):null;
+ const pct=v=>known(v)&&known(budget)&&Number(budget)>0?Math.min(100,Math.max(0,Number(v))/Number(budget)*100):null;
+ const usedPct=pct(committed), lossPct=pct(r.realized_daily_loss_used), openPct=pct(r.account_open_risk);
+ $('dailyMeter').style.width=usedPct==null?'0%':usedPct+'%';
+ $('riskLossBar').style.width=lossPct==null?'0%':lossPct+'%';
+ $('riskOpenBar').style.width=openPct==null?'0%':openPct+'%';
+ $('riskCommitted').textContent=amount(committed);
+ $('riskUsedPct').textContent=usedPct==null?'—':usedPct.toFixed(0)+'%';
+ if($('riskRing').style.setProperty)$('riskRing').style.setProperty('--risk-pct',(usedPct??0)+'%');
+ $('riskHeadroomText').textContent='de '+amount(budget)+' disponibles';
+ const delta=known(r.current_equity)&&known(r.start_of_day_equity)?Number(r.current_equity)-Number(r.start_of_day_equity):null;
+ $('equityDelta').textContent=delta==null?'—':(delta>=0?'+':'')+amount(delta);
+ $('equityDelta').className=delta==null?'':delta>=0?'buy':'sell';
+ const healthy=r.risk_state_known===true&&r.risk_state_health==='HEALTHY';
+ const exhausted=String(r.budget_status_code||'').startsWith('DAILY_BUDGET_EXHAUSTED');
+ const reduced=healthy&&!exhausted&&usedPct!=null&&usedPct>=70;
+ $('riskState').textContent=!healthy?'UNKNOWN':exhausted?'PRESUPUESTO AGOTADO':reduced?'CAPACIDAD BAJA':'ESTADO CONOCIDO';
+ $('riskState').className='risk-state '+(!healthy?'warn':exhausted?'danger':reduced?'warn':'safe');
+ $('riskGuardTitle').textContent=!healthy?'ESTADO DE RIESGO UNKNOWN':r.block_code&&r.block_code!=='NONE'?r.block_code:'DIAGNÓSTICO MT5 · NO AUTORIZA ÓRDENES';
+ $('risk').textContent=amount(r.planned_risk_amount);
+ $('riskPct').textContent=number(r.configured_risk_percent)+'% equity';
+ $('riskBudget').textContent='Objetivo '+amount(r.target_risk_amount)+' · restante diario '+amount(remaining);
+ $('heroRisk').textContent=amount(r.planned_risk_amount);
 }
 function toggle(id){$(id).classList.toggle('on')}
-function renderLog(rows){ lastLog=rows||[]; if(!rows.length){$('log').innerHTML='<div class="small">Todavía no hay operaciones cerradas registradas.</div>';return}
- $('log').innerHTML=rows.slice(0,30).map((r,i)=>`<div class="trade"><div><strong class="${r.direction==='LONG'?'buy':'sell'}">${esc(r.direction||'—')}</strong><div class="small">${esc(r.close_time||'')} · <span class="pill">${esc(r.class||'—')}</span> ${esc(r.setup||'—')}</div></div><div><div class="small">ENTRADA / SALIDA</div><strong>${r.entry==null?'—':Number(r.entry).toFixed(2)} / ${r.exit==null?'—':Number(r.exit).toFixed(2)}</strong><div class="small">${esc(r.close_reason||'UNKNOWN')} · ${Number(r.lots||0).toFixed(4)} lot</div></div><div><div class="small">RESULTADO NETO</div><strong>${displayMoney(r.net_pnl)}</strong><div class="small">${r.realized_r==null?'—':Number(r.realized_r).toFixed(3)+'R'} · ${esc(lifecycle(r.status||'POSITION_CLOSED'))}</div></div><button onclick="toggle('r${i}')">Abrir detalle</button><div id="r${i}" class="reason" style="grid-column:1/-1">Trade ${esc(r.trade_id||'—')} · posición ${esc(r.position_id)} · deal ${esc(r.deal_id)} · SL inicial ${r.initial_sl==null?'—':Number(r.initial_sl).toFixed(2)} · SL final ${r.final_sl_before_close==null?'—':Number(r.final_sl_before_close).toFixed(2)} · TP ${r.final_tp_before_close==null?'—':Number(r.final_tp_before_close).toFixed(2)}<br><span class="small">Bruto ${displayMoney(r.gross_pnl)} · comisión ${displayMoney(r.commission)} · swap ${displayMoney(r.swap)} · fees ${displayMoney(r.fees)} · slippage ${r.entry_slippage_price==null?'—':Number(r.entry_slippage_price).toFixed(4)} · MFE/MAE ${esc(r.mfe_mae_quality||'UNKNOWN')} · señal ${esc(r.signal_event_id||'—')}</span></div></div>`).join('')
+
+function tradeRowsValid(rows){
+ return (rows||[]).filter(r=>r&&r.close_time).map(r=>({...r,
+   initial_risk:'initial_risk_account_currency' in r?r.initial_risk_account_currency:r.initial_risk,
+   realized_r:'realized_r_net' in r?r.realized_r_net:r.realized_r}));
 }
-async function tick(){try{const d=await fetch('/api/status?t='+Date.now()).then(r=>r.json());render(d);renderLog(d.closed_trades||[])}catch(e){$('decision').textContent='Dashboard desconectado: '+e.message}}
+function tradeCloseOrder(row){
+ const value=row.close_time;
+ return typeof value==='number'?value:Date.parse(String(value).replace(/^(\d{4})\.(\d{2})\.(\d{2})/,'$1-$2-$3'))/1000;
+}
+function streakLabel(rows){
+ const ordered=[...rows].sort((a,b)=>tradeCloseOrder(a)-tradeCloseOrder(b));
+ if(!ordered.length)return '—';
+ if(ordered.some(r=>r.net_pnl==null))return 'UNKNOWN';
+ const last=Number(ordered[ordered.length-1].net_pnl);
+ if(last===0)return 'FLAT';
+ const win=last>0;let n=0;
+ for(let i=ordered.length-1;i>=0;i--){const v=Number(ordered[i].net_pnl);if((win&&v>0)||(!win&&v<0))n++;else break}
+ return (win?'W':'L')+n;
+}
+function renderPerformance(data){
+ const rows=tradeRowsValid(data.closed_trades||[]);
+ performanceRows=rows;
+ const knownRows=rows.filter(r=>r.net_pnl!=null&&Number.isFinite(Number(r.net_pnl)));
+ const ordered=[...knownRows].sort((a,b)=>tradeCloseOrder(a)-tradeCloseOrder(b));
+ const wins=knownRows.filter(r=>Number(r.net_pnl)>0), losses=knownRows.filter(r=>Number(r.net_pnl)<0);
+ const net=knownRows.length===rows.length?knownRows.reduce((s,r)=>s+Number(r.net_pnl),0):null;
+ const grossWin=wins.reduce((s,r)=>s+Number(r.net_pnl||0),0);
+ const grossLoss=Math.abs(losses.reduce((s,r)=>s+Number(r.net_pnl||0),0));
+ const pf=data.trade_stats&&'profit_factor' in data.trade_stats?data.trade_stats.profit_factor:(grossLoss>0?grossWin/grossLoss:null);
+ const rRows=knownRows.filter(r=>Number(r.initial_risk)>0 && r.realized_r!=null && Number.isFinite(Number(r.realized_r)));
+ const totalR=rRows.reduce((s,r)=>s+Number(r.realized_r||0),0);
+ const avgR=rRows.length?totalR/rRows.length:null;
+ const avgWin=wins.length?grossWin/wins.length:null;
+ const avgLoss=losses.length?losses.reduce((s,r)=>s+Number(r.net_pnl||0),0)/losses.length:null;
+ const vals=knownRows.map(r=>Number(r.net_pnl));
+ const best=vals.length?Math.max(...vals):null,worst=vals.length?Math.min(...vals):null;
+ $('statsTrades').textContent=rows.length;
+ $('statsWL').textContent=`${wins.length}W / ${losses.length}L`;
+ $('statsWinRate').textContent=knownRows.length?(wins.length/knownRows.length*100).toFixed(1)+'%':'—';
+ $('statsNet').textContent=displayMoney(net);
+ $('statsNet').className=net>0?'buy':net<0?'sell':'';
+ $('statsPF').textContent=pf===Infinity?'∞':pf==null?'—':pf.toFixed(2);
+ $('statsExpectancy').textContent=avgR==null?'—':(avgR>=0?'+':'')+avgR.toFixed(3)+'R';
+ $('statsTotalR').textContent=rRows.length?(totalR>=0?'+':'')+totalR.toFixed(2)+'R':'—';
+ $('statsTotalR').className=rRows.length?(totalR>=0?'buy':'sell'):'';
+ $('statsRSamples').textContent=`${rRows.length} muestras R`;
+ $('statsAvgWin').textContent=avgWin==null?'—':displayMoney(avgWin);
+ $('statsAvgLoss').textContent=avgLoss==null?'—':displayMoney(avgLoss);
+ $('statsBest').textContent=best==null?'—':displayMoney(best);
+ $('statsWorst').textContent=worst==null?'—':displayMoney(worst);
+ $('statsAvgR').textContent=avgR==null?'—':(avgR>=0?'+':'')+avgR.toFixed(3)+'R';
+ $('statsStreak').textContent=streakLabel(rows);
+ $('curveNet').textContent=displayMoney(net); $('curveNet').className=net>0?'buy':net<0?'sell':'';
+ const st=data.session_stats||{};
+ $('todayTrades').textContent=Number(st.trades||0);
+ $('todayWL').textContent=`${Number(st.wins||0)} / ${Number(st.losses||0)}`;
+ $('todayWinRate').textContent=st.win_rate==null?'—':Number(st.win_rate).toFixed(1)+'%';
+ $('todayNet').textContent=displayMoney(st.net_pnl);
+ $('todayNet').className=Number(st.net_pnl||0)>=0?'buy':'sell';
+ $('todayExpectancy').textContent=st.expectancy_r==null?'—':Number(st.expectancy_r).toFixed(3)+'R';
+ const ledger=data.demo_ledger||{};
+ const conflicts=Number(ledger.ledger_conflicts||0), unknownCosts=rows.length-knownRows.length;
+ const reconciled=ledger.status==='OK' && conflicts===0;
+ $('ledgerStatus').textContent=`Ledger MT5: ${ledger.status||'NO_DATA'} · ${Number(ledger.event_count||0)} eventos · conflictos: ${conflicts} · costes desconocidos: ${unknownCosts}`;
+ $('ledgerStatus').title=(ledger.conflicting_trade_ids||[]).join(', ');
+ $('statsQuality').textContent=reconciled?(unknownCosts?'LEDGER V2 · COSTES PARCIALES':'LEDGER V2 · RECONCILIADO'):conflicts>0?`LEDGER · ${conflicts} CONFLICTO(S)`:`LEDGER MT5 · ${ledger.status||'NO_DATA'}`;
+ $('statsQuality').className='data-quality '+(reconciled?'good':conflicts>0?'bad':'legacy');
+ $('performanceQualityNote').textContent=reconciled
+   ? `Métricas derivadas del ledger V2. Trades conflictivos excluidos; ${unknownCosts} cierre(s) con costes desconocidos no se convierten en cero ni aportan R neto.`
+   : conflicts>0
+     ? `Hay ${conflicts} trade(s) conflictivos; no se consideran estadística fiable hasta reconciliarlos.`
+     : 'Ledger sin evidencia completa disponible. No se afirma reconciliación ni se sustituyen costes desconocidos por cero.';
+ drawEquityCurve(unknownCosts?[]:ordered);
+}
+function drawEquityCurve(rows=performanceRows){
+ const canvas=$('equityCurve'),empty=$('equityEmpty');if(!canvas)return;
+ const ordered=[...rows].sort((a,b)=>tradeCloseOrder(a)-tradeCloseOrder(b));
+ const rect=canvas.getBoundingClientRect(),dpr=Math.max(1,Math.min(2,window.devicePixelRatio||1));
+ canvas.width=Math.max(1,Math.floor(rect.width*dpr));canvas.height=Math.max(1,Math.floor(rect.height*dpr));
+ const ctx=canvas.getContext('2d');ctx.setTransform(dpr,0,0,dpr,0,0);const w=rect.width,h=rect.height;ctx.clearRect(0,0,w,h);
+ if(ordered.length<2){if(empty)empty.style.display='flex';return} if(empty)empty.style.display='none';
+ let acc=0;const points=[0];ordered.forEach(r=>{acc+=Number(r.net_pnl||0);points.push(acc)});
+ let min=Math.min(...points,0),max=Math.max(...points,0);if(max===min){max+=1;min-=1}const pad=12,range=max-min;
+ const px=i=>pad+i*(w-2*pad)/(points.length-1),py=v=>pad+(max-v)/range*(h-2*pad);
+ const zero=py(0);ctx.strokeStyle='rgba(140,148,157,.14)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(pad,zero);ctx.lineTo(w-pad,zero);ctx.stroke();
+ const positive=points[points.length-1]>=0;const stroke=positive?'#2bd6a5':'#ef566d';
+ const grad=ctx.createLinearGradient(0,pad,0,h-pad);grad.addColorStop(0,positive?'rgba(43,214,165,.22)':'rgba(239,86,109,.22)');grad.addColorStop(1,'rgba(10,12,15,0)');
+ ctx.beginPath();points.forEach((v,i)=>{const x=px(i),y=py(v);i?ctx.lineTo(x,y):ctx.moveTo(x,y)});ctx.strokeStyle=stroke;ctx.lineWidth=1.8;ctx.stroke();
+ ctx.lineTo(px(points.length-1),h-pad);ctx.lineTo(px(0),h-pad);ctx.closePath();ctx.fillStyle=grad;ctx.fill();
+ points.forEach((v,i)=>{if(i===0)return;ctx.beginPath();ctx.arc(px(i),py(v),2.2,0,Math.PI*2);ctx.fillStyle=Number(ordered[i-1].net_pnl)>=0?'#2bd6a5':'#ef566d';ctx.fill()});
+}
+function setHistoryFilter(filter){
+ historyFilter=filter;
+ document.querySelectorAll('.history-filters button').forEach(b=>b.classList.toggle('active',b.dataset.filter===filter));
+ renderLog(performanceRows);
+}
+function renderLog(rows){
+ const valid=tradeRowsValid(rows);
+ const filtered=valid.filter(r=>historyFilter==='ALL'||(historyFilter==='WIN'&&Number(r.net_pnl)>0)||(historyFilter==='LOSS'&&Number(r.net_pnl)<0));
+ $('historySummary').textContent=`${filtered.length} de ${valid.length} operaciones`;
+ if(!filtered.length){$('log').innerHTML='<div class="history-empty">No hay operaciones para este filtro.</div>';return}
+ $('log').innerHTML=[...filtered].sort((a,b)=>tradeCloseOrder(b)-tradeCloseOrder(a)).map((r,i)=>{
+   const pnl=r.net_pnl==null?null:Number(r.net_pnl),rr=Number(r.initial_risk)>0&&r.realized_r!=null?Number(r.realized_r):null,dir=String(r.direction||'—');
+   return `<article class="history-trade">
+     <div class="history-trade-main">
+       <div>
+         <div class="history-symbol">${esc(r.symbol||'XAUUSD')} <strong class="${dir==='LONG'?'buy':'sell'}">${esc(dir)}</strong></div>
+         <div class="history-meta">${esc(r.close_time||'')} · <span class="pill">${esc(r.class||'CHILL')}</span> ${esc(r.setup||'—')}</div>
+       </div>
+       <div class="history-num"><small>ENTRADA / SALIDA</small><strong>${Number(r.entry||0).toFixed(2)} → ${Number(r.exit||0).toFixed(2)}</strong><span>${Number(r.lots||0).toFixed(4)} lot</span></div>
+       <div class="history-num history-result"><small>RESULTADO NETO</small><strong class="${pnl==null?'':pnl>=0?'buy':'sell'}">${displayMoney(pnl)}</strong><span>${rr==null?'R desconocido':(rr>=0?'+':'')+rr.toFixed(3)+'R'} · ${esc(r.close_reason||'OTHER')}</span></div>
+       <button class="history-detail-btn" onclick="toggle('r${i}')">DETALLE</button>
+     </div>
+     <div id="r${i}" class="reason">Trade ${esc(r.trade_id||'—')} · Posición ${esc(r.position_identifier||r.position_id||'—')} · Deal ${esc(r.deal_ticket||r.deal_id||'—')} · SL ${Number(r.sl||0).toFixed(2)} · TP ${Number(r.tp||0).toFixed(2)}<br><span class="small">Bruto ${displayMoney(r.gross_pnl)} · comisión ${displayMoney(r.commission)} · swap ${displayMoney(r.swap)} · fees ${displayMoney(r.fees)} · costes ${esc(r.cost_quality||'UNKNOWN')} · señal ${esc(r.signal_event_id||'—')} · intento ${esc(r.execution_attempt_id||'—')}</span></div>
+   </article>`;
+ }).join('');
+}
+let tickFailures=0;
+async function tick(){
+ try{
+   const r=await fetch('/api/status?t='+Date.now(),{cache:'no-store'});
+   if(!r.ok)throw new Error('HTTP '+r.status);
+   const d=await r.json();
+   tickFailures=0;setConnectionBanner(false);
+   render(d);renderPerformance(d);renderLog(d.closed_trades||[]);
+ }catch(e){
+   tickFailures++;
+   setConnectionBanner(true,tickFailures>2?'Hali no responde · reintentando conexión…':'Reconectando con Hali…');
+ }
+}
+initNavObserver();
+loadIdentity();
+loadSystemHealth();setInterval(loadSystemHealth,15000);
 tick();setInterval(tick,2000);
-</script></body></html>
+document.querySelectorAll('.chart-tabs button').forEach(b=>b.classList.toggle('active',b.dataset.tf===chartTimeframe));
+loadChart();setInterval(loadChart,1000);
+window.addEventListener('resize',()=>{clearTimeout(window.__haliChartResize);window.__haliChartResize=setTimeout(()=>{drawPriceChart();drawEquityCurve()},120)});
+</script></main></div></body></html>
