@@ -15,7 +15,7 @@ import json
 from pathlib import Path
 import threading
 import time
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 from auth_service import (
     COOKIE_NAME,
@@ -169,11 +169,29 @@ class HaliGateway(BaseHTTPRequestHandler):
         return urlsplit(self.path).path
 
     def serve_local_asset(self, route: str) -> bool:
-        relative = route.lstrip("/")
-        target = (ROOT / relative).resolve()
         try:
-            target.relative_to(ROOT.resolve())
-        except ValueError:
+            if route == "/login.html":
+                # Fixed public resource; never a user-supplied ROOT-relative path.
+                target = (ROOT / "login.html").resolve()
+                target.relative_to(ROOT.resolve())
+            else:
+                if not route.startswith("/assets/"):
+                    raise ValueError("not a public asset route")
+                relative = unquote(route[len("/assets/"):], errors="strict").replace("\\", "/")
+                # Reject ambiguous decoding and Windows drive/ADS/path aliases too.
+                parts = relative.split("/")
+                if any(
+                    part in {"", ".", ".."}
+                    or part.rstrip(" .") != part
+                    or any(ord(char) < 32 or char in '%:<>"|?*' for char in part)
+                    for part in parts
+                ):
+                    raise ValueError("invalid public asset path")
+                asset_root = (ROOT / "assets").resolve()
+                target = asset_root.joinpath(*parts).resolve()
+                # resolve() follows symlinks/junctions; escapes still fail closed.
+                target.relative_to(asset_root)
+        except (OSError, ValueError, RuntimeError):
             self.send_bytes(403, "text/plain; charset=utf-8", b"403")
             return True
         if not target.is_file():

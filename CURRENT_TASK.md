@@ -3,7 +3,8 @@
 ## Status
 Risk Budget V2 Phase 1: MERGED / ACCEPTED via PR #12.
 Main merge: 968ad45d7b2b538e7164f14b9120b48bcf5b9e10.
-Current task: Hali + main integration validation, pending human review.
+Current task: Hali + main integration implemented; PR #13 remains DRAFT, pending human review.
+Security asset-root blocker: FIXED_PENDING_REVIEW.
 No VPS deployment has been performed or validated by this integration task.
 
 ## Owner / Reviewer
@@ -49,10 +50,10 @@ pending monetary risk or new strategies. Capture actual DEMO runtime evidence
 only after a separately approved, controlled VPS deployment.
 
 ## Integration review notes
-The inherited Hali gateway confines public assets to the dashboard root, not
-the assets subtree: /assets/../... can expose internal dashboard files without
-a session. Confirmed with a synthetic fixture, without reading real secrets.
-Auth code was preserved, not hardened here. Require separately authorized
-security review/fix before public deployment; passing integration tests does
-not certify that static-file boundary. VPS dashboard/assets is untracked and
+The inherited public asset-root blocker is FIXED_PENDING_REVIEW: asset paths
+are decoded/validated and resolved strictly within dashboard/assets, including
+symlink/junction confinement. Traversal fails with 403; the fixed /login resource
+remains separately public. HTTP regression tests use synthetic files only.
+Human security review is required before marking PR #13 ready; no security
+approval or VPS deployment is claimed. VPS dashboard/assets is untracked and
 must be preserved, not replaced/deleted by deployment or cleanup commands.
