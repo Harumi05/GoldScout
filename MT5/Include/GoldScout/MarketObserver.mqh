@@ -322,6 +322,49 @@ private:
       return true;
    }
 
+   // Quant Research V1 telemetry only: realized-vol ingredients of the offline
+   // down-only vol-target study. Never read by sizing, scoring or execution.
+   bool RealizedVol(const int index,const int firstShift,const int bars,double &value)
+   {
+      value=0.0;
+      double closes[];
+      ArraySetAsSeries(closes,true);
+      if(bars<2 || CopyClose(m_symbol,m_timeframes[index],firstShift,bars+1,closes)!=bars+1)
+         return false;
+      double sum=0.0,sumSq=0.0;
+      for(int i=0;i<bars;i++)
+      {
+         if(closes[i]<=0.0 || closes[i+1]<=0.0) return false;
+         double r=MathLog(closes[i]/closes[i+1]);
+         sum+=r;
+         sumSq+=r*r;
+      }
+      double mean=sum/bars;
+      double variance=(sumSq-bars*mean*mean)/(bars-1);
+      if(variance<0.0) variance=0.0;
+      value=MathSqrt(variance);
+      return MathIsValidNumber(value);
+   }
+
+   string VolTargetTelemetryJson(const int index,const int shift)
+   {
+      if(m_timeframes[index]!=PERIOD_H1) return "null";
+      int firstShift=MathMax(1,shift);
+      double rv24=0.0,rv120=0.0;
+      bool has24=RealizedVol(index,firstShift,24,rv24);
+      bool has120=RealizedVol(index,firstShift,120,rv120);
+      bool hasMultiplier=has24 && has120 && rv24>0.0 && rv120>0.0;
+      double multiplier=hasMultiplier?MathMin(1.0,MathMax(0.25,rv120/rv24)):0.0;
+      string json="{\"version\":\"quant-vol-target-telemetry-v1\",";
+      json+="\"observer_only\":true,\"score_effect\":0,\"sizing_effect\":0,";
+      json+="\"basis\":\"H1_CLOSED_LOG_RETURNS\",";
+      json+="\"h1_rv24\":"+GSMO_OptionalNumber(has24,rv24,10)+",";
+      json+="\"h1_rv120\":"+GSMO_OptionalNumber(has120,rv120,10)+",";
+      json+="\"down_only_multiplier\":"+GSMO_OptionalNumber(hasMultiplier,multiplier,4)+",";
+      json+="\"multiplier_definition\":\"min(1,max(0.25,rv120/rv24))\"}";
+      return json;
+   }
+
    bool Capture(const int index,const int shift,const string snapshotType,
                 const string identity,const GoldScoutObserverContext &context)
    {
@@ -404,6 +447,7 @@ private:
       json+="\"signal_event_id\":\""+GSMO_JsonEscape(context.signalEventId)+"\",";
       json+="\"risk_budget\":"+(context.riskBudgetJson!=""?context.riskBudgetJson:"null")+",";
       json+="\"risk_block_code\":\""+GSMO_JsonEscape(context.riskBlockCode)+"\",";
+      json+="\"vol_target_telemetry\":"+VolTargetTelemetryJson(index,shift)+",";
       json+="\"future_return_15m\":null,\"future_return_1h\":null,\"future_return_4h\":null,";
       json+="\"mfe_15m\":null,\"mae_15m\":null,\"mfe_1h\":null,\"mae_1h\":null,";
       json+="\"mfe_4h\":null,\"mae_4h\":null";

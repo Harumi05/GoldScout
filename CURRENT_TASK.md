@@ -19,6 +19,11 @@ Owner additionally requests quantitative trading; implement research/validation
 first, score_effect=0, without changing protected live/DEMO strategy behavior.
 Quant Research V1 (branch claude/quant-research-v1): offline research/quant/
 package implemented; gate result NONE for PAPER. See docs/QUANT_RESEARCH_V1.md.
+Wave 2: SHORT diagnostic (docs/QUANT_SHORT_DIAGNOSTIC_V1.md, no rule passes,
+INSUFFICIENT_SAMPLE) and Observer-only vol_target_telemetry in MarketObserver.mqh
+(score_effect=0, sizing_effect=0; EA+harness compile 0 errors/0 warnings).
+Parallel tracks: Codex codex/quant-exits-v1 (review + exits), Antigravity
+agy/quant-session-regime-v1 (session/vol regime). Not accepted; review pending.
 No VPS deployment has been performed or validated by these tasks.
 
 ## Owner / Reviewer
