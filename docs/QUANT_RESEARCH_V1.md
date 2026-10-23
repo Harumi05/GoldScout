@@ -42,20 +42,23 @@ Los outputs (`research/analysis/quant/`) están ignorados por Git.
 
 ## Resultados (STRESS, single slot, OOS walk-forward)
 
+Cifras tras las correcciones de la revisión Codex (commit posterior a `bbaed7f`):
+
 | Regla | TP | n | E[R] | IC95 | PF | DSR |
 |---|---:|---:|---:|---|---:|---:|
-| BASELINE (proxy EA) | 1,25 | 196 | +0,062 | [-0,065; 0,197] | 1,14 | 0,00 |
-| LONG_ONLY | 1,25 | 131 | +0,109 | [-0,051; 0,270] | 1,25 | 0,04 |
-| SHORT_ONLY | 1,25 | 65 | -0,033 | — | 0,93 | 0,01 |
-| META_TOP50 | 1,25 | 87 | +0,142 | [-0,037; 0,341] | 1,33 | 0,12 |
-| META_TOP50_DIR_NEUTRAL (post-hoc) | 1,25 | 104 | +0,063 | [-0,099; 0,224] | 1,13 | 0,02 |
-| VOL_TARGET_DOWN_ONLY (R escalado) | 1,25 | 196 | +0,061 | [-0,041; 0,171] | 1,18 | 0,01 |
-| BASELINE (proxy EA) | 2,0 | 152 | +0,093 | [-0,076; 0,258] | 1,19 | 0,01 |
-| LONG_ONLY | 2,0 | 101 | +0,151 | [-0,064; 0,371] | 1,33 | 0,08 |
-| META_TOP50 | 2,0 | 77 | +0,155 | [-0,055; 0,383] | 1,34 | 0,12 |
+| BASELINE (proxy EA) | 1,25 | 194 | +0,070 | [-0,062; 0,202] | 1,15 | 0,00 |
+| LONG_ONLY | 1,25 | 130 | +0,125 | [-0,033; 0,281] | 1,28 | 0,06 |
+| SHORT_ONLY | 1,25 | 64 | -0,042 | [-0,238; 0,188] | 0,92 | 0,01 |
+| META_TOP50 | 1,25 | 85 | +0,113 | [-0,099; 0,332] | 1,26 | 0,09 |
+| META_TOP50_DIR_NEUTRAL (post-hoc) | 1,25 | 105 | +0,097 | [-0,072; 0,273] | 1,21 | 0,05 |
+| VOL_TARGET_DOWN_ONLY (R escalado) | 1,25 | 194 | +0,064 | [-0,036; 0,175] | 1,19 | 0,01 |
+| BASELINE (proxy EA) | 2,0 | 151 | +0,099 | [-0,068; 0,275] | 1,20 | 0,01 |
+| LONG_ONLY | 2,0 | 100 | +0,180 | [-0,029; 0,397] | 1,40 | 0,13 |
+| META_TOP50 | 2,0 | 79 | +0,150 | [-0,055; 0,356] | 1,33 | 0,11 |
 
-CSCV PBO de 18 reglas simples: 0,37. DSR con 34 pruebas declaradas.
-Ninguna regla de features sobrevive a BH-FDR (q=0,10) más la persistencia de signo.
+CSCV PBO de 18 reglas simples: 0,39 (solo reglas simples, ver R6). DSR con 34
+pruebas declaradas y varianza per-trade de discovery. Ninguna regla de features
+sobrevive a BH-FDR global (q=0,10, 210 hipótesis) más la persistencia de signo.
 
 **Veredicto de la compuerta: ningún candidato a PAPER.** La compuerta exige
 n ≥ 100, IC95 inferior > 0, DSR ≥ 0,95, PF ≥ 1,2 y superar a BASELINE,
@@ -97,6 +100,28 @@ resultados:
   reglas simples (unidades distintas, actualmente conservador); `n_trials` no
   incluye estudios anteriores del repositorio; el PBO solo cubre reglas
   simples. La revisión de Codex/humana sigue siendo necesaria antes del merge.
+
+## Correcciones tras la revisión formal de Codex
+
+`docs/REVIEW_QUANT_RESEARCH_V1_CODEX.md` (rama `codex/quant-exits-v1`) reportó
+R1–R7. Corregidas por Claude (implementador distinto del revisor):
+
+- **R1** single slot: secuencia por `entry_time_ms` real; una salida SL/TP
+  intrabar mantiene el slot hasta el cierre de su vela M1.
+- **R2** DSR: varianza de Sharpe **por trade** entre reglas simples single-slot,
+  medida solo en el primer bloque walk-forward (nunca test), excluyendo reglas
+  con < 20 trades (con 2–15 trades el ruido hacía inalcanzable cualquier
+  benchmark; el filtro se añadió tras ese diagnóstico). Sin varianza → DSR
+  desconocido → no pasa la compuerta.
+- **R3** `value_at` rechaza `lag` negativo, booleano o no entero (`LookAheadError`).
+- **R4** un candidato censurado reserva el slot durante todo su horizonte.
+- **R5** si un gap cruza el vencimiento temporal, la salida es el primer open
+  ejecutable posterior (SL si el open lo atraviesa; TP solo al nivel).
+- **R6** BH global sobre todas las hipótesis feature × quintil × TP. El PBO
+  sigue cubriendo solo reglas simples (limitación declarada).
+- **R7** la compuerta exige BASELINE/LONG_ONLY/SHORT_ONLY presentes y conocidos.
+
+El veredicto no cambia: **ningún candidato a PAPER**.
 
 ## Limitaciones
 

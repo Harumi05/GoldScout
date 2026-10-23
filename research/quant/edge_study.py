@@ -55,6 +55,26 @@ class Candidate:
         out = self.outcomes.get((cost, tp_r))
         return None if out is None or out.get("status") != "OK" else out["exit_time_ms"]
 
+    def slot_window(self, tp_r: float, cost: str, max_hold_ms: int) -> tuple[int, int] | None:
+        """(entry, release) of the single slot, using only executable knowledge.
+
+        Intrabar SL/TP exits are only known by the close of their M1 bar, so the
+        slot stays busy until then. A censored trade still occupies the slot for
+        its whole horizon: admission must not depend on label availability.
+        """
+        out = self.outcomes.get((cost, tp_r))
+        if out is None or out.get("entry_time_ms") is None:
+            return None
+        entry = out["entry_time_ms"]
+        if out["status"] == "OK":
+            release = out["exit_time_ms"]
+            if out["exit_reason"] in ("SL", "TP"):
+                release += barriers.BAR_MS
+            return entry, release
+        if out["status"] == "INSUFFICIENT_PATH":
+            return entry, entry + max_hold_ms + barriers.BAR_MS
+        return None
+
 
 # --------------------------------------------------------------------------- loading
 
@@ -125,7 +145,7 @@ def direction_cuts(model, train: Sequence[Candidate], names: Sequence[str], *,
 
 # --------------------------------------------------------------------------- evaluation
 
-def summarize(values: Sequence[float], *, n_trials: int, sr_variance: float,
+def summarize(values: Sequence[float], *, n_trials: int, sr_variance: float | None,
               block_size: int, seed: int) -> dict:
     vals = [v for v in values if v is not None]
     # Few long blocks under-sample the variance of the mean; keep >= ~10 blocks.
@@ -140,8 +160,9 @@ def summarize(values: Sequence[float], *, n_trials: int, sr_variance: float,
         "win_rate": stats.win_rate(vals),
         "sharpe_per_trade": stats.sharpe_ratio(vals),
         "psr": stats.probabilistic_sharpe_ratio(vals) if len(vals) > 2 else None,
+        # No discovery variance -> DSR unknown (None), which fails the gate.
         "dsr": (stats.deflated_sharpe_ratio(vals, n_trials=n_trials, sr_variance=sr_variance)
-                if len(vals) > 2 else None),
+                if len(vals) > 2 and sr_variance is not None else None),
         "total_r": sum(vals) if vals else None,
         "bootstrap_block_size": block_size,
         "max_drawdown_r": max_drawdown(vals),
@@ -160,20 +181,48 @@ def max_drawdown(values: Sequence[float]) -> float | None:
 
 
 def non_overlapping(cands: Sequence[Candidate], tp_r: float,
-                    cost: str = LABEL_COST) -> list[Candidate]:
+                    cost: str = LABEL_COST, max_hold_ms: int = DAY_MS) -> list[Candidate]:
     """Greedy one-position-at-a-time sequence, mirroring the EA's single slot.
 
-    Exit times come from the same cost scenario that is being evaluated.
+    Uses actual entry times and the executable release of the evaluated cost
+    scenario. Admitted censored candidates are returned too (their r() is None)
+    so callers drop them from statistics without freeing their slot.
     """
+    windows = [(w, c) for c in cands if (w := c.slot_window(tp_r, cost, max_hold_ms))]
     out: list[Candidate] = []
     busy_until = -1
-    for c in sorted(cands, key=lambda x: x.signal_time_ms):
-        end = c.exit_time(tp_r, cost)
-        if end is None or c.signal_time_ms < busy_until:
+    for (entry, release), c in sorted(windows, key=lambda x: x[0][0]):
+        if entry < busy_until:
             continue
         out.append(c)
-        busy_until = end
+        busy_until = release
     return out
+
+
+def discovery_sr_variance(cands: Sequence[Candidate], rules: Sequence[tuple[str, float, int, int]],
+                          cutoff_ms: int, max_hold_ms: int,
+                          min_trades: int = 20) -> float | None:
+    """Cross-trial variance of per-trade single-slot Sharpe, on discovery data only.
+
+    Same unit (per trade) as the Sharpe being deflated, and frozen before any
+    walk-forward test block, so the DSR penalty is not informed by OOS data.
+    Rules with fewer than ``min_trades`` discovery trades are excluded: their
+    Sharpe is dominated by small-sample noise (2-15 trade rules reached
+    |SR| > 1, which would make any per-trade benchmark unreachable).
+    """
+    disc = [c for c in cands if c.signal_time_ms < cutoff_ms]
+    sharpes = []
+    for _, tp_r, min_score, direction in rules:
+        picked = [c for c in disc if c.score >= min_score and (not direction or c.direction == direction)]
+        vals = [r for c in non_overlapping(picked, tp_r, LABEL_COST, max_hold_ms)
+                if (r := c.r(LABEL_COST, tp_r)) is not None]
+        sr = stats.sharpe_ratio(vals) if len(vals) >= min_trades else None
+        if sr is not None:
+            sharpes.append(sr)
+    if len(sharpes) < 2:
+        return None
+    mean = sum(sharpes) / len(sharpes)
+    return sum((x - mean) ** 2 for x in sharpes) / (len(sharpes) - 1)
 
 
 def walk_forward(cands: list[Candidate], *, tp_r: float, names: Sequence[str],
@@ -333,10 +382,11 @@ def run(args: argparse.Namespace) -> dict:
                   "VOL_TARGET_DOWN_ONLY", "META_TOP50_VOL_TARGET", "META_TOP50_DIR_NEUTRAL")
     n_trials = len(rules) + len(meta_rules) * len(tp_grid)
     matrix, rule_names = rule_matrix(cands, rules, WEEK_MS)
-    rule_sharpes = [s for s in (stats.sharpe_ratio([row[j] for row in matrix if row[j] != 0.0])
-                                for j in range(len(rule_names))) if s is not None]
-    sr_var = (sum((s - sum(rule_sharpes) / len(rule_sharpes)) ** 2 for s in rule_sharpes)
-              / max(1, len(rule_sharpes) - 1)) if len(rule_sharpes) > 1 else 0.0
+    # DSR variance: per-trade single-slot Sharpe across simple rules, measured
+    # only on the first walk-forward block (train of fold 0, never an OOS test).
+    labelled = sorted(c.signal_time_ms for c in cands if c.r(LABEL_COST, tp_grid[0]) is not None)
+    cutoff = labelled[len(labelled) // (args.n_folds + 1)] if labelled else 0
+    sr_var = discovery_sr_variance(cands, rules, cutoff, max_hold_ms)
     pbo = stats.cscv_pbo(matrix, n_splits=args.cscv_splits) if len(matrix) >= args.cscv_splits else None
 
     report: dict = {"study_version": STUDY_VERSION, "feature_version": features.FEATURE_VERSION,
@@ -344,7 +394,9 @@ def run(args: argparse.Namespace) -> dict:
                     "params": {"min_score": args.min_score, "tp_r": list(tp_grid),
                                "max_hold_hours": args.max_hold_hours, "n_folds": args.n_folds,
                                "embargo_hours": args.embargo_hours, "label_cost": LABEL_COST,
-                               "n_trials_for_dsr": n_trials, "sr_variance_across_rules": sr_var,
+                               "n_trials_for_dsr": n_trials,
+                               "sr_variance_discovery_per_trade": sr_var,
+                               "sr_variance_discovery_cutoff_ms": cutoff,
                                "bootstrap_block_size_overlapping": args.block_size,
                                "bootstrap_block_size_single_slot": args.slot_block_size},
                     "coverage": coverage(cands, tp_grid), "cscv_pbo_simple_rules": pbo,
@@ -352,14 +404,15 @@ def run(args: argparse.Namespace) -> dict:
 
     block = args.block_size
 
-    def summ(values: list[float], *, overlapping: bool = False) -> dict:
-        return summarize(values, n_trials=n_trials, sr_variance=sr_var,
+    def summ(values: list[float | None], *, overlapping: bool = False) -> dict:
+        return summarize([v for v in values if v is not None], n_trials=n_trials,
+                         sr_variance=sr_var,
                          block_size=block if overlapping else args.slot_block_size,
                          seed=args.seed)
 
     for tp_r in tp_grid:
         for cost_name in ("ZERO", "BASE", "STRESS"):
-            seq = non_overlapping(cands, tp_r, cost_name)
+            seq = non_overlapping(cands, tp_r, cost_name, max_hold_ms)
             report["full_sample"][f"tp{tp_r}_{cost_name}_all_events"] = summ(
                 [c.r(cost_name, tp_r) for c in cands if c.r(cost_name, tp_r) is not None],
                 overlapping=True)
@@ -371,11 +424,13 @@ def run(args: argparse.Namespace) -> dict:
         report["folds"].extend(fold_rows)
         for rule, picked in selections.items():
             for cost_name in ("BASE", "STRESS"):
-                # Censored outcomes are filtered per scenario, never imputed.
+                # Sequence first (censored trades keep their slot), then drop
+                # censored outcomes from statistics; never impute them.
                 kept = [(c, w) for c, w in picked if c.r(cost_name, tp_r) is not None]
-                chosen = {id(c): w for c, w in kept}
-                seq = non_overlapping([c for c, _ in kept], tp_r, cost_name)
-                slot = [(c, c.r(cost_name, tp_r) * chosen[id(c)]) for c in seq]
+                chosen = {id(c): w for c, w in picked}
+                seq = non_overlapping([c for c, _ in picked], tp_r, cost_name, max_hold_ms)
+                slot = [(c, r * chosen[id(c)]) for c in seq
+                        if (r := c.r(cost_name, tp_r)) is not None]
                 report["walk_forward_oos"][f"tp{tp_r}_{rule}_{cost_name}"] = {
                     "risk_units": "scaled_r" if "VOL_TARGET" in rule else "r",
                     "all_events": summ([c.r(cost_name, tp_r) * w for c, w in kept],
@@ -388,6 +443,11 @@ def run(args: argparse.Namespace) -> dict:
     edge_rows = [row for tp_r in tp_grid for row in conditional_edge(
         cands, names, tp_r=tp_r, discovery_fraction=0.6, q=args.fdr_q, seed=args.seed,
         block_size=block)]
+    # One BH family across every feature x quintile x TP hypothesis.
+    for row, ok in zip(edge_rows, stats.benjamini_hochberg(
+            [r["discovery_p_two_sided"] for r in edge_rows], q=args.fdr_q)):
+        row["bh_discovery"] = ok
+    report["params"]["bh_family_size"] = len(edge_rows)
     report["conditional_edge_survivors"] = [
         r for r in edge_rows if r["bh_discovery"] and r["sign_persists_later"]]
     report["verdict"] = verdict(report)
@@ -429,15 +489,16 @@ def verdict(report: dict) -> dict:
         s = value["single_slot"]
         bench = [oos.get(f"{tp_part}_{b}_STRESS", {}).get("single_slot", {}).get("expectancy_r")
                  for b in BENCHMARK_RULES]
-        best_bench = max((b for b in bench if b is not None), default=None)
-        beats = (s["expectancy_r"] is not None and best_bench is not None
-                 and s["expectancy_r"] > best_bench)
+        complete = all(b is not None for b in bench)
+        best_bench = max(bench) if complete else None
+        beats = complete and s["expectancy_r"] is not None and s["expectancy_r"] > best_bench
         ok = (s["n"] >= 100 and s["ci_lower"] is not None and s["ci_lower"] > 0
               and (s["dsr"] or 0) >= 0.95 and (s["profit_factor"] or 0) >= 1.2 and beats)
         findings.append({"rule": key, "passes_gate": ok, "n": s["n"],
                          "expectancy_r": s["expectancy_r"], "ci_lower": s["ci_lower"],
                          "dsr": s["dsr"], "profit_factor": s["profit_factor"],
-                         "best_benchmark_expectancy_r": best_bench, "beats_benchmarks": beats})
+                         "best_benchmark_expectancy_r": best_bench, "beats_benchmarks": beats,
+                         "benchmarks_complete": complete})
     pbo = report.get("cscv_pbo_simple_rules") or {}
     return {"gate": ("STRESS single-slot OOS: n>=100, CI95 lower>0, DSR>=0.95, PF>=1.2, "
                      "E[R] above BASELINE/LONG_ONLY/SHORT_ONLY"),

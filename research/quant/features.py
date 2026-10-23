@@ -339,6 +339,9 @@ class CausalBarSeries:
 
     def value_at(self, name: str, as_of_ms: int, lag: int = 0):
         """Indicator ``name`` at the last closed bar minus ``lag`` (None if absent)."""
+        if isinstance(lag, bool) or not isinstance(lag, int) or lag < 0:
+            # A negative lag would read a bar that is not closed at as_of_ms.
+            raise LookAheadError(f"lag must be a non-negative int, got {lag!r}")
         idx = self._last_index(as_of_ms) - lag
         if idx < 0:
             return None

@@ -267,5 +267,30 @@ class HelperTests(unittest.TestCase):
         self.assertEqual(p.timestamps, [1, 2])
 
 
+class TimeBarrierGapTests(unittest.TestCase):
+    def test_gap_over_deadline_exits_at_next_open(self) -> None:
+        # R5 (Codex review): never close retroactively before the deadline.
+        from research.quant.barriers import COST_SCENARIOS, M1Path, triple_barrier
+        bars = [{"timestamp": 0, "open": 100.0, "high": 100.1, "low": 99.9, "close": 100.0},
+                {"timestamp": 3 * 3_600_000, "open": 100.5, "high": 100.6, "low": 100.4,
+                 "close": 100.5}]
+        out = triple_barrier(M1Path(bars), signal_time_ms=0, direction=1, stop_dist=1.0,
+                             tp_r=2.0, max_hold_ms=3_600_000, cost=COST_SCENARIOS["ZERO"])
+        self.assertEqual(out["status"], "OK")
+        self.assertEqual(out["exit_reason"], "TIME")
+        self.assertEqual(out["exit_time_ms"], 3 * 3_600_000)
+        self.assertAlmostEqual(out["r_multiple"], 0.5)
+
+    def test_gap_through_stop_at_next_open_is_a_stop(self) -> None:
+        from research.quant.barriers import COST_SCENARIOS, M1Path, triple_barrier
+        bars = [{"timestamp": 0, "open": 100.0, "high": 100.1, "low": 99.9, "close": 100.0},
+                {"timestamp": 3 * 3_600_000, "open": 98.0, "high": 98.1, "low": 97.9,
+                 "close": 98.0}]
+        out = triple_barrier(M1Path(bars), signal_time_ms=0, direction=1, stop_dist=1.0,
+                             tp_r=2.0, max_hold_ms=3_600_000, cost=COST_SCENARIOS["ZERO"])
+        self.assertEqual(out["exit_reason"], "SL")
+        self.assertAlmostEqual(out["r_multiple"], -2.0)
+
+
 if __name__ == "__main__":
     unittest.main()

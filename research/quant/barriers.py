@@ -7,8 +7,9 @@ DailyLossLimit, SL/TP, scoring, thresholds or order authorization.
 Price conventions
 -----------------
 * Bar prices (open/high/low/close) are treated as MID. The historical export's
-  spread is a near-constant 0.30, so trading costs come exclusively from an
-  explicit :class:`CostScenario`, never from the bar data.
+  spread varies (~0.30 early, ~0.5-0.6 median in 2026; see CONTRACT.md), but
+  trading costs come exclusively from an explicit :class:`CostScenario`,
+  never from the bar data.
 * A LONG buys at ask (mid + spread/2) and closes at bid (mid - spread/2).
   A SHORT sells at bid (mid - spread/2) and closes at ask (mid + spread/2).
 * Entry fill  = entry_bar.open + direction * (spread/2 + slippage).
@@ -205,7 +206,13 @@ def triple_barrier(
       open (gap, worse than the level); through TP -> exit at the TP level
       (conservative, no positive gap slippage credited). Otherwise, if both SL
       and TP lie inside the bar's range -> SL (pessimistic), ambiguous_bar=True.
-    * Time barrier: exit at the close of the last bar inside the window.
+    * Time barrier: exit at the close of the last bar inside the window. If a
+      data gap spans the deadline (that close is earlier than the deadline and
+      a later bar exists), exit at the first open at/after the deadline
+      instead; an open through SL fills there, through TP credits the level.
+    * exit_time_ms is the exit bar's OPEN for intrabar SL/TP exits (the exact
+      minute is unknown: sequencing must treat the slot as busy until that
+      bar's close) and the actual fill time for time/gap exits.
     * If the data ends before the window is covered and no barrier was hit the
       outcome is censored: status INSUFFICIENT_PATH, r_multiple None.
     * r_multiple is net of all costs / stop_dist; gross_r is mid-to-mid for the
@@ -329,6 +336,22 @@ def triple_barrier(
         exit_idx = j_end - 1
         exit_mid = closes[exit_idx]
         reason = "TIME"
+        exit_time_ms = ts[exit_idx] + path.bar_ms
+        if j_end < n and exit_time_ms < deadline:
+            # Data gap (weekend/missing minutes) spans the deadline: the first
+            # executable price is the next open, never an earlier close.
+            # Through SL fills at that open; through TP credits the level only.
+            exit_idx = j_end
+            o = opens[j_end]
+            if d * (o - sl_mid) <= 0:
+                exit_mid, reason = o, "SL"
+            elif d * (o - tp_mid) >= 0:
+                exit_mid, reason = tp_mid, "TP"
+            else:
+                exit_mid = o
+            exit_time_ms = ts[j_end]
+    else:
+        exit_time_ms = ts[exit_idx]
 
     exit_side = exit_mid - d * half  # closing side (bid for long, ask for short)
     exit_price = exit_side - d * slip
@@ -346,7 +369,7 @@ def triple_barrier(
         cost,
         entry_time_ms=entry_time,
         entry_price=fill,
-        exit_time_ms=ts[exit_idx] + (path.bar_ms if reason == "TIME" else 0),
+        exit_time_ms=exit_time_ms,
         exit_price=exit_price,
         exit_reason=reason,
         r_multiple=net / stop,

@@ -337,5 +337,18 @@ class ClosedUptoTests(unittest.TestCase):
         self.assertEqual(s.window(bars[1].close_timestamp, 2), bars[:2])
 
 
+class ValueAtLagTests(unittest.TestCase):
+    def test_negative_or_non_int_lag_is_rejected(self) -> None:
+        # R3 (Codex review): lag=-1 used to read the next, not-yet-closed bar.
+        from research.quant.features import Bar, CausalBarSeries, LookAheadError
+        bars = [Bar("H1", i * 3_600_000, (i + 1) * 3_600_000, 100.0 + i, 101.0 + i,
+                    99.0 + i, 100.0 + i, 0.3) for i in range(3)]
+        series = CausalBarSeries(bars)
+        self.assertEqual(series.value_at("close", 3_600_000), 100.0)
+        for lag in (-1, True, 1.0):
+            with self.assertRaises(LookAheadError):
+                series.value_at("close", 3_600_000, lag=lag)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -17,7 +17,8 @@ def cand(t: int, direction: int, r: float, *, exit_after: int = HOUR, score: int
          feat: float | None = 1.0) -> es.Candidate:
     c = es.Candidate(f"e{t}", t, direction, score, {"h1_tsmom_6": feat, "h1_rsi14": 60.0}, 1.0)
     for cost in ("ZERO", "BASE", "STRESS"):
-        c.outcomes[(cost, 1.25)] = {"status": "OK", "r_multiple": r, "exit_time_ms": t + exit_after}
+        c.outcomes[(cost, 1.25)] = {"status": "OK", "r_multiple": r, "entry_time_ms": t,
+                                    "exit_time_ms": t + exit_after, "exit_reason": "TIME"}
     return c
 
 
@@ -54,6 +55,30 @@ class SequencingTests(unittest.TestCase):
         self.assertEqual(len(es.non_overlapping([a, b], 1.25, "BASE")), 2)
         self.assertEqual(len(es.non_overlapping([a, b], 1.25, "STRESS")), 1)
 
+    def test_intrabar_exit_keeps_slot_until_bar_close(self) -> None:
+        # R1: TP touched inside the M1 bar opening at t=60s is only known by 120s.
+        a, b = cand(0, 1, 1.0, exit_after=60_000), cand(60_000, 1, 1.0)
+        for cost in ("ZERO", "BASE", "STRESS"):
+            a.outcomes[(cost, 1.25)]["exit_reason"] = "TP"
+        self.assertEqual([c.event_id for c in es.non_overlapping([a, b], 1.25, "BASE")], ["e0"])
+
+    def test_sequencing_uses_actual_entry_time(self) -> None:
+        a, b = cand(0, 1, 1.0, exit_after=2 * HOUR), cand(HOUR, 1, 1.0)
+        for cost in ("ZERO", "BASE", "STRESS"):
+            b.outcomes[(cost, 1.25)]["entry_time_ms"] = 3 * HOUR  # delayed first bar
+        self.assertEqual(len(es.non_overlapping([a, b], 1.25, "BASE")), 2)
+
+    def test_censored_trade_reserves_slot(self) -> None:
+        # R4: a censored first trade must not free the slot for the next signal.
+        a, b = cand(0, 1, 0.0), cand(60_000, 1, 1.0)
+        for cost in ("ZERO", "BASE", "STRESS"):
+            a.outcomes[(cost, 1.25)] = {"status": "INSUFFICIENT_PATH", "r_multiple": None,
+                                        "entry_time_ms": 0, "exit_time_ms": None,
+                                        "exit_reason": None}
+        seq = es.non_overlapping([a, b], 1.25, "BASE", max_hold_ms=es.DAY_MS)
+        self.assertEqual([c.event_id for c in seq], ["e0"])
+        self.assertIsNone(seq[0].r("BASE", 1.25))
+
     def test_max_drawdown(self) -> None:
         self.assertEqual(es.max_drawdown([1.0, -2.0, 0.5, -1.0, 3.0]), -2.5)
         self.assertIsNone(es.max_drawdown([]))
@@ -86,6 +111,26 @@ class VerdictTests(unittest.TestCase):
         self.assertEqual(v["candidates_for_paper"], ["tp2.0_META_TOP30_STRESS"])
         self.assertEqual({r["rule"] for r in v["rules"]},
                          {"tp2.0_META_TOP50_STRESS", "tp2.0_META_TOP30_STRESS"})
+
+
+class VerdictIncompleteBenchmarkTests(unittest.TestCase):
+    def test_missing_benchmark_blocks_nomination(self) -> None:
+        # R7: a rule cannot pass by beating only the benchmarks that exist.
+        oos = {"tp2.0_BASELINE_STRESS": VerdictTests.slot(0.10),
+               "tp2.0_META_TOP50_STRESS": VerdictTests.slot(0.50)}
+        v = es.verdict({"walk_forward_oos": oos, "cscv_pbo_simple_rules": None})
+        self.assertEqual(v["candidates_for_paper"], [])
+        self.assertFalse(v["rules"][0]["benchmarks_complete"])
+
+
+class DiscoveryVarianceTests(unittest.TestCase):
+    def test_uses_only_pre_cutoff_candidates(self) -> None:
+        early = [cand(i * 2 * HOUR, 1, (1.0 if i % 3 else -1.0), score=90) for i in range(30)]
+        late = [cand(10_000 * HOUR + i * 2 * HOUR, 1, 50.0 * (i % 2), score=90) for i in range(30)]
+        rules = [("a", 1.25, 74, 0), ("b", 1.25, 86, 1), ("c", 1.25, 74, -1)]
+        base = es.discovery_sr_variance(early, rules, 10_000 * HOUR, es.DAY_MS)
+        self.assertEqual(base, es.discovery_sr_variance(early + late, rules, 10_000 * HOUR,
+                                                        es.DAY_MS))
 
 
 class StructureDistanceTests(unittest.TestCase):
