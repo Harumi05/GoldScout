@@ -34,6 +34,21 @@ disponible/verificable. El informe omite contenido de eventos, cuentas y rutas
 absolutas. Los registros de entrada y los informes generados son privados y no
 deben incorporarse al repositorio.
 
+## Quant Research V1 (offline)
+
+`research/quant/` contiene herramientas cuantitativas solo diagnósticas
+(`observer_only=true`, `score_effect=0`): features causales, triple barrera M1
+con escenarios de coste, walk-forward purgado, meta-labeling, PSR/DSR, BH-FDR y
+PBO. Contrato en `research/quant/CONTRACT.md`; resultados e interpretación en
+`docs/QUANT_RESEARCH_V1.md`.
+
+```powershell
+python -m research.quant.edge_study `
+  --input-dir research/output --output-dir research/analysis/quant
+```
+
+La compuerta solo puede nominar un challenger PAPER; nunca modifica el EA.
+
 ## Replay histórico
 
 Motor offline y exclusivamente diagnóstico para exports de ticks de MT5. No

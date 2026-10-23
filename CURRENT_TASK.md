@@ -17,11 +17,16 @@ Owner's rising-price hypothesis requires causal candles, not a blanket H1 filter
 Chart API only exposes 12 recent H1 bars, insufficient for those entries.
 Owner additionally requests quantitative trading; implement research/validation
 first, score_effect=0, without changing protected live/DEMO strategy behavior.
+Quant Research V1 (branch claude/quant-research-v1): offline research/quant/
+package implemented; gate result NONE for PAPER. See docs/QUANT_RESEARCH_V1.md.
 No VPS deployment has been performed or validated by these tasks.
 
 ## Owner / Reviewer
-Coordinator / local validator: Codex. Reviewer: Human / independent reviewer pending.
-Orca multiagent launch is blocked by automatic approval policy; no workers started.
+Coordinator / orchestrator: Claude (owner instruction 2026-10-22), taking over
+from Codex. Implementer and reviewer must remain distinct per change; Codex /
+human review and owner merge approval are still required. Quant Research V1 was
+implemented by Claude sub-agents and pre-reviewed by a separate read-only agent.
+Earlier: Orca multiagent launch was blocked by approval policy; no Orca workers.
 
 ## Objective
 Inspect current Hali trade records and correlate fills/closes with their actual
