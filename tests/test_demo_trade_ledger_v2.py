@@ -34,6 +34,15 @@ def close(number: int, trade: str = "T1", **fields):
 
 
 class LedgerProjectionTests(unittest.TestCase):
+    def test_reader_accepts_blank_separators_emitted_by_mql_writer(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / 'market_execution_events.jsonl'
+            path.write_text('\r\n' + json.dumps(close(1)) + '\r\n\r\n \t\r\n', encoding='utf-8')
+            result = read_ledger([path], account_login=123)
+        self.assertEqual(result['status'], 'OK')
+        self.assertEqual(result['trade_stats']['trades_closed'], 1)
+        self.assertEqual(result['trade_stats']['net_pnl'], 10.25)
+
     def test_successful_fill_and_close_one_trade(self):
         rows = [event("SIGNAL", 1), event("RESERVED", 2),
                 event("ORDER_REQUESTED", 3), event("ORDER_FILLED", 4, deal_ticket=91),

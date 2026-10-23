@@ -1,5 +1,41 @@
 # Historical Replay Engine
 
+## Auditoría de registros reales (solo lectura)
+
+`audit_runtime_trades` inspecciona una carpeta de evidencias MT5 sin importar ni
+ejecutar el EA, reparar archivos o enviar órdenes:
+
+```powershell
+python -m research.audit_runtime_trades `
+  --input-dir "$env:APPDATA\MetaQuotes\Terminal\Common\Files" `
+  --as-of-date 2026-10-22 --days 7
+```
+
+La fecha final es explícita; la ventana inclusiva del ejemplo es 16–22 de
+octubre. Las fechas internas se interpretan como etiquetas de hora de pared
+MT5, sin afirmar UTC ni sesiones del broker. No se usa el mtime de una copia
+para considerarla reciente. Se informa el hash de los mismos bytes leídos y
+se rechazan fuentes modificadas durante su lectura; las cuatro lecturas no
+constituyen una captura atómica entre archivos.
+
+El JSON separa eventos legacy, cierres del snapshot sin reconciliar y métricas
+V2 de una sola cuenta DEMO identificada en el ledger. Con varias cuentas,
+`--account-login` selecciona una; no se suman cuentas. Se proyecta el ledger
+completo antes de filtrar cierres por fecha para conservar validaciones de
+fills previos. Costes o riesgo inicial desconocidos no producen PnL/R
+inventados; la expectativa R indica cuántas muestras conocidas tiene. Un
+periodo sin evidencia conserva los importes desconocidos como `null`.
+
+El estado V2 describe la proyección del archivo, no una validación contra
+MT5 History, cobertura completa, rentabilidad OOS o autorización de ejecución.
+`strategy_validated=false` siempre. Exit 0 significa evidencia V2 de la cuenta
+seleccionada dentro de las fechas; exit 2 significa evidencia reciente no
+disponible/verificable. El informe omite contenido de eventos, cuentas y rutas
+absolutas. Los registros de entrada y los informes generados son privados y no
+deben incorporarse al repositorio.
+
+## Replay histórico
+
 Motor offline y exclusivamente diagnóstico para exports de ticks de MT5. No
 importa ni ejecuta el EA y todos sus snapshots/outcomes declaran
 `observer_only=true` y `score_effect=0`.

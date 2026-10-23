@@ -252,6 +252,10 @@ def read_ledger(paths: Iterable[Path], *, day: str | None = None,
         with path.open("r", encoding="utf-8-sig", errors="replace") as handle:
             def records():
                 for number, line in enumerate(handle, 1):
+                    # The MQL writer deliberately separates critical appends
+                    # with blank lines after restart/crash-safe EOF handling.
+                    if not line.strip():
+                        continue
                     if "\ufffd" in line:
                         errors.append({"line": number, "reason": "INVALID_UTF8"})
                     try:
